@@ -1,0 +1,60 @@
+{
+  "aligned_loci": 6742,
+  "aligned_samples": 8116,
+  "cancer_type_counts": {
+    "TCGA-ACC": 79,
+    "TCGA-BLCA": 400,
+    "TCGA-BRCA": 779,
+    "TCGA-CESC": 304,
+    "TCGA-CHOL": 35,
+    "TCGA-COAD": 294,
+    "TCGA-DLBC": 48,
+    "TCGA-ESCA": 163,
+    "TCGA-GBM": 58,
+    "TCGA-HNSC": 500,
+    "TCGA-KICH": 65,
+    "TCGA-KIRC": 317,
+    "TCGA-KIRP": 274,
+    "TCGA-LAML": 111,
+    "TCGA-LGG": 511,
+    "TCGA-LIHC": 371,
+    "TCGA-LUSC": 370,
+    "TCGA-MESO": 86,
+    "TCGA-OV": 7,
+    "TCGA-PAAD": 177,
+    "TCGA-PCPG": 179,
+    "TCGA-PRAD": 495,
+    "TCGA-READ": 98,
+    "TCGA-SARC": 259,
+    "TCGA-SKCM": 468,
+    "TCGA-STAD": 335,
+    "TCGA-TGCT": 150,
+    "TCGA-THCA": 502,
+    "TCGA-THYM": 119,
+    "TCGA-UCEC": 426,
+    "TCGA-UCS": 56,
+    "TCGA-UVM": 80
+  },
+  "cpg_split_counts": {
+    "test": 521,
+    "train": 5243,
+    "validation": 978
+  },
+  "locus_embedding_dim": 1536,
+  "methylation_shape": [
+    8116,
+    6742
+  ],
+  "rna_control": "real",
+  "rna_input_dim": 21792,
+  "rna_shape": [
+    8116,
+    21792
+  ],
+  "sample_split_counts": {
+    "test": 414,
+    "train": 7304,
+    "validation": 398
+  },
+  "standardized": true
+}

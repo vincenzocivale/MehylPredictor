@@ -4,6 +4,14 @@ outputs/
 audit_outputs/
 MethylProphet/outputs/
 
+# RNA experiment products: retain only compact, reviewed summaries in results/.
+artifacts/rna_branch/
+artifacts/stage_d/
+*.pt
+*.h5
+*.hdf5
+*.npz
+
 # Python and test state
 __pycache__/
 *.py[cod]

@@ -1,0 +1,76 @@
+{
+  "sample_split_disjoint": {
+    "counts": {
+      "train": 7304,
+      "test": 414,
+      "validation": 398
+    },
+    "pairwise_overlap": [
+      {
+        "a": "train",
+        "b": "validation",
+        "overlap": 0
+      },
+      {
+        "a": "test",
+        "b": "train",
+        "overlap": 0
+      },
+      {
+        "a": "test",
+        "b": "validation",
+        "overlap": 0
+      }
+    ]
+  },
+  "sample_ids_unique": true,
+  "cpg_split_disjoint": {
+    "counts": {
+      "train": 5243,
+      "validation": 978,
+      "test": 521
+    },
+    "pairwise_overlap": [
+      {
+        "a": "train",
+        "b": "validation",
+        "overlap": 0
+      },
+      {
+        "a": "test",
+        "b": "train",
+        "overlap": 0
+      },
+      {
+        "a": "test",
+        "b": "validation",
+        "overlap": 0
+      }
+    ]
+  },
+  "cpg_ids_unique": true,
+  "id_correspondence": {
+    "rna_vs_metadata_symmetric_diff": 0,
+    "beta_samples_vs_metadata_symmetric_diff": 0,
+    "beta_cpgs_vs_split_symmetric_diff": 0,
+    "embeddings_cpgs_vs_split_symmetric_diff": 0
+  },
+  "rna_shape": [
+    8116,
+    21792
+  ],
+  "beta_shape": [
+    8116,
+    6742
+  ],
+  "beta_missing_fraction": 0.009975479399201053,
+  "beta_value_range_finite": [
+    0.0,
+    0.996192991733551
+  ],
+  "locus_features_any_nan": false,
+  "locus_features_prior_range": [
+    0.009645292208499212,
+    0.9855694770812988
+  ]
+}

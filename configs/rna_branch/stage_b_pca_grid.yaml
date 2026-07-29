@@ -1,0 +1,107 @@
+# Stage B / family 2: train-only IncrementalPCA (fit on training patients only,
+# see rna_branch fit-pca) followed by a learned linear projection (encoder.kind=linear).
+# PCA basis + manifest saved under artifacts/rna_branch/stage_b/features/pca_<dim>.{h5,json}.
+base_config: stage_b_base.yaml
+runs:
+  - name: pca032_linear_seed17
+    override:
+      data:
+        rna: {path: artifacts/rna_branch/stage_b/features/pca_032.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}
+        standardize_rna: false
+      model: {encoder: {kind: linear, latent_dim: 32}}
+      training: {seed: 17}
+  - name: pca032_linear_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_032.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 32}}
+      training: {seed: 29}
+  - name: pca032_linear_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_032.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 32}}
+      training: {seed: 43}
+
+  - name: pca064_linear_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_064.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 64}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca064_linear_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_064.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 64}}
+      training: {seed: 29}
+  - name: pca064_linear_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_064.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 64}}
+      training: {seed: 43}
+
+  - name: pca128_linear_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_128.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 128}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca128_linear_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_128.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 128}}
+      training: {seed: 29}
+  - name: pca128_linear_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_128.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 128}}
+      training: {seed: 43}
+
+  - name: pca256_linear_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_256.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 256}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca256_linear_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_256.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 256}}
+      training: {seed: 29}
+  - name: pca256_linear_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_256.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 256}}
+      training: {seed: 43}
+
+  - name: pca512_linear_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_512.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 512}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca512_linear_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_512.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 512}}
+      training: {seed: 29}
+  - name: pca512_linear_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_512.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 512}}
+      training: {seed: 43}
+
+  - name: pca1024_linear_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_1024.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 1024}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca1024_linear_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_1024.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 1024}}
+      training: {seed: 29}
+  - name: pca1024_linear_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_1024.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: linear, latent_dim: 1024}}
+      training: {seed: 43}

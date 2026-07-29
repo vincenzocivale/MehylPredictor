@@ -1,0 +1,10 @@
+# Additional dependencies for the RNA residual branch.
+# Pin versions in the project environment lock file after the first successful cluster run.
+numpy>=1.26
+pandas>=2.1
+pyarrow>=14
+h5py>=3.10
+PyYAML>=6.0
+scikit-learn>=1.4
+torch>=2.2
+pytest>=8.0

@@ -1,0 +1,9 @@
+{
+  "kind": "released evaluation output of pretrained MethylProphet checkpoint",
+  "released_predictions": "artifacts/cache/methylprophet/upstream_outputs/eval/eval-tcga_mix_chr1-bs_512-c2b2/eval_results-test.parquet",
+  "panel_npz": "artifacts/rna_branch/stage_c/screening/c0_v0_seed17/predictions_double_ood.npz",
+  "group_idx": 2,
+  "checkpoint_target_match_atol": 1e-06,
+  "rows": 215694,
+  "checkpoint": "tcga_mix_chr1-bs_512-c2b2/version_0/finished.ckpt"
+}

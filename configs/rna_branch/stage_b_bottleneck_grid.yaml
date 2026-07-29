@@ -1,0 +1,62 @@
+# Stage B / family 4: supervised linear bottleneck, learned end-to-end directly
+# from the full 21792-gene RNA vector (no PCA/random pre-reduction) at varying
+# latent width. latent_dim=64 with seed17/29/43 duplicates the stage_b baseline
+# family exactly (kept here only for the sweep shape; use the baseline family's
+# runs, not these, to avoid double-counting compute/results at dim=64).
+base_config: stage_b_base.yaml
+runs:
+  - name: bottleneck016_seed17
+    override:
+      model: {encoder: {kind: linear, latent_dim: 16}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: bottleneck016_seed29
+    override:
+      model: {encoder: {kind: linear, latent_dim: 16}}
+      training: {seed: 29}
+  - name: bottleneck016_seed43
+    override:
+      model: {encoder: {kind: linear, latent_dim: 16}}
+      training: {seed: 43}
+
+  - name: bottleneck032_seed17
+    override:
+      model: {encoder: {kind: linear, latent_dim: 32}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: bottleneck032_seed29
+    override:
+      model: {encoder: {kind: linear, latent_dim: 32}}
+      training: {seed: 29}
+  - name: bottleneck032_seed43
+    override:
+      model: {encoder: {kind: linear, latent_dim: 32}}
+      training: {seed: 43}
+
+  - name: bottleneck128_seed17
+    override:
+      model: {encoder: {kind: linear, latent_dim: 128}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: bottleneck128_seed29
+    override:
+      model: {encoder: {kind: linear, latent_dim: 128}}
+      training: {seed: 29}
+  - name: bottleneck128_seed43
+    override:
+      model: {encoder: {kind: linear, latent_dim: 128}}
+      training: {seed: 43}
+
+  - name: bottleneck256_seed17
+    override:
+      model: {encoder: {kind: linear, latent_dim: 256}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: bottleneck256_seed29
+    override:
+      model: {encoder: {kind: linear, latent_dim: 256}}
+      training: {seed: 29}
+  - name: bottleneck256_seed43
+    override:
+      model: {encoder: {kind: linear, latent_dim: 256}}
+      training: {seed: 43}
