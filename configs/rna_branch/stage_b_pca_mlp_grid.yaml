@@ -1,0 +1,39 @@
+# Stage B / family 6: small MLP encoder on top of the two best-performing PCA
+# dims from stage_b_pca_grid (selected by double_ood skill_vs_prior mean over
+# 3 seeds: pca1024=0.0956, pca512=0.0944, both above pca256=0.0898). Tests
+# whether nonlinearity recovers the gap to the full linear baseline (0.1033).
+base_config: stage_b_base.yaml
+runs:
+  - name: pca512_mlp_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_512.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: mlp, latent_dim: 64, hidden_dims: [128], dropout: 0.10, layer_norm: true}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca512_mlp_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_512.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: mlp, latent_dim: 64, hidden_dims: [128], dropout: 0.10, layer_norm: true}}
+      training: {seed: 29}
+  - name: pca512_mlp_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_512.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: mlp, latent_dim: 64, hidden_dims: [128], dropout: 0.10, layer_norm: true}}
+      training: {seed: 43}
+
+  - name: pca1024_mlp_seed17
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_1024.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: mlp, latent_dim: 64, hidden_dims: [128], dropout: 0.10, layer_norm: true}}
+      training: {seed: 17}
+      evaluation: {save_predictions: true}
+  - name: pca1024_mlp_seed29
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_1024.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: mlp, latent_dim: 64, hidden_dims: [128], dropout: 0.10, layer_norm: true}}
+      training: {seed: 29}
+  - name: pca1024_mlp_seed43
+    override:
+      data: {rna: {path: artifacts/rna_branch/stage_b/features/pca_1024.h5, values_key: X, row_ids_key: sample_idx, col_ids_key: component_ids}, standardize_rna: false}
+      model: {encoder: {kind: mlp, latent_dim: 64, hidden_dims: [128], dropout: 0.10, layer_norm: true}}
+      training: {seed: 43}

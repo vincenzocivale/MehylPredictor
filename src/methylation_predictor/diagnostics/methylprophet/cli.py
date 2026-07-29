@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 
 def _commands() -> dict[str, Callable[[], None]]:
-    from . import empirical_hybrid, export_contract, gene_intervention, locus_decomposition, mean_rna_baseline, released_predictions
+    from . import empirical_hybrid, export_contract, gene_intervention, locus_decomposition, mean_rna_baseline, released_predictions, stage_d_matched
     return {
         "released-audit": released_predictions.main,
         "locus-decomposition": lambda: locus_decomposition.run(locus_decomposition.parser().parse_args()),
@@ -14,6 +14,7 @@ def _commands() -> dict[str, Callable[[], None]]:
         "empirical-hybrid": empirical_hybrid.main,
         "mean-rna-baseline": mean_rna_baseline.main,
         "export": export_contract.main,
+        "stage-d-matched": stage_d_matched.main,
     }
 
 

@@ -1,0 +1,18 @@
+# Stage B / family 1: current full linear baseline (identical to Stage A's
+# winning rna_linear_real config), rerun under stage_b for paired comparisons.
+base_config: stage_b_base.yaml
+runs:
+  - name: baseline_linear_seed17
+    override:
+      training:
+        seed: 17
+      evaluation:
+        save_predictions: true
+  - name: baseline_linear_seed29
+    override:
+      training:
+        seed: 29
+  - name: baseline_linear_seed43
+    override:
+      training:
+        seed: 43

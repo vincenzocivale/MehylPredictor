@@ -1,0 +1,11 @@
+base_config: stage_c_base.yaml
+runs:
+  - {name: c0_lr2e-4_seed17, override: {training: {seed: 17, learning_rate: 0.0002}}}
+  - {name: c0_lr2e-4_seed29, override: {training: {seed: 29, learning_rate: 0.0002}}}
+  - {name: c0_lr2e-4_seed43, override: {training: {seed: 43, learning_rate: 0.0002}}}
+  - {name: c0_lr6.67e-5_seed17, override: {training: {seed: 17, learning_rate: 0.0000666667}}}
+  - {name: c0_lr6.67e-5_seed29, override: {training: {seed: 29, learning_rate: 0.0000666667}}}
+  - {name: c0_lr6.67e-5_seed43, override: {training: {seed: 43, learning_rate: 0.0000666667}}}
+  - {name: c0_lr2e-5_seed17, override: {training: {seed: 17, learning_rate: 0.00002}}}
+  - {name: c0_lr2e-5_seed29, override: {training: {seed: 29, learning_rate: 0.00002}}}
+  - {name: c0_lr2e-5_seed43, override: {training: {seed: 43, learning_rate: 0.00002}}}
