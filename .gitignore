@@ -1,0 +1,19 @@
+# Generated and downloaded experiment material
+artifacts/
+outputs/
+audit_outputs/
+MethylProphet/outputs/
+
+# Python and test state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Runtime logs
+*.log
+
+# Local environments and IDE state
+.venv/
+.idea/
+.vscode/

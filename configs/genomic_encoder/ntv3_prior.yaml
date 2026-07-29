@@ -1,0 +1,5 @@
+experiment: ntv3_prior
+backbone: NTv3-650M-post
+context_bp: 32768
+orientation: forward
+readout: centre

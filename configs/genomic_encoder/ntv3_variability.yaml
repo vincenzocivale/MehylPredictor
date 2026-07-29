@@ -1,0 +1,3 @@
+experiment: ntv3_variability
+backbone: NTv3-650M-post
+targets: [total, between_cancer, within_cancer]
