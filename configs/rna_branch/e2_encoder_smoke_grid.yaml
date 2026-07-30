@@ -1,0 +1,98 @@
+base_config: e2_encoder_base.yaml
+runs:
+- name: a0_linear_smoke
+  override:
+    model:
+      encoder:
+        kind: linear
+    training:
+      epochs: 1
+      min_epochs: 0
+      steps_per_epoch: 2
+      validation_max_cpgs: 64
+      amp: false
+    evaluation:
+      max_cpgs_per_panel: 64
+    output_dir: artifacts/rna_branch/stage_e2_encoder/smoke/default
+- name: a1_mp_b6w512_smoke
+  override:
+    model:
+      encoder:
+        kind: bottleneck_mlp
+        width: 512
+        num_blocks: 6
+        expansion_factor: 4
+    training:
+      epochs: 1
+      min_epochs: 0
+      steps_per_epoch: 2
+      validation_max_cpgs: 64
+      amp: false
+    evaluation:
+      max_cpgs_per_panel: 64
+    output_dir: artifacts/rna_branch/stage_e2_encoder/smoke/default
+- name: a2_linear_residual_w256_smoke
+  override:
+    model:
+      encoder:
+        kind: linear_residual
+        width: 256
+        num_blocks: 1
+    training:
+      epochs: 1
+      min_epochs: 0
+      steps_per_epoch: 2
+      validation_max_cpgs: 64
+      amp: false
+    evaluation:
+      max_cpgs_per_panel: 64
+    output_dir: artifacts/rna_branch/stage_e2_encoder/smoke/default
+- name: a3_gated_residual_w256_smoke
+  override:
+    model:
+      encoder:
+        kind: gated_residual
+        width: 256
+        num_blocks: 1
+    training:
+      epochs: 1
+      min_epochs: 0
+      steps_per_epoch: 2
+      validation_max_cpgs: 64
+      amp: false
+    evaluation:
+      max_cpgs_per_panel: 64
+    output_dir: artifacts/rna_branch/stage_e2_encoder/smoke/default
+- name: a4_shallow_mlp_w512_smoke
+  override:
+    model:
+      encoder:
+        kind: mlp
+        hidden_dims:
+        - 512
+    training:
+      epochs: 1
+      min_epochs: 0
+      steps_per_epoch: 2
+      validation_max_cpgs: 64
+      amp: false
+    evaluation:
+      max_cpgs_per_panel: 64
+    output_dir: artifacts/rna_branch/stage_e2_encoder/smoke/default
+- name: a5_bottleneck_b2w512_smoke
+  override:
+    model:
+      encoder:
+        kind: bottleneck_mlp
+        width: 512
+        num_blocks: 2
+        expansion_factor: 4
+    training:
+      epochs: 1
+      min_epochs: 0
+      steps_per_epoch: 2
+      validation_max_cpgs: 64
+      amp: false
+    evaluation:
+      max_cpgs_per_panel: 64
+    output_dir: artifacts/rna_branch/stage_e2_encoder/smoke/default

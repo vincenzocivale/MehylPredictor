@@ -1,0 +1,23 @@
+# Stage G1b (F1 revisited): diagnostic follow-up to G1's negative result.
+# G1-G4 all projected the locus embedding to 64-dim (g~) before combining with
+# RNA, and none beat G0 bilinear -- but F2 (Stage F's real production win)
+# concatenates the RAW 1536-dim locus embedding instead. This single run
+# isolates that variable alone: [z; loci_raw] -> MLP -> scalar, no product
+# term at all. If this alone matches/beats F2, the product term in F2 is not
+# the active ingredient; if it lands back with G1-G4, raw-locus access isn't
+# the explanation either and the mechanism is still open.
+base_config: stage_f_base.yaml
+runs:
+- name: f1_raw_concat_no_product_seed17
+  override:
+    model:
+      encoder:
+        kind: linear
+      interaction:
+        kind: raw_concat
+    training:
+      seed: 17
+      save_every_epoch: true
+    evaluation:
+      save_predictions: true
+    output_dir: artifacts/rna_branch/stage_g1_fusion_ablation/default

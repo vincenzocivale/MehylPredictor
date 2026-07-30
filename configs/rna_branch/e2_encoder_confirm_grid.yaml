@@ -1,0 +1,154 @@
+# Learning rates below are the Phase-2 lr_screen winners (all six families
+# picked lr=1e-4; see artifacts/rna_branch/stage_e2_encoder/lr_screen_report.csv).
+base_config: e2_encoder_base.yaml
+runs:
+- name: a0_linear_seed17
+  override:
+    model: &id001
+      encoder:
+        kind: linear
+    training:
+      seed: 17
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a0_linear_seed23
+  override:
+    model: *id001
+    training:
+      seed: 23
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a0_linear_seed41
+  override:
+    model: *id001
+    training:
+      seed: 41
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a1_mp_b6w512_seed17
+  override:
+    model: &id002
+      encoder:
+        kind: bottleneck_mlp
+        width: 512
+        num_blocks: 6
+        expansion_factor: 4
+    training:
+      seed: 17
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a1_mp_b6w512_seed23
+  override:
+    model: *id002
+    training:
+      seed: 23
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a1_mp_b6w512_seed41
+  override:
+    model: *id002
+    training:
+      seed: 41
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a2_linear_residual_w256_seed17
+  override:
+    model: &id003
+      encoder:
+        kind: linear_residual
+        width: 256
+        num_blocks: 1
+    training:
+      seed: 17
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a2_linear_residual_w256_seed23
+  override:
+    model: *id003
+    training:
+      seed: 23
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a2_linear_residual_w256_seed41
+  override:
+    model: *id003
+    training:
+      seed: 41
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a3_gated_residual_w256_seed17
+  override:
+    model: &id004
+      encoder:
+        kind: gated_residual
+        width: 256
+        num_blocks: 1
+    training:
+      seed: 17
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a3_gated_residual_w256_seed23
+  override:
+    model: *id004
+    training:
+      seed: 23
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a3_gated_residual_w256_seed41
+  override:
+    model: *id004
+    training:
+      seed: 41
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a4_shallow_mlp_w512_seed17
+  override:
+    model: &id005
+      encoder:
+        kind: mlp
+        hidden_dims:
+        - 512
+    training:
+      seed: 17
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a4_shallow_mlp_w512_seed23
+  override:
+    model: *id005
+    training:
+      seed: 23
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a4_shallow_mlp_w512_seed41
+  override:
+    model: *id005
+    training:
+      seed: 41
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a5_bottleneck_b2w512_seed17
+  override:
+    model: &id006
+      encoder:
+        kind: bottleneck_mlp
+        width: 512
+        num_blocks: 2
+        expansion_factor: 4
+    training:
+      seed: 17
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a5_bottleneck_b2w512_seed23
+  override:
+    model: *id006
+    training:
+      seed: 23
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
+- name: a5_bottleneck_b2w512_seed41
+  override:
+    model: *id006
+    training:
+      seed: 41
+      learning_rate: 0.0001
+    output_dir: artifacts/rna_branch/stage_e2_encoder/confirm/default
