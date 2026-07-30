@@ -1,6 +1,8 @@
 """Evaluation metrics separating total, locus-static, and patient-specific skill."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 from scipy.stats import spearmanr
 
@@ -33,6 +35,27 @@ def _spearman(x: np.ndarray, y: np.ndarray) -> float:
         return float("nan")
     statistic = spearmanr(x, y).statistic
     return float(statistic) if np.isfinite(statistic) else float("nan")
+
+
+def _median_axis_correlation(
+    prediction: np.ndarray,
+    target: np.ndarray,
+    axis: int,
+    statistic: Callable[[np.ndarray, np.ndarray], float],
+) -> float:
+    """Median correlation across patients (axis=1) or CpGs (axis=0)."""
+    if axis not in {0, 1}:
+        raise ValueError("axis must be 0 or 1")
+    values: list[float] = []
+    count = prediction.shape[1 - axis]
+    for index in range(count):
+        if axis == 1:
+            value = statistic(prediction[index, :], target[index, :])
+        else:
+            value = statistic(prediction[:, index], target[:, index])
+        if np.isfinite(value):
+            values.append(value)
+    return float(np.median(values)) if values else float("nan")
 
 
 def _safe_skill(error: float, baseline_error: float) -> float:
@@ -68,7 +91,6 @@ def _within_cancer_centred(
     return result
 
 
-
 def _masked_axis_mean(values: np.ndarray, valid: np.ndarray, axis: int) -> np.ndarray:
     counts = valid.sum(axis=axis)
     sums = np.where(valid, values, 0.0).sum(axis=axis)
@@ -80,11 +102,41 @@ def _masked_axis_mean(values: np.ndarray, valid: np.ndarray, axis: int) -> np.nd
     )
 
 
+def _tertile_metrics(
+    target: np.ndarray,
+    prediction: np.ndarray,
+    prior_matrix: np.ndarray,
+) -> dict[str, float | int]:
+    true_dynamic = target - prior_matrix
+    pred_dynamic = prediction - prior_matrix
+    valid = np.isfinite(target) & np.isfinite(prediction) & np.isfinite(prior_matrix)
+    true_centred = _centre_by_locus(true_dynamic, valid)
+    pred_centred = _centre_by_locus(pred_dynamic, valid)
+    model_mse = _mse(target, prediction)
+    prior_mse = _mse(target, prior_matrix)
+    return {
+        "rows": int(valid.sum()),
+        "cpgs": int(target.shape[1]),
+        "mse": model_mse,
+        "prior_mse": prior_mse,
+        "skill_vs_prior": _safe_skill(model_mse, prior_mse),
+        "dynamic_pearson": _pearson(pred_centred, true_centred),
+        "dynamic_spearman": _spearman(pred_centred, true_centred),
+        "patient_dynamic_pearson_median": _median_axis_correlation(
+            pred_dynamic, true_dynamic, axis=1, statistic=_pearson
+        ),
+        "locus_dynamic_pearson_median": _median_axis_correlation(
+            pred_dynamic, true_dynamic, axis=0, statistic=_pearson
+        ),
+    }
+
+
 def evaluate_predictions(
     target: np.ndarray,
     prediction: np.ndarray,
     prior: np.ndarray,
     cancer_types: np.ndarray,
+    cpg_tertiles: np.ndarray | None = None,
 ) -> dict[str, object]:
     target = np.asarray(target, dtype=np.float64)
     prediction = np.asarray(prediction, dtype=np.float64)
@@ -96,6 +148,8 @@ def evaluate_predictions(
         raise ValueError("prior length does not match CpG dimension")
     if target.shape[0] != len(cancer_types):
         raise ValueError("cancer-type length does not match sample dimension")
+    if cpg_tertiles is not None and target.shape[1] != len(cpg_tertiles):
+        raise ValueError("CpG-tertile length does not match CpG dimension")
 
     prior_matrix = np.broadcast_to(prior[None, :], target.shape)
     valid = np.isfinite(target) & np.isfinite(prediction) & np.isfinite(prior_matrix)
@@ -145,6 +199,16 @@ def evaluate_predictions(
     cpg_model_mse = _masked_axis_mean((target - prediction) ** 2, valid, axis=0)
     cpg_prior_mse = _masked_axis_mean((target - prior_matrix) ** 2, valid, axis=0)
 
+    per_tertile: dict[str, dict[str, float | int]] = {}
+    if cpg_tertiles is not None:
+        cpg_tertiles = np.asarray(cpg_tertiles, dtype=np.int64)
+        for label, name in enumerate(("low", "mid", "high")):
+            columns = cpg_tertiles == label
+            if columns.any():
+                per_tertile[name] = _tertile_metrics(
+                    target[:, columns], prediction[:, columns], prior_matrix[:, columns]
+                )
+
     return {
         "rows": int(valid.sum()),
         "samples": int(target.shape[0]),
@@ -156,6 +220,18 @@ def evaluate_predictions(
         "dynamic_skill": _safe_skill(dynamic_mse, dynamic_baseline_mse),
         "dynamic_pearson": _pearson(pred_centred, true_centred),
         "dynamic_spearman": _spearman(pred_centred, true_centred),
+        "patient_dynamic_pearson_median": _median_axis_correlation(
+            pred_dynamic, true_dynamic, axis=1, statistic=_pearson
+        ),
+        "patient_dynamic_spearman_median": _median_axis_correlation(
+            pred_dynamic, true_dynamic, axis=1, statistic=_spearman
+        ),
+        "locus_dynamic_pearson_median": _median_axis_correlation(
+            pred_dynamic, true_dynamic, axis=0, statistic=_pearson
+        ),
+        "locus_dynamic_spearman_median": _median_axis_correlation(
+            pred_dynamic, true_dynamic, axis=0, statistic=_spearman
+        ),
         "within_cancer_skill": _safe_skill(within_mse, within_baseline_mse),
         "within_cancer_pearson": _pearson(pred_within, true_within),
         "within_cancer_spearman": _spearman(pred_within, true_within),
@@ -166,4 +242,5 @@ def evaluate_predictions(
         "macro_cancer_mse": float(np.mean(cancer_mses)) if cancer_mses else float("nan"),
         "macro_cancer_skill_vs_prior": float(np.mean(cancer_skills)) if cancer_skills else float("nan"),
         "per_cancer": per_cancer,
+        "per_variability_tertile": per_tertile,
     }

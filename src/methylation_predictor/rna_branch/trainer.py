@@ -45,14 +45,13 @@ class ExperimentRunner:
         self.reference_rna = torch.zeros(
             (1, self.bundle.rna_input_dim), dtype=torch.float32, device=self.device
         )
-        # Fixed training-CpG tertiles: no held-out locus information is used to
-        # define sampling/loss strata.
+        # Fit variability thresholds on train CpGs only, then apply the frozen
+        # genomic proxy to every locus. This supports locus-OOD tertile metrics
+        # without using held-out beta values.
         train_cpgs = self.bundle.cpg_indices(config.training.train_cpg_split)
         proxy = np.exp(self.bundle.loci.variability[:, 0]) + np.exp(self.bundle.loci.variability[:, 1])
-        order = train_cpgs[np.argsort(proxy[train_cpgs])]
-        self.cpg_tertiles = np.full(len(proxy), -1, dtype=np.int64)
-        for label, values in enumerate(np.array_split(order, 3)):
-            self.cpg_tertiles[values] = label
+        self.cpg_tertile_thresholds = np.quantile(proxy[train_cpgs], [1.0 / 3.0, 2.0 / 3.0])
+        self.cpg_tertiles = np.digitize(proxy, self.cpg_tertile_thresholds, right=True).astype(np.int64)
         self.cancer_centroids: torch.Tensor | None = None
 
     @torch.no_grad()
@@ -161,6 +160,7 @@ class ExperimentRunner:
             prediction,
             self.bundle.loci.prior[cpg_indices],
             self.bundle.samples.cancer_types[sample_indices],
+            cpg_tertiles=self.cpg_tertiles[cpg_indices],
         )
         return PanelResult(
             metrics=metrics,
@@ -169,6 +169,32 @@ class ExperimentRunner:
             target=target if keep_predictions else None,
             prediction=prediction if keep_predictions else None,
         )
+
+    def _apply_warm_start(self, checkpoint_path: str) -> dict[str, list[str]]:
+        """Load a checkpoint from a plain (e.g. linear) encoder into a residual encoder.
+
+        `rna_encoder.*` keys are remapped to `rna_encoder.base.*` when the current
+        model exposes that submodule; every other key (interaction/gate/...) loads
+        unchanged. The residual branch and its scale are intentionally left at
+        their own (zero-)init, which is what makes the warm-started model produce
+        exactly the source checkpoint's predictions before any training step.
+        """
+        source_state = torch.load(checkpoint_path, map_location=self.device, weights_only=False)["model_state"]
+        target_state = self.model.state_dict()
+        remapped = {}
+        for key, value in source_state.items():
+            base_key = "rna_encoder.base." + key[len("rna_encoder."):] if key.startswith("rna_encoder.") else key
+            remapped[base_key if base_key in target_state else key] = value
+        missing, unexpected = self.model.load_state_dict(remapped, strict=False)
+        expected_missing = {
+            name for name in target_state
+            if name.startswith("rna_encoder.residual") or name == "rna_encoder.residual_scale"
+        }
+        if unexpected:
+            raise ValueError(f"warm start checkpoint has unexpected keys: {unexpected}")
+        if set(missing) != expected_missing:
+            raise ValueError(f"warm start checkpoint missing unaccounted keys: {set(missing) - expected_missing}")
+        return {"missing": missing, "unexpected": unexpected}
 
     def _save_predictions(self, panel_name: str, result: PanelResult) -> None:
         if result.target is None or result.prediction is None:
@@ -182,6 +208,7 @@ class ExperimentRunner:
             sample_idx=self.bundle.samples.ids[result.sample_indices].astype(str),
             cpg_idx=self.bundle.loci.ids[result.cpg_indices].astype(str),
             cancer_type=self.bundle.samples.cancer_types[result.sample_indices].astype(str),
+            cpg_variability_tertile=self.cpg_tertiles[result.cpg_indices],
         )
 
     def train(self) -> dict[str, object]:
@@ -195,13 +222,51 @@ class ExperimentRunner:
         manifest["data_summary"] = summarize_bundle(self.bundle)
         write_json(self.output_dir / "manifest.json", manifest)
 
-        train_samples = self.bundle.sample_indices(config.training.train_sample_split)
-        train_cpgs = self.bundle.cpg_indices(config.training.train_cpg_split)
+        train_samples = self.bundle.training_sample_pool(config.training.train_sample_split)
+        train_cpgs = self.bundle.training_cpg_pool(config.training.train_cpg_split)
         if not len(train_samples) or not len(train_cpgs):
             raise ValueError("training sample/CpG split is empty")
 
+        if config.training.warm_start_checkpoint:
+            warm_start_info = self._apply_warm_start(config.training.warm_start_checkpoint)
+            initial_validation = self.predict_panel(
+                config.training.validation_sample_split,
+                config.training.validation_cpg_split,
+                max_cpgs=config.training.validation_max_cpgs,
+                seed_offset=101,
+            )
+            manifest["warm_start_checkpoint"] = config.training.warm_start_checkpoint
+            manifest["warm_start_loaded_keys"] = warm_start_info
+            manifest["warm_start_initial_validation_mse"] = float(initial_validation.metrics["mse"])
+            write_json(self.output_dir / "manifest.json", manifest)
+
+        residual_param_names = {
+            name for name, _ in self.model.named_parameters()
+            if name.startswith("rna_encoder.residual") or name == "rna_encoder.residual_scale"
+        }
+        if config.training.residual_learning_rate is not None:
+            if not residual_param_names:
+                raise ValueError("residual_learning_rate is set but the encoder has no residual branch")
+            named_params = dict(self.model.named_parameters())
+            param_groups = [
+                {
+                    "params": [p for n, p in named_params.items() if n not in residual_param_names],
+                    "lr": config.training.learning_rate,
+                    "name": "backbone",
+                },
+                {
+                    "params": [p for n, p in named_params.items() if n in residual_param_names],
+                    "lr": config.training.residual_learning_rate,
+                    "name": "residual",
+                },
+            ]
+        else:
+            if config.training.freeze_backbone_epochs:
+                raise ValueError("freeze_backbone_epochs requires residual_learning_rate to be set")
+            param_groups = self.model.parameters()
+
         optimizer = torch.optim.AdamW(
-            self.model.parameters(),
+            param_groups,
             lr=config.training.learning_rate,
             weight_decay=config.training.weight_decay,
         )
@@ -279,8 +344,9 @@ class ExperimentRunner:
                     )
                     for key in [
                         "mse", "skill_vs_prior", "dynamic_skill", "within_cancer_skill",
-                        "dynamic_pearson", "dynamic_spearman", "dynamic_amplitude_ratio",
-                        "dynamic_calibration_alpha",
+                        "dynamic_pearson", "dynamic_spearman",
+                        "patient_dynamic_pearson_median", "locus_dynamic_pearson_median",
+                        "dynamic_amplitude_ratio", "dynamic_calibration_alpha",
                     ]:
                         value = validation.metrics.get(key)
                         row[f"validation_{key}"] = float(value) if value is not None else float("nan")
@@ -337,11 +403,21 @@ class ExperimentRunner:
 
             metrics = {
                 "run_name": config.run_name,
+                "encoder_kind": config.model.encoder.kind,
                 "best_epoch": best_epoch,
                 "best_validation_mse": best_metric,
                 "elapsed_seconds": time.time() - started,
                 "num_parameters": sum(p.numel() for p in self.model.parameters()),
                 "num_trainable_parameters": sum(p.numel() for p in self.model.parameters() if p.requires_grad),
+                "num_encoder_parameters": sum(p.numel() for p in self.model.rna_encoder.parameters()),
+                "num_interaction_parameters": sum(p.numel() for p in self.model.interaction.parameters()),
+                "num_gate_parameters": sum(p.numel() for p in self.model.gate.parameters()),
+                "cpg_variability_tertile_thresholds": self.cpg_tertile_thresholds.tolist(),
+                "train_sample_fraction": config.data.train_sample_fraction,
+                "train_cpg_fraction": config.data.train_cpg_fraction,
+                "num_train_samples_used": len(train_samples),
+                "num_train_cpgs_used": len(train_cpgs),
+                "train_beta_mse_last_epoch": history[-1]["train_beta_mse"] if history else None,
                 "panels": panel_metrics,
             }
             write_json(self.output_dir / "metrics.json", metrics)

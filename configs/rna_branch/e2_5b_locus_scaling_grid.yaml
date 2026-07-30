@@ -1,0 +1,107 @@
+# Stage E2.5-B: nested, variability-tertile-stratified CpG-count scaling, all
+# patients kept. fraction=1.0 points reuse the existing Stage E2 confirm runs
+# (same anchor as E2.5-A) instead of rerunning.
+base_config: e2_5_base.yaml
+runs:
+- name: e2_5b_a0_linear_frac25_seed17
+  override:
+    model: &a0
+      encoder:
+        kind: linear
+    data:
+      train_cpg_fraction: 0.25
+    training:
+      seed: 17
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a0_linear_frac25_seed23
+  override:
+    model: *a0
+    data:
+      train_cpg_fraction: 0.25
+    training:
+      seed: 23
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a0_linear_frac25_seed41
+  override:
+    model: *a0
+    data:
+      train_cpg_fraction: 0.25
+    training:
+      seed: 41
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a0_linear_frac50_seed17
+  override:
+    model: *a0
+    data:
+      train_cpg_fraction: 0.50
+    training:
+      seed: 17
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a0_linear_frac50_seed23
+  override:
+    model: *a0
+    data:
+      train_cpg_fraction: 0.50
+    training:
+      seed: 23
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a0_linear_frac50_seed41
+  override:
+    model: *a0
+    data:
+      train_cpg_fraction: 0.50
+    training:
+      seed: 41
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a3_gated_residual_frac25_seed17
+  override:
+    model: &a3
+      encoder:
+        kind: gated_residual
+        width: 256
+        num_blocks: 1
+    data:
+      train_cpg_fraction: 0.25
+    training:
+      seed: 17
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a3_gated_residual_frac25_seed23
+  override:
+    model: *a3
+    data:
+      train_cpg_fraction: 0.25
+    training:
+      seed: 23
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a3_gated_residual_frac25_seed41
+  override:
+    model: *a3
+    data:
+      train_cpg_fraction: 0.25
+    training:
+      seed: 41
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a3_gated_residual_frac50_seed17
+  override:
+    model: *a3
+    data:
+      train_cpg_fraction: 0.50
+    training:
+      seed: 17
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a3_gated_residual_frac50_seed23
+  override:
+    model: *a3
+    data:
+      train_cpg_fraction: 0.50
+    training:
+      seed: 23
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default
+- name: e2_5b_a3_gated_residual_frac50_seed41
+  override:
+    model: *a3
+    data:
+      train_cpg_fraction: 0.50
+    training:
+      seed: 41
+    output_dir: artifacts/rna_branch/stage_e2_5/locus_scaling/default

@@ -8,13 +8,23 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .config import ModelConfig
+from .config import EncoderConfig, ModelConfig
 
 
 @dataclass
 class RNARepresentation:
     global_vector: torch.Tensor
     tokens: torch.Tensor | None = None
+
+
+def _activation(name: str) -> nn.Module:
+    if name == "gelu":
+        return nn.GELU()
+    if name == "silu":
+        return nn.SiLU()
+    if name == "relu":
+        return nn.ReLU()
+    raise ValueError(f"unknown activation: {name}")
 
 
 class LinearRNAEncoder(nn.Module):
@@ -35,20 +45,139 @@ class MLPRNAEncoder(nn.Module):
         hidden_dims: list[int],
         dropout: float,
         layer_norm: bool,
+        activation: str = "gelu",
+        input_dropout: float = 0.0,
     ):
         super().__init__()
         dims = [input_dim, *hidden_dims, latent_dim]
-        layers: list[nn.Module] = []
+        layers: list[nn.Module] = [nn.Dropout(input_dropout)] if input_dropout > 0 else []
         for index, (left, right) in enumerate(zip(dims[:-1], dims[1:])):
             layers.append(nn.Linear(left, right))
             if index < len(dims) - 2:
                 if layer_norm:
                     layers.append(nn.LayerNorm(right))
-                layers.extend([nn.GELU(), nn.Dropout(dropout)])
+                layers.extend([_activation(activation), nn.Dropout(dropout)])
         self.network = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> RNARepresentation:
         return RNARepresentation(self.network(x))
+
+
+class BottleneckResidualBlock(nn.Module):
+    """Pre-norm residual MLP block matching the MethylProphet bottleneck bias."""
+
+    def __init__(self, width: int, expansion_factor: int, dropout: float, activation: str, layer_norm: bool):
+        super().__init__()
+        hidden = width * expansion_factor
+        self.norm = nn.LayerNorm(width) if layer_norm else nn.Identity()
+        self.block = nn.Sequential(
+            nn.Linear(width, hidden),
+            _activation(activation),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, width),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.block(self.norm(x))
+
+
+class BottleneckMLPRNAEncoder(nn.Module):
+    """Raw RNA -> thin width -> residual bottleneck blocks -> latent vector."""
+
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        width: int,
+        num_blocks: int,
+        expansion_factor: int,
+        dropout: float,
+        input_dropout: float,
+        activation: str,
+        layer_norm: bool,
+    ):
+        super().__init__()
+        if width < 1 or num_blocks < 1 or expansion_factor < 1:
+            raise ValueError("width, num_blocks and expansion_factor must be positive")
+        self.input = nn.Sequential(nn.Dropout(input_dropout), nn.Linear(input_dim, width))
+        self.blocks = nn.Sequential(*[
+            BottleneckResidualBlock(width, expansion_factor, dropout, activation, layer_norm)
+            for _ in range(num_blocks)
+        ])
+        self.output_norm = nn.LayerNorm(width) if layer_norm else nn.Identity()
+        self.output = nn.Linear(width, latent_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        hidden = self.blocks(self.input(x))
+        return RNARepresentation(self.output(self.output_norm(hidden)))
+
+
+class ResidualBranch(nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        width: int,
+        num_blocks: int,
+        dropout: float,
+        input_dropout: float,
+        activation: str,
+        layer_norm: bool,
+        gated: bool,
+        zero_init: bool,
+    ):
+        super().__init__()
+        if width < 1 or num_blocks < 1:
+            raise ValueError("width and num_blocks must be positive")
+        self.input_dropout = nn.Dropout(input_dropout)
+        self.input_projection = nn.Linear(input_dim, width)
+        self.gate_projection = nn.Linear(input_dim, width) if gated else None
+        layers: list[nn.Module] = []
+        for _ in range(num_blocks):
+            layers.extend([
+                nn.LayerNorm(width) if layer_norm else nn.Identity(),
+                nn.Linear(width, width),
+                _activation(activation),
+                nn.Dropout(dropout),
+            ])
+        self.hidden = nn.Sequential(*layers)
+        self.output = nn.Linear(width, latent_dim)
+        if zero_init:
+            nn.init.zeros_(self.output.weight)
+            nn.init.zeros_(self.output.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.input_dropout(x)
+        hidden = self.input_projection(x)
+        if self.gate_projection is not None:
+            hidden = hidden * torch.sigmoid(self.gate_projection(x))
+        return self.output(self.hidden(hidden))
+
+
+class LinearResidualRNAEncoder(nn.Module):
+    """Strong linear C0 path plus a nonlinear correction initialized at zero."""
+
+    def __init__(self, input_dim: int, config: EncoderConfig, gated: bool = False):
+        super().__init__()
+        self.base = LinearRNAEncoder(input_dim, config.latent_dim, config.layer_norm)
+        self.residual = ResidualBranch(
+            input_dim=input_dim,
+            latent_dim=config.latent_dim,
+            width=config.width,
+            num_blocks=config.num_blocks,
+            dropout=config.dropout,
+            input_dropout=config.input_dropout,
+            activation=config.activation,
+            layer_norm=config.layer_norm,
+            gated=gated,
+            zero_init=config.zero_init_encoder_residual,
+        )
+        self.residual_scale = nn.Parameter(torch.tensor(float(config.residual_scale_init)))
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        base = self.base(x).global_vector
+        return RNARepresentation(base + self.residual_scale * self.residual(x))
 
 
 class FourierValueEncoding(nn.Module):
@@ -147,6 +276,60 @@ class PerceiverRNAEncoder(nn.Module):
         return RNARepresentation(global_vector, latents)
 
 
+class LinearMultiTokenRNAEncoder(nn.Module):
+    """Strictly linear encoder reshaped into K tokens of dimension d (no nonlinearity, no attention).
+
+    K*d equals the same total capacity as the other 64-dim encoders (e.g. K=4, d=16); the
+    nonlinearity/selection in Stage F's F4 fusion lives entirely in the locus-query cross
+    attention, not here.
+    """
+
+    def __init__(self, input_dim: int, num_tokens: int, token_dim: int, layer_norm: bool = True):
+        super().__init__()
+        if num_tokens < 1 or token_dim < 1:
+            raise ValueError("num_tokens and token_dim must be positive")
+        self.num_tokens = num_tokens
+        self.token_dim = token_dim
+        self.norm = nn.LayerNorm(input_dim) if layer_norm else nn.Identity()
+        self.projection = nn.Linear(input_dim, num_tokens * token_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        batch = x.shape[0]
+        tokens = self.projection(self.norm(x)).view(batch, self.num_tokens, self.token_dim)
+        return RNARepresentation(tokens.reshape(batch, -1), tokens)
+
+
+def build_rna_encoder(input_dim: int, config: EncoderConfig) -> nn.Module:
+    if config.kind == "linear":
+        return LinearRNAEncoder(input_dim, config.latent_dim, config.layer_norm)
+    if config.kind == "mlp":
+        return MLPRNAEncoder(
+            input_dim, config.latent_dim, config.hidden_dims, config.dropout,
+            config.layer_norm, config.activation, config.input_dropout
+        )
+    if config.kind == "bottleneck_mlp":
+        return BottleneckMLPRNAEncoder(
+            input_dim=input_dim, latent_dim=config.latent_dim, width=config.width,
+            num_blocks=config.num_blocks, expansion_factor=config.expansion_factor,
+            dropout=config.dropout, input_dropout=config.input_dropout,
+            activation=config.activation, layer_norm=config.layer_norm,
+        )
+    if config.kind == "linear_residual":
+        return LinearResidualRNAEncoder(input_dim, config, gated=False)
+    if config.kind == "gated_residual":
+        return LinearResidualRNAEncoder(input_dim, config, gated=True)
+    if config.kind == "perceiver":
+        return PerceiverRNAEncoder(
+            num_genes=input_dim, latent_dim=config.latent_dim, token_dim=config.token_dim,
+            num_latents=config.num_latents, num_heads=config.num_heads,
+            self_blocks=config.num_self_attention_blocks, dropout=config.dropout,
+            value_encoding=config.value_encoding, fourier_frequencies=config.fourier_frequencies,
+        )
+    if config.kind == "linear_tokens":
+        return LinearMultiTokenRNAEncoder(input_dim, config.num_latents, config.token_dim, config.layer_norm)
+    raise ValueError(f"unknown RNA encoder: {config.kind}")
+
+
 class Interaction(nn.Module):
     def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:  # pragma: no cover - abstract
         raise NotImplementedError
@@ -199,6 +382,84 @@ class InteractionMLP(Interaction):
         nn.init.zeros_(self.network[-1].bias)
 
 
+class ConcatOnlyInteraction(Interaction):
+    """Stage G1: concat of independently-projected RNA/locus factors, no explicit product term."""
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dims: list[int], dropout: float):
+        super().__init__()
+        self.rna_projection = nn.Sequential(nn.LayerNorm(rna_dim), nn.Linear(rna_dim, 64))
+        self.locus_projection = nn.Sequential(nn.LayerNorm(locus_dim), nn.Linear(locus_dim, 64))
+        dims = [128, *hidden_dims, 1]
+        layers: list[nn.Module] = []
+        for n, (left, right) in enumerate(zip(dims[:-1], dims[1:])):
+            layers.append(nn.Linear(left, right))
+            if n < len(dims) - 2:
+                layers.extend([nn.LayerNorm(right), nn.GELU(), nn.Dropout(dropout)])
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        p = self.rna_projection(rna.global_vector)
+        q = self.locus_projection(loci)
+        batch, n_loci = p.shape[0], q.shape[0]
+        p2 = p[:, None, :].expand(batch, n_loci, -1)
+        q2 = q[None, :, :].expand(batch, n_loci, -1)
+        return self.network(torch.cat([p2, q2], dim=-1)).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
+class ProductOnlyInteraction(Interaction):
+    """Stage G2: elementwise product of independently-projected RNA/locus factors, no raw concat."""
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dims: list[int], dropout: float):
+        super().__init__()
+        self.rna_projection = nn.Sequential(nn.LayerNorm(rna_dim), nn.Linear(rna_dim, 64))
+        self.locus_projection = nn.Sequential(nn.LayerNorm(locus_dim), nn.Linear(locus_dim, 64))
+        dims = [64, *hidden_dims, 1]
+        layers: list[nn.Module] = []
+        for n, (left, right) in enumerate(zip(dims[:-1], dims[1:])):
+            layers.append(nn.Linear(left, right))
+            if n < len(dims) - 2:
+                layers.extend([nn.LayerNorm(right), nn.GELU(), nn.Dropout(dropout)])
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        p = self.rna_projection(rna.global_vector)
+        q = self.locus_projection(loci)
+        product = p[:, None, :] * q[None, :, :]
+        return self.network(product).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
+class ConcatProductLinearInteraction(Interaction):
+    """Stage G3: same joint feature map as InteractionMLP (G4), but a single linear decoder."""
+
+    def __init__(self, rna_dim: int, locus_dim: int, dropout: float):
+        super().__init__()
+        self.rna_projection = nn.Sequential(nn.LayerNorm(rna_dim), nn.Linear(rna_dim, 64))
+        self.locus_projection = nn.Sequential(nn.LayerNorm(locus_dim), nn.Linear(locus_dim, 64))
+        self.input_dropout = nn.Dropout(dropout)
+        self.output = nn.Linear(192, 1)
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        p = self.rna_projection(rna.global_vector)
+        q = self.locus_projection(loci)
+        batch, n_loci = p.shape[0], q.shape[0]
+        p2 = p[:, None, :].expand(batch, n_loci, -1)
+        q2 = q[None, :, :].expand(batch, n_loci, -1)
+        joint = self.input_dropout(torch.cat([p2, q2, p2 * q2], dim=-1))
+        return self.output(joint).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.output.weight)
+        nn.init.zeros_(self.output.bias)
+
+
 class MultiHeadBilinearInteraction(Interaction):
     """Locus-gated mixture of independent bilinear programs."""
     def __init__(self, rna_dim: int, locus_dim: int, total_dim: int, heads: int, dropout: float):
@@ -248,6 +509,30 @@ class BetweenWithinBilinear(nn.Module):
         self.within.zero_output()
 
 
+class RawConcatInteraction(Interaction):
+    """Stage G follow-up (F1 revisited): concat of the raw RNA vector and the raw,
+    unprojected locus embedding, no explicit product term. Isolates whether F2's win
+    comes from direct MLP access to the full-dimensional locus embedding, independent
+    of the elementwise product."""
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
+        super().__init__()
+        joint_dim = rna_dim + locus_dim
+        self.network = nn.Sequential(
+            nn.LayerNorm(joint_dim), nn.Linear(joint_dim, hidden_dim), nn.GELU(), nn.Dropout(dropout), nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        batch, n_loci = rna.global_vector.shape[0], loci.shape[0]
+        rna_expanded = rna.global_vector[:, None, :].expand(batch, n_loci, -1)
+        loci_expanded = loci[None, :, :].expand(batch, n_loci, -1)
+        return self.network(torch.cat([rna_expanded, loci_expanded], dim=-1)).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
 class ConcatInteraction(Interaction):
     def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
         super().__init__()
@@ -290,6 +575,65 @@ class FiLMInteraction(Interaction):
     def zero_output(self) -> None:
         nn.init.zeros_(self.output[-1].weight)
         nn.init.zeros_(self.output[-1].bias)
+
+
+class FiLMLocusInteraction(Interaction):
+    """Locus-conditioned FiLM: the CpG (not the patient) generates the modulation.
+
+    gamma_i, eta_i = f(g_i); h_{s,i} = gamma_i * z_s + eta_i; delta_{s,i} = D(h_{s,i}).
+    This is the mirror image of `FiLMInteraction`, which conditions on RNA instead.
+    """
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
+        super().__init__()
+        self.locus_to_film = nn.Sequential(nn.LayerNorm(locus_dim), nn.Linear(locus_dim, 2 * rna_dim))
+        self.decoder = nn.Sequential(
+            nn.LayerNorm(rna_dim), nn.Linear(rna_dim, hidden_dim), nn.GELU(), nn.Dropout(dropout), nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        gamma, shift = self.locus_to_film(loci).chunk(2, dim=-1)
+        conditioned = gamma[None, :, :] * rna.global_vector[:, None, :] + shift[None, :, :]
+        return self.decoder(conditioned).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.decoder[-1].weight)
+        nn.init.zeros_(self.decoder[-1].bias)
+
+
+class LinearTokenCrossAttention(Interaction):
+    """Locus-query cross attention over a strictly linear patient encoder's K tokens.
+
+    One cross-attention block, no self-attention among tokens, no transformer stack: the
+    locus only selects which of the patient's linear factors to use, capacity stays fixed.
+    """
+
+    def __init__(self, token_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
+        super().__init__()
+        self.query = nn.Linear(locus_dim, token_dim)
+        self.key = nn.Linear(token_dim, token_dim)
+        self.value = nn.Linear(token_dim, token_dim)
+        self.attention_dropout = nn.Dropout(dropout)
+        self.scale = math.sqrt(token_dim)
+        self.decoder = nn.Sequential(
+            nn.LayerNorm(token_dim), nn.Linear(token_dim, hidden_dim), nn.GELU(), nn.Dropout(dropout), nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        if rna.tokens is None:
+            raise ValueError("linear_token_cross_attention requires the linear_tokens RNA encoder")
+        tokens = rna.tokens
+        q = self.query(loci)
+        k = self.key(tokens)
+        v = self.value(tokens)
+        scores = torch.einsum("ld,bkd->blk", q, k) / self.scale
+        weights = self.attention_dropout(torch.softmax(scores, dim=-1))
+        context = torch.einsum("blk,bkd->bld", weights, v)
+        return self.decoder(context).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.decoder[-1].weight)
+        nn.init.zeros_(self.decoder[-1].bias)
 
 
 class CrossAttentionInteraction(Interaction):
@@ -363,26 +707,7 @@ class ResidualMethylationModel(nn.Module):
         self.config = config
         self.epsilon = epsilon
         encoder = config.encoder
-        if encoder.kind == "linear":
-            self.rna_encoder: nn.Module = LinearRNAEncoder(input_dim, encoder.latent_dim, encoder.layer_norm)
-        elif encoder.kind == "mlp":
-            self.rna_encoder = MLPRNAEncoder(
-                input_dim, encoder.latent_dim, encoder.hidden_dims, encoder.dropout, encoder.layer_norm
-            )
-        elif encoder.kind == "perceiver":
-            self.rna_encoder = PerceiverRNAEncoder(
-                num_genes=input_dim,
-                latent_dim=encoder.latent_dim,
-                token_dim=encoder.token_dim,
-                num_latents=encoder.num_latents,
-                num_heads=encoder.num_heads,
-                self_blocks=encoder.num_self_attention_blocks,
-                dropout=encoder.dropout,
-                value_encoding=encoder.value_encoding,
-                fourier_frequencies=encoder.fourier_frequencies,
-            )
-        else:
-            raise ValueError(f"unknown RNA encoder: {encoder.kind}")
+        self.rna_encoder = build_rna_encoder(input_dim, encoder)
 
         interaction = config.interaction
         if interaction.kind == "bilinear":
@@ -393,6 +718,16 @@ class ResidualMethylationModel(nn.Module):
             self.interaction = InteractionMLP(
                 encoder.latent_dim, locus_dim, interaction.mlp_hidden_dims, interaction.dropout
             )
+        elif interaction.kind == "concat_only":
+            self.interaction = ConcatOnlyInteraction(
+                encoder.latent_dim, locus_dim, interaction.mlp_hidden_dims, interaction.dropout
+            )
+        elif interaction.kind == "product_only":
+            self.interaction = ProductOnlyInteraction(
+                encoder.latent_dim, locus_dim, interaction.mlp_hidden_dims, interaction.dropout
+            )
+        elif interaction.kind == "concat_product_linear":
+            self.interaction = ConcatProductLinearInteraction(encoder.latent_dim, locus_dim, interaction.dropout)
         elif interaction.kind == "multihead_bilinear":
             self.interaction = MultiHeadBilinearInteraction(
                 encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.num_heads, interaction.dropout
@@ -403,13 +738,23 @@ class ResidualMethylationModel(nn.Module):
             )
         elif interaction.kind == "concat":
             self.interaction = ConcatInteraction(encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout)
+        elif interaction.kind == "raw_concat":
+            self.interaction = RawConcatInteraction(encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout)
         elif interaction.kind == "film":
             self.interaction = FiLMInteraction(encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout)
+        elif interaction.kind == "film_locus":
+            self.interaction = FiLMLocusInteraction(encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout)
         elif interaction.kind == "cross_attention":
             if encoder.kind != "perceiver":
                 raise ValueError("cross_attention requires model.encoder.kind=perceiver")
             self.interaction = CrossAttentionInteraction(
                 encoder.token_dim, locus_dim, interaction.hidden_dim, interaction.num_heads, interaction.dropout
+            )
+        elif interaction.kind == "linear_token_cross_attention":
+            if encoder.kind != "linear_tokens":
+                raise ValueError("linear_token_cross_attention requires model.encoder.kind=linear_tokens")
+            self.interaction = LinearTokenCrossAttention(
+                encoder.token_dim, locus_dim, interaction.hidden_dim, interaction.dropout
             )
         else:
             raise ValueError(f"unknown interaction: {interaction.kind}")

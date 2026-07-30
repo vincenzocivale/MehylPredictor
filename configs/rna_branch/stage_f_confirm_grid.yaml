@@ -1,0 +1,53 @@
+# Stage F confirm grid: multi-seed check on the only first-tranche winner (F2
+# concat+product) against the F0 bilinear control. Only seeds 23/41 are listed
+# here -- seed 17 for both F0 and F2 reuses the existing first-tranche runs
+# (artifacts/rna_branch/stage_f_fusion/first_tranche/f0_bilinear_c0_seed17 and
+# .../f2_concat_product_seed17) rather than re-running them, same pattern as
+# the Stage E2.5 confirm grid. F3/F4 are closed out at the first tranche and
+# are NOT included here.
+base_config: stage_f_base.yaml
+runs:
+- name: f0_bilinear_c0_seed23
+  override:
+    model: &f0
+      encoder:
+        kind: linear
+      interaction:
+        kind: bilinear
+    training:
+      seed: 23
+      save_every_epoch: true
+    evaluation:
+      save_predictions: true
+    output_dir: artifacts/rna_branch/stage_f_fusion/confirm/default
+- name: f0_bilinear_c0_seed41
+  override:
+    model: *f0
+    training:
+      seed: 41
+      save_every_epoch: true
+    evaluation:
+      save_predictions: true
+    output_dir: artifacts/rna_branch/stage_f_fusion/confirm/default
+- name: f2_concat_product_seed23
+  override:
+    model: &f2
+      encoder:
+        kind: linear
+      interaction:
+        kind: concat
+    training:
+      seed: 23
+      save_every_epoch: true
+    evaluation:
+      save_predictions: true
+    output_dir: artifacts/rna_branch/stage_f_fusion/confirm/default
+- name: f2_concat_product_seed41
+  override:
+    model: *f2
+    training:
+      seed: 41
+      save_every_epoch: true
+    evaluation:
+      save_predictions: true
+    output_dir: artifacts/rna_branch/stage_f_fusion/confirm/default

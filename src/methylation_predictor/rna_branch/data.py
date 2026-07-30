@@ -196,6 +196,53 @@ class DataBundle:
     def cpg_indices(self, split: str) -> np.ndarray:
         return np.flatnonzero(self.loci.splits == split)
 
+    def training_sample_pool(self, split: str) -> np.ndarray:
+        """Sample indices for SGD sampling, nested-subsampled per `train_sample_fraction`.
+
+        Stratified by cancer_type, one shared RNG consumed in a fixed sorted
+        group order regardless of fraction -- the same fraction_seed always
+        produces the identical per-group permutation, so a smaller fraction's
+        selection is a strict prefix of every larger fraction's (true nesting).
+        """
+        indices = self.sample_indices(split)
+        fraction = self.config.train_sample_fraction
+        if fraction >= 1.0:
+            return indices
+        cancer_types = self.samples.cancer_types[indices]
+        rng = np.random.default_rng(self.config.train_sample_fraction_seed)
+        selected = []
+        for cancer_type in sorted(np.unique(cancer_types).tolist()):
+            group = indices[cancer_types == cancer_type]
+            order = rng.permutation(len(group))
+            k = max(1, int(np.ceil(fraction * len(group))))
+            selected.append(group[order[:k]])
+        return np.sort(np.concatenate(selected))
+
+    def training_cpg_pool(self, split: str) -> np.ndarray:
+        """CpG indices for SGD sampling, nested-subsampled per `train_cpg_fraction`.
+
+        Stratified by variability tertile (computed fresh over just this split,
+        independent of any trainer-side tertile state) using the same
+        fixed-order-RNG nesting trick as `training_sample_pool`.
+        """
+        indices = self.cpg_indices(split)
+        fraction = self.config.train_cpg_fraction
+        if fraction >= 1.0:
+            return indices
+        proxy = np.exp(self.loci.variability[indices, 0]) + np.exp(self.loci.variability[indices, 1])
+        thresholds = np.quantile(proxy, [1.0 / 3.0, 2.0 / 3.0])
+        tertiles = np.digitize(proxy, thresholds, right=True)
+        rng = np.random.default_rng(self.config.train_cpg_fraction_seed)
+        selected = []
+        for tertile in (0, 1, 2):
+            group = indices[tertiles == tertile]
+            if not len(group):
+                continue
+            order = rng.permutation(len(group))
+            k = max(1, int(np.ceil(fraction * len(group))))
+            selected.append(group[order[:k]])
+        return np.sort(np.concatenate(selected))
+
     def rna(self, sample_indices: Sequence[int]) -> np.ndarray:
         sample_indices = np.asarray(sample_indices, dtype=np.int64)
         if self.config.rna_control == "cancer_type_only":

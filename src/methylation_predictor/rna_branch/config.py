@@ -47,26 +47,46 @@ class DataConfig:
     standardize_rna: bool = True
     clip_beta_epsilon: float = 1e-4
     allow_partial_overlap: bool = False
+    # Nested, cancer-type-stratified subsampling of the training *sampling pool*
+    # only (Stage E2.5-A). Preprocessing (standardizer), validation/test splits,
+    # and the gate's variability-tertile calibration always see the full train
+    # pool regardless of this fraction -- only which patients get selected into
+    # SGD minibatches during train() is affected. fraction=1.0 is a no-op.
+    train_sample_fraction: float = 1.0
+    train_sample_fraction_seed: int = 20260731
+    # Same idea for CpGs (Stage E2.5-B), nested/stratified by variability tertile.
+    train_cpg_fraction: float = 1.0
+    train_cpg_fraction_seed: int = 20260731
 
 
 @dataclass(slots=True)
 class EncoderConfig:
-    kind: str = "mlp"  # linear|mlp|perceiver
+    kind: str = "mlp"  # linear|mlp|bottleneck_mlp|linear_residual|gated_residual|perceiver|linear_tokens
     latent_dim: int = 64
     hidden_dims: list[int] = field(default_factory=lambda: [1024, 256])
     dropout: float = 0.1
+    input_dropout: float = 0.0
     layer_norm: bool = True
+    activation: str = "gelu"  # gelu|silu|relu
+    width: int = 512
+    num_blocks: int = 2
+    expansion_factor: int = 4
+    residual_scale_init: float = 1.0
+    zero_init_encoder_residual: bool = True
     value_encoding: str = "linear"  # linear|fourier (perceiver)
     fourier_frequencies: int = 8
-    token_dim: int = 128
-    num_latents: int = 32
+    token_dim: int = 128  # perceiver token width, or linear_tokens' d (K*d == total capacity)
+    num_latents: int = 32  # perceiver latent count, or linear_tokens' K
     num_heads: int = 8
     num_self_attention_blocks: int = 2
 
 
 @dataclass(slots=True)
 class InteractionConfig:
-    kind: str = "bilinear"  # bilinear|interaction_mlp|multihead_bilinear|between_within
+    kind: str = "bilinear"
+    # bilinear|interaction_mlp|multihead_bilinear|between_within|concat|raw_concat|film|
+    # film_locus|cross_attention|linear_token_cross_attention|concat_only|product_only|
+    # concat_product_linear
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
@@ -124,6 +144,9 @@ class TrainingConfig:
     min_epochs: int = 0
     save_every_epoch: bool = False
     cpg_sampling: str = "uniform"  # uniform|balanced_tertiles
+    residual_learning_rate: float | None = None
+    warm_start_checkpoint: str | None = None
+    freeze_backbone_epochs: int = 0
 
 
 @dataclass(slots=True)

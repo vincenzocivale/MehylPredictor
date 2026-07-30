@@ -13,7 +13,10 @@ from scipy.stats import ttest_rel
 
 METRIC_KEYS = [
     "mse", "mae", "prior_mse", "skill_vs_prior", "dynamic_skill",
-    "dynamic_pearson", "dynamic_spearman", "within_cancer_skill",
+    "dynamic_pearson", "dynamic_spearman",
+    "patient_dynamic_pearson_median", "patient_dynamic_spearman_median",
+    "locus_dynamic_pearson_median", "locus_dynamic_spearman_median",
+    "within_cancer_skill",
     "within_cancer_pearson", "within_cancer_spearman",
     "dynamic_calibration_alpha", "dynamic_amplitude_ratio",
     "sample_win_fraction", "cpg_win_fraction",
@@ -38,15 +41,27 @@ def load_runs(screening_dir: Path) -> pd.DataFrame:
             row = {"family": family, "run": name, "seed": seed, "panel": panel}
             for key in METRIC_KEYS:
                 row[key] = metrics.get(key)
+            for tertile, tertile_metrics in metrics.get("per_variability_tertile", {}).items():
+                for key in ("mse", "skill_vs_prior", "dynamic_pearson",
+                            "patient_dynamic_pearson_median", "locus_dynamic_pearson_median"):
+                    row[f"variability_{tertile}_{key}"] = tertile_metrics.get(key)
+            row["encoder_kind"] = data.get("encoder_kind")
             row["num_parameters"] = data.get("num_parameters")
+            row["num_encoder_parameters"] = data.get("num_encoder_parameters")
+            row["num_interaction_parameters"] = data.get("num_interaction_parameters")
+            row["num_gate_parameters"] = data.get("num_gate_parameters")
             row["elapsed_seconds"] = data.get("elapsed_seconds")
             rows.append(row)
     return pd.DataFrame(rows)
 
 
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
-    extra = ["num_parameters", "elapsed_seconds"]
-    grouped = df.groupby(["family", "panel"])[METRIC_KEYS + extra]
+    extra = [
+        "num_parameters", "num_encoder_parameters", "num_interaction_parameters",
+        "num_gate_parameters", "elapsed_seconds",
+    ]
+    tertile = [column for column in df.columns if column.startswith("variability_")]
+    grouped = df.groupby(["family", "panel"])[METRIC_KEYS + tertile + extra]
     mean = grouped.mean()
     std = grouped.std()
     n = grouped.size().rename("n_seeds")
@@ -54,7 +69,10 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
     return summary.reset_index()
 
 
-PAIRED_METRICS = ["mse", "skill_vs_prior", "dynamic_skill", "within_cancer_skill"]
+PAIRED_METRICS = [
+    "mse", "skill_vs_prior", "dynamic_skill", "within_cancer_skill",
+    "patient_dynamic_pearson_median", "locus_dynamic_pearson_median",
+]
 
 
 def paired_comparison(

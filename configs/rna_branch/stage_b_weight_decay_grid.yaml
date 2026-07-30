@@ -1,0 +1,33 @@
+# Stage B / family 5: weight-decay/regularization sweep of the current full
+# linear model (latent_dim=64, full RNA). wd=1e-4 is the baseline default and
+# is intentionally NOT duplicated here -- reuse stage_b_baseline_grid's
+# baseline_linear_seed{17,29,43} as that sweep point.
+base_config: stage_b_base.yaml
+runs:
+  - name: wd0_seed17
+    override: {training: {seed: 17, weight_decay: 0.0}}
+  - name: wd0_seed29
+    override: {training: {seed: 29, weight_decay: 0.0}}
+  - name: wd0_seed43
+    override: {training: {seed: 43, weight_decay: 0.0}}
+
+  - name: wd1e-5_seed17
+    override: {training: {seed: 17, weight_decay: 0.00001}}
+  - name: wd1e-5_seed29
+    override: {training: {seed: 29, weight_decay: 0.00001}}
+  - name: wd1e-5_seed43
+    override: {training: {seed: 43, weight_decay: 0.00001}}
+
+  - name: wd1e-3_seed17
+    override: {training: {seed: 17, weight_decay: 0.001}}
+  - name: wd1e-3_seed29
+    override: {training: {seed: 29, weight_decay: 0.001}}
+  - name: wd1e-3_seed43
+    override: {training: {seed: 43, weight_decay: 0.001}}
+
+  - name: wd1e-2_seed17
+    override: {training: {seed: 17, weight_decay: 0.01}}
+  - name: wd1e-2_seed29
+    override: {training: {seed: 29, weight_decay: 0.01}}
+  - name: wd1e-2_seed43
+    override: {training: {seed: 43, weight_decay: 0.01}}
