@@ -34,6 +34,7 @@ class DataConfig:
     locus_features: TableConfig
     sample_metadata: TableConfig
     cpg_splits: TableConfig
+    gene_embeddings: MatrixConfig | None = None
     sample_id_column: str = "sample_idx"
     cpg_id_column: str = "cpg_idx"
     cancer_type_column: str = "cancer_type"
@@ -61,7 +62,7 @@ class DataConfig:
 
 @dataclass(slots=True)
 class EncoderConfig:
-    kind: str = "mlp"  # linear|mlp|bottleneck_mlp|linear_residual|gated_residual|perceiver|linear_tokens
+    kind: str = "mlp"  # linear|mlp|bottleneck_mlp|linear_residual|gated_residual|perceiver|linear_tokens|gene_token_perceiver
     latent_dim: int = 64
     hidden_dims: list[int] = field(default_factory=lambda: [1024, 256])
     dropout: float = 0.1
@@ -79,6 +80,13 @@ class EncoderConfig:
     num_latents: int = 32  # perceiver latent count, or linear_tokens' K
     num_heads: int = 8
     num_self_attention_blocks: int = 2
+    # Structured gene-token encoder (Stage T).  `gene_identity_source` controls
+    # only the gene identity signal; expression encoding and Perceiver pooling
+    # remain identical across T1/T2/T3.
+    gene_identity_source: str = "learned"  # learned|ntv3|ntv3_permuted
+    gene_token_fusion: str = "film"  # add|film|concat
+    gene_embedding_permutation_seed: int = 20260730
+    freeze_gene_embeddings: bool = True
 
 
 @dataclass(slots=True)
@@ -86,7 +94,7 @@ class InteractionConfig:
     kind: str = "bilinear"
     # bilinear|interaction_mlp|multihead_bilinear|between_within|concat|raw_concat|film|
     # film_locus|cross_attention|linear_token_cross_attention|concat_only|product_only|
-    # concat_product_linear
+    # concat_product_linear|gene_token_cross_attention
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
@@ -201,6 +209,8 @@ def load_config(path: str | Path) -> RunConfig:
     data_raw["locus_features"] = _table_config(data_raw["locus_features"])
     data_raw["sample_metadata"] = _table_config(data_raw["sample_metadata"])
     data_raw["cpg_splits"] = _table_config(data_raw["cpg_splits"])
+    if data_raw.get("gene_embeddings") is not None:
+        data_raw["gene_embeddings"] = _matrix_config(data_raw["gene_embeddings"])
     data = DataConfig(**data_raw)
 
     model_raw = dict(raw.get("model", {}))

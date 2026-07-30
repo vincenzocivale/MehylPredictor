@@ -276,6 +276,156 @@ class PerceiverRNAEncoder(nn.Module):
         return RNARepresentation(global_vector, latents)
 
 
+class GeneTokenPerceiverRNAEncoder(nn.Module):
+    """Build one expression-conditioned token per gene, then pool to patient latents.
+
+    The identity source is the only difference among the Stage-T controls:
+    learned IDs (T1), aligned frozen NTv3 gene embeddings (T2), or a fixed
+    permutation of the same NTv3 rows (T3).  Expression encoding, latent queries,
+    and downstream interaction remain identical.
+    """
+
+    def __init__(
+        self,
+        num_genes: int,
+        config: EncoderConfig,
+        gene_embeddings: torch.Tensor | None = None,
+    ):
+        super().__init__()
+        if config.token_dim % config.num_heads:
+            raise ValueError("token_dim must be divisible by num_heads")
+        if config.num_latents < 1:
+            raise ValueError("num_latents must be positive")
+        self.num_genes = num_genes
+        self.token_dim = config.token_dim
+        self.identity_source = config.gene_identity_source
+        self.fusion_kind = config.gene_token_fusion
+
+        if self.identity_source == "learned":
+            self.learned_gene_embeddings: nn.Module | None = nn.Embedding(num_genes, config.token_dim)
+            self.gene_projection: nn.Module = nn.Identity()
+            self.register_buffer("fixed_gene_embeddings", None, persistent=False)
+        elif self.identity_source in {"ntv3", "ntv3_permuted"}:
+            if gene_embeddings is None:
+                raise ValueError(f"{self.identity_source} requires aligned gene embeddings")
+            if gene_embeddings.ndim != 2 or gene_embeddings.shape[0] != num_genes:
+                raise ValueError(
+                    f"gene embedding shape {tuple(gene_embeddings.shape)} does not match {num_genes} RNA genes"
+                )
+            values = gene_embeddings.detach().float().cpu()
+            if self.identity_source == "ntv3_permuted":
+                # Keep zero rows (unmatched genes) fixed and permute only real
+                # NTv3 embeddings, so the control destroys gene assignment without
+                # changing annotation coverage.
+                generator = torch.Generator(device="cpu")
+                generator.manual_seed(config.gene_embedding_permutation_seed)
+                present = torch.linalg.vector_norm(values, dim=1) > 0
+                present_indices = torch.nonzero(present, as_tuple=False).flatten()
+                permutation = present_indices[torch.randperm(len(present_indices), generator=generator)]
+                permuted = values.clone()
+                permuted[present_indices] = values[permutation]
+                values = permuted
+            self.learned_gene_embeddings = None
+            if config.freeze_gene_embeddings:
+                self.register_buffer("fixed_gene_embeddings", values, persistent=False)
+            else:
+                self.fixed_gene_embeddings = nn.Parameter(values)
+            self.gene_projection = nn.Sequential(
+                nn.LayerNorm(values.shape[1]),
+                nn.Linear(values.shape[1], config.token_dim),
+            )
+        else:
+            raise ValueError(f"unknown gene identity source: {self.identity_source}")
+
+        if config.value_encoding == "linear":
+            value_input_dim = 1
+            self.value_features: nn.Module = nn.Identity()
+        elif config.value_encoding == "fourier":
+            fourier = FourierValueEncoding(config.fourier_frequencies)
+            value_input_dim = fourier.output_dim
+            self.value_features = fourier
+        else:
+            raise ValueError(f"unknown value encoding: {config.value_encoding}")
+
+        value_output_dim = 2 * config.token_dim if self.fusion_kind == "film" else config.token_dim
+        self.value_projection = nn.Linear(value_input_dim, value_output_dim)
+        if self.fusion_kind == "concat":
+            self.token_fusion: nn.Module | None = nn.Sequential(
+                nn.LayerNorm(2 * config.token_dim),
+                nn.Linear(2 * config.token_dim, config.token_dim),
+                nn.GELU(),
+            )
+        elif self.fusion_kind in {"add", "film"}:
+            self.token_fusion = None
+        else:
+            raise ValueError(f"unknown gene token fusion: {self.fusion_kind}")
+
+        self.latents = nn.Parameter(
+            torch.randn(config.num_latents, config.token_dim) / math.sqrt(config.token_dim)
+        )
+        self.cross_attention = nn.MultiheadAttention(
+            config.token_dim, config.num_heads, dropout=config.dropout, batch_first=True
+        )
+        self.cross_norm_q = nn.LayerNorm(config.token_dim)
+        self.cross_norm_kv = nn.LayerNorm(config.token_dim)
+        self.cross_ff = nn.Sequential(
+            nn.LayerNorm(config.token_dim),
+            nn.Linear(config.token_dim, 4 * config.token_dim),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(4 * config.token_dim, config.token_dim),
+        )
+        self.self_blocks = nn.ModuleList()
+        for _ in range(config.num_self_attention_blocks):
+            attention = nn.MultiheadAttention(
+                config.token_dim, config.num_heads, dropout=config.dropout, batch_first=True
+            )
+            feed_forward = nn.Sequential(
+                nn.LayerNorm(config.token_dim),
+                nn.Linear(config.token_dim, 4 * config.token_dim),
+                nn.GELU(),
+                nn.Dropout(config.dropout),
+                nn.Linear(4 * config.token_dim, config.token_dim),
+            )
+            self.self_blocks.append(nn.ModuleList([nn.LayerNorm(config.token_dim), attention, feed_forward]))
+        self.global_projection = nn.Linear(config.token_dim, config.latent_dim)
+
+    def _identity(self, device: torch.device) -> torch.Tensor:
+        if self.learned_gene_embeddings is not None:
+            ids = torch.arange(self.num_genes, device=device)
+            return self.learned_gene_embeddings(ids)
+        return self.gene_projection(self.fixed_gene_embeddings.to(device))
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        if x.ndim != 2 or x.shape[1] != self.num_genes:
+            raise ValueError(f"expected RNA [batch,{self.num_genes}], received {tuple(x.shape)}")
+        identity = self._identity(x.device).unsqueeze(0)
+        values = self.value_projection(self.value_features(x.unsqueeze(-1)))
+        if self.fusion_kind == "add":
+            tokens = identity + values
+        elif self.fusion_kind == "film":
+            gamma, shift = values.chunk(2, dim=-1)
+            tokens = (1.0 + gamma) * identity + shift
+        else:
+            identity_expanded = identity.expand(x.shape[0], -1, -1)
+            tokens = self.token_fusion(torch.cat([identity_expanded, values], dim=-1))
+
+        latents = self.latents.unsqueeze(0).expand(x.shape[0], -1, -1)
+        attended, _ = self.cross_attention(
+            self.cross_norm_q(latents),
+            self.cross_norm_kv(tokens),
+            self.cross_norm_kv(tokens),
+            need_weights=False,
+        )
+        latents = latents + attended
+        latents = latents + self.cross_ff(latents)
+        for norm, attention, feed_forward in self.self_blocks:
+            attended, _ = attention(norm(latents), norm(latents), norm(latents), need_weights=False)
+            latents = latents + attended
+            latents = latents + feed_forward(latents)
+        return RNARepresentation(self.global_projection(latents.mean(dim=1)), latents)
+
+
 class LinearMultiTokenRNAEncoder(nn.Module):
     """Strictly linear encoder reshaped into K tokens of dimension d (no nonlinearity, no attention).
 
@@ -299,7 +449,9 @@ class LinearMultiTokenRNAEncoder(nn.Module):
         return RNARepresentation(tokens.reshape(batch, -1), tokens)
 
 
-def build_rna_encoder(input_dim: int, config: EncoderConfig) -> nn.Module:
+def build_rna_encoder(
+    input_dim: int, config: EncoderConfig, gene_embeddings: torch.Tensor | None = None
+) -> nn.Module:
     if config.kind == "linear":
         return LinearRNAEncoder(input_dim, config.latent_dim, config.layer_norm)
     if config.kind == "mlp":
@@ -327,6 +479,8 @@ def build_rna_encoder(input_dim: int, config: EncoderConfig) -> nn.Module:
         )
     if config.kind == "linear_tokens":
         return LinearMultiTokenRNAEncoder(input_dim, config.num_latents, config.token_dim, config.layer_norm)
+    if config.kind == "gene_token_perceiver":
+        return GeneTokenPerceiverRNAEncoder(input_dim, config, gene_embeddings)
     raise ValueError(f"unknown RNA encoder: {config.kind}")
 
 
@@ -601,6 +755,40 @@ class FiLMLocusInteraction(Interaction):
         nn.init.zeros_(self.decoder[-1].bias)
 
 
+class GeneLatentCrossAttentionInteraction(Interaction):
+    """Query patient gene latents with the CpG while retaining F2's raw-locus/product path."""
+
+    def __init__(self, token_dim: int, locus_dim: int, hidden_dim: int, num_heads: int, dropout: float):
+        super().__init__()
+        if token_dim % num_heads:
+            raise ValueError("gene latent token_dim must be divisible by num_heads")
+        self.query = nn.Linear(locus_dim, token_dim)
+        self.attention = nn.MultiheadAttention(token_dim, num_heads, dropout=dropout, batch_first=True)
+        self.locus_product = nn.Linear(locus_dim, token_dim)
+        joint_dim = token_dim + locus_dim + token_dim
+        self.network = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        if rna.tokens is None:
+            raise ValueError("gene_token_cross_attention requires patient gene latents")
+        batch, n_loci = rna.tokens.shape[0], loci.shape[0]
+        queries = self.query(loci)[None, :, :].expand(batch, n_loci, -1)
+        attended, _ = self.attention(queries, rna.tokens, rna.tokens, need_weights=False)
+        loci_expanded = loci[None, :, :].expand(batch, n_loci, -1)
+        product = attended * self.locus_product(loci)[None, :, :]
+        return self.network(torch.cat([attended, loci_expanded, product], dim=-1)).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
 class LinearTokenCrossAttention(Interaction):
     """Locus-query cross attention over a strictly linear patient encoder's K tokens.
 
@@ -702,12 +890,19 @@ class ResidualGate(nn.Module):
 class ResidualMethylationModel(nn.Module):
     """Frozen-prior model: logit(beta_hat) = logit(prior) + gated RNA residual."""
 
-    def __init__(self, input_dim: int, locus_dim: int, config: ModelConfig, epsilon: float = 1e-4):
+    def __init__(
+        self,
+        input_dim: int,
+        locus_dim: int,
+        config: ModelConfig,
+        epsilon: float = 1e-4,
+        gene_embeddings: torch.Tensor | None = None,
+    ):
         super().__init__()
         self.config = config
         self.epsilon = epsilon
         encoder = config.encoder
-        self.rna_encoder = build_rna_encoder(input_dim, encoder)
+        self.rna_encoder = build_rna_encoder(input_dim, encoder, gene_embeddings)
 
         interaction = config.interaction
         if interaction.kind == "bilinear":
@@ -755,6 +950,12 @@ class ResidualMethylationModel(nn.Module):
                 raise ValueError("linear_token_cross_attention requires model.encoder.kind=linear_tokens")
             self.interaction = LinearTokenCrossAttention(
                 encoder.token_dim, locus_dim, interaction.hidden_dim, interaction.dropout
+            )
+        elif interaction.kind == "gene_token_cross_attention":
+            if encoder.kind != "gene_token_perceiver":
+                raise ValueError("gene_token_cross_attention requires model.encoder.kind=gene_token_perceiver")
+            self.interaction = GeneLatentCrossAttentionInteraction(
+                encoder.token_dim, locus_dim, interaction.hidden_dim, interaction.num_heads, interaction.dropout
             )
         else:
             raise ValueError(f"unknown interaction: {interaction.kind}")

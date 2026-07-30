@@ -1,0 +1,22 @@
+# Authorized scientific first tranche. Replace each candidate LR with its
+# validation-only winner from stage_t_gene_token_lr_screen_grid.yaml.
+base_config: stage_t_gene_token_base.yaml
+runs:
+  - name: t0_f2_linear_seed17
+    override:
+      model:
+        encoder: {kind: linear, latent_dim: 64, layer_norm: true}
+        interaction: {kind: concat, hidden_dim: 128, dropout: 0.1, num_heads: 4}
+      training: {seed: 17, sample_batch_size: 32, learning_rate: 0.0001}
+  - name: t1_learned_gene_tokens_seed17
+    override:
+      model: {encoder: {kind: gene_token_perceiver, gene_identity_source: learned}}
+      training: {seed: 17, learning_rate: 0.0001}
+  - name: t2_ntv3_gene_tokens_seed17
+    override:
+      model: {encoder: {kind: gene_token_perceiver, gene_identity_source: ntv3}}
+      training: {seed: 17, learning_rate: 0.0001}
+  - name: t3_permuted_ntv3_gene_tokens_seed17
+    override:
+      model: {encoder: {kind: gene_token_perceiver, gene_identity_source: ntv3_permuted}}
+      training: {seed: 17, learning_rate: 0.0001}

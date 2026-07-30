@@ -1,0 +1,20 @@
+# NOT AUTHORIZED in the first tranche. This changes the combined representation:
+# CpG queries the gene-derived patient latents and the decoder preserves F2's raw
+# locus plus explicit product path.
+base_config: stage_t_gene_token_base.yaml
+runs:
+  - name: tq1_learned_locus_query_seed17
+    override:
+      model:
+        encoder: {gene_identity_source: learned}
+        interaction: {kind: gene_token_cross_attention, hidden_dim: 128, dropout: 0.1, num_heads: 4}
+  - name: tq2_ntv3_locus_query_seed17
+    override:
+      model:
+        encoder: {gene_identity_source: ntv3}
+        interaction: {kind: gene_token_cross_attention, hidden_dim: 128, dropout: 0.1, num_heads: 4}
+  - name: tq3_permuted_locus_query_seed17
+    override:
+      model:
+        encoder: {gene_identity_source: ntv3_permuted}
+        interaction: {kind: gene_token_cross_attention, hidden_dim: 128, dropout: 0.1, num_heads: 4}

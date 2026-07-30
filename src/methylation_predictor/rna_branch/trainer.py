@@ -36,11 +36,17 @@ class ExperimentRunner:
         self.output_dir = Path(config.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.bundle: DataBundle = load_bundle(config.data, seed=config.training.seed)
+        aligned_gene_embeddings = (
+            torch.from_numpy(self.bundle.gene_embeddings)
+            if self.bundle.gene_embeddings is not None
+            else None
+        )
         self.model = ResidualMethylationModel(
             self.bundle.rna_input_dim,
             self.bundle.locus_dim,
             config.model,
             epsilon=config.data.clip_beta_epsilon,
+            gene_embeddings=aligned_gene_embeddings,
         ).to(self.device)
         self.reference_rna = torch.zeros(
             (1, self.bundle.rna_input_dim), dtype=torch.float32, device=self.device
@@ -77,7 +83,7 @@ class ExperimentRunner:
 
     def _input_paths(self) -> dict[str, str]:
         data = self.config.data
-        return {
+        paths = {
             "rna": data.rna.path,
             "methylation": data.methylation.path,
             "locus_embeddings": data.locus_embeddings.path,
@@ -85,6 +91,9 @@ class ExperimentRunner:
             "sample_metadata": data.sample_metadata.path,
             "cpg_splits": data.cpg_splits.path,
         }
+        if data.gene_embeddings is not None:
+            paths["gene_embeddings"] = data.gene_embeddings.path
+        return paths
 
     def _tensor_inputs(
         self, sample_indices: np.ndarray, cpg_indices: np.ndarray

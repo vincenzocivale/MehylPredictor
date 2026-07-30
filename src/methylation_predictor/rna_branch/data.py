@@ -179,6 +179,8 @@ class DataBundle:
     control_row_map: np.ndarray
     cancer_type_names: np.ndarray
     cancer_type_codes: np.ndarray
+    gene_ids: np.ndarray | None = None
+    gene_embeddings: np.ndarray | None = None
 
     @property
     def rna_input_dim(self) -> int:
@@ -189,6 +191,12 @@ class DataBundle:
     @property
     def locus_dim(self) -> int:
         return self.loci.embeddings.shape[1]
+
+    @property
+    def gene_embedding_dim(self) -> int | None:
+        if self.gene_embeddings is None:
+            return None
+        return int(self.gene_embeddings.shape[1])
 
     def sample_indices(self, split: str) -> np.ndarray:
         return np.flatnonzero(self.samples.splits == split)
@@ -280,6 +288,27 @@ def _unique_mapping(ids: np.ndarray, name: str) -> dict[str, int]:
     return mapping
 
 
+def align_gene_embeddings(
+    rna_gene_ids: np.ndarray, gene_embedding_store: MatrixStore
+) -> np.ndarray:
+    """Return gene embeddings in exact RNA-column order, rejecting partial contracts."""
+    gene_ids = _decode_ids(rna_gene_ids)
+    mapping = _unique_mapping(gene_embedding_store.row_ids, "gene embedding ID")
+    missing = [str(gene_id) for gene_id in gene_ids.tolist() if str(gene_id) not in mapping]
+    if missing:
+        raise ValueError(
+            f"gene embedding contract incomplete: {len(missing)} RNA genes are missing; "
+            f"examples={missing[:5]}"
+        )
+    rows = np.asarray([mapping[str(gene_id)] for gene_id in gene_ids.tolist()], dtype=np.int64)
+    aligned = gene_embedding_store.rows(rows)
+    if aligned.shape[0] != len(gene_ids):
+        raise ValueError("aligned gene embeddings do not match RNA feature count")
+    if not np.isfinite(aligned).all():
+        raise ValueError("gene embedding matrix contains NaN or infinite values")
+    return aligned
+
+
 def _require_columns(frame: pd.DataFrame, columns: Iterable[str], source: str) -> None:
     missing = [column for column in columns if column not in frame]
     if missing:
@@ -316,6 +345,7 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
     rna_store = MatrixStore(config.rna)
     methylation_store = MatrixStore(config.methylation)
     embedding_store = MatrixStore(config.locus_embeddings)
+    gene_embedding_store = MatrixStore(config.gene_embeddings) if config.gene_embeddings is not None else None
     try:
         if methylation_store.col_ids is None:
             raise ValueError("methylation matrix requires col_ids_key")
@@ -355,6 +385,14 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
         beta_sample_map = _unique_mapping(methylation_store.row_ids, "methylation sample ID")
         beta_cpg_map = _unique_mapping(methylation_store.col_ids, "methylation CpG ID")
         embedding_map = _unique_mapping(embedding_store.row_ids, "embedding CpG ID")
+
+        gene_ids: np.ndarray | None = None
+        aligned_gene_embeddings: np.ndarray | None = None
+        if gene_embedding_store is not None:
+            if rna_store.col_ids is None:
+                raise ValueError("gene embeddings require RNA col_ids_key for exact gene alignment")
+            gene_ids = _decode_ids(rna_store.col_ids)
+            aligned_gene_embeddings = align_gene_embeddings(gene_ids, gene_embedding_store)
 
         sample_rows = []
         missing_samples = []
@@ -436,6 +474,8 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
             control_row_map=control_map,
             cancer_type_names=names,
             cancer_type_codes=codes.astype(np.int64),
+            gene_ids=gene_ids,
+            gene_embeddings=aligned_gene_embeddings,
         )
     except Exception:
         rna_store.close()
@@ -443,6 +483,8 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
         raise
     finally:
         embedding_store.close()
+        if gene_embedding_store is not None:
+            gene_embedding_store.close()
 
 
 def summarize_bundle(bundle: DataBundle) -> dict[str, object]:
@@ -453,6 +495,7 @@ def summarize_bundle(bundle: DataBundle) -> dict[str, object]:
         "aligned_loci": int(len(bundle.loci.ids)),
         "rna_input_dim": int(bundle.rna_input_dim),
         "locus_embedding_dim": int(bundle.locus_dim),
+        "gene_embedding_shape": (list(bundle.gene_embeddings.shape) if bundle.gene_embeddings is not None else None),
         "sample_split_counts": {
             str(split): int((bundle.samples.splits == split).sum())
             for split in np.unique(bundle.samples.splits)
