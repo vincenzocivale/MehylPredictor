@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 import torch
 
 from methylation_predictor.rna_branch.config import EncoderConfig, InteractionConfig, ModelConfig
 from methylation_predictor.rna_branch.data import MatrixStore, align_gene_embeddings
 from methylation_predictor.rna_branch.config import MatrixConfig
+from methylation_predictor.rna_branch.prepare_gene_manifest import build_manifest
 from methylation_predictor.rna_branch.models import (
     GeneTokenPerceiverRNAEncoder,
     ResidualMethylationModel,
@@ -53,6 +55,23 @@ def test_gene_embeddings_reject_partial_alignment(tmp_path):
             align_gene_embeddings(np.asarray(["g1", "g2"]), store)
     finally:
         store.close()
+
+
+def test_gene_manifest_matches_semicolon_delimited_tcga_gene_labels():
+    genes = pd.DataFrame(
+        {
+            "gene_id_gtf": ["ENSG00000000003.16"],
+            "gene_id_normalized": ["ENSG00000000003"],
+            "gene_name": ["TSPAN6"],
+            "chromosome": ["chrX"],
+            "tss": [99883667],
+            "strand": ["-"],
+            "gene_biotype": ["protein_coding"],
+        }
+    )
+    manifest = build_manifest(np.asarray(["TSPAN6;ENSG00000000003.15"]), genes)
+    assert bool(manifest.loc[0, "matched"])
+    assert manifest.loc[0, "gene_id_gtf"] == "ENSG00000000003.16"
 
 
 @pytest.mark.parametrize("source", ["learned", "ntv3", "ntv3_permuted"])

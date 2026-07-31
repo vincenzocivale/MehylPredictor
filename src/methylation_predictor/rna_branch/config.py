@@ -45,7 +45,23 @@ class DataConfig:
     variability_between_column: str = "pred_log_var_between"
     variability_within_column: str = "pred_log_var_within"
     rna_control: str = "real"  # real|mean|shuffle_global|shuffle_within_cancer|cancer_type_only
+    # Backward compatible: when rna_transform is omitted, standardize_rna=True maps to zscore.
+    # Explicit choices: none|zscore|methylprophet_quantile|rank|continuous_rank|continuous_binary.
+    rna_transform: str | None = None
+    rna_quantile_bins: int = 51
+    rna_transform_seed: int = 17
     standardize_rna: bool = True
+    # Optional frozen sample embeddings (BulkRNABert, scGPT, Geneformer, ...).
+    # They are materialized offline and aligned by sample ID, avoiding repeated FM inference
+    # inside the Cartesian CpG x patient training loop.
+    pretrained_rna: MatrixConfig | None = None
+    pretrained_mode: str = "none"  # none|replace|concat
+    standardize_pretrained_rna: bool = True
+    # Independent negative control for frozen sample embeddings.  Keeping this
+    # separate from rna_control means R5 concat retains the true raw RNA while
+    # only the foundation-model embedding is permuted.
+    pretrained_control: str = "real"  # real|shuffle_global|shuffle_within_cancer
+    pretrained_control_seed: int = 20260731
     clip_beta_epsilon: float = 1e-4
     allow_partial_overlap: bool = False
     # Nested, cancer-type-stratified subsampling of the training *sampling pool*
@@ -62,7 +78,7 @@ class DataConfig:
 
 @dataclass(slots=True)
 class EncoderConfig:
-    kind: str = "mlp"  # linear|mlp|bottleneck_mlp|linear_residual|gated_residual|perceiver|linear_tokens|gene_token_perceiver
+    kind: str = "mlp"  # linear|mlp|...|gene_token_perceiver|global_experts|module_tokens|gene_tokens
     latent_dim: int = 64
     hidden_dims: list[int] = field(default_factory=lambda: [1024, 256])
     dropout: float = 0.1
@@ -87,6 +103,13 @@ class EncoderConfig:
     gene_token_fusion: str = "film"  # add|film|concat
     gene_embedding_permutation_seed: int = 20260730
     freeze_gene_embeddings: bool = True
+    # CpG-conditioned expert / biological-token experiments.
+    num_experts: int = 8
+    expert_dim: int = 32
+    module_weights_path: str | None = None  # npz/npy, shape [modules, genes]
+    module_weights_key: str = "weights"
+    gene_embedding_path: str | None = None  # optional npz/npy, shape [genes, token_dim]
+    gene_embedding_key: str = "embeddings"
 
 
 @dataclass(slots=True)
@@ -94,11 +117,14 @@ class InteractionConfig:
     kind: str = "bilinear"
     # bilinear|interaction_mlp|multihead_bilinear|between_within|concat|raw_concat|film|
     # film_locus|cross_attention|linear_token_cross_attention|concat_only|product_only|
-    # concat_product_linear|gene_token_cross_attention
+    # concat_product_linear|gene_token_cross_attention|cpg_expert_f2|cpg_module_f2|cpg_gene_topk_f2
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
     mlp_hidden_dims: list[int] = field(default_factory=lambda: [128, 32])
+    expert_temperature: float = 1.0
+    token_top_k: int = 128
+    token_residual_scale_init: float = 1.0
 
 
 @dataclass(slots=True)
@@ -155,6 +181,18 @@ class TrainingConfig:
     residual_learning_rate: float | None = None
     warm_start_checkpoint: str | None = None
     freeze_backbone_epochs: int = 0
+    # True hard freeze (requires_grad_(False)) of the exact parameters loaded by warm
+    # start, applied right after loading. Distinct from residual_learning_rate (which
+    # only slows the backbone's updates but still lets its gradients enter the shared
+    # clip_grad_norm_ call): frozen parameters never accumulate a gradient at all, so
+    # they cannot distort the residual branch's effective clipped gradient.
+    freeze_warm_start_params: bool = False
+    # When True (and warm_start_checkpoint is set), seed best.pt/best_metric from the
+    # pre-training validation pass instead of only from epochs actually trained. Lets a
+    # residual branch that never improves validation simply "win" with epoch 0 (i.e.
+    # reproduce the warm-started baseline exactly) instead of being forced to return
+    # whichever trained epoch happened to be least-bad.
+    seed_initial_checkpoint: bool = False
 
 
 @dataclass(slots=True)
@@ -204,6 +242,8 @@ def load_config(path: str | Path) -> RunConfig:
 
     data_raw = dict(raw["data"])
     data_raw["rna"] = _matrix_config(data_raw["rna"])
+    if data_raw.get("pretrained_rna") is not None:
+        data_raw["pretrained_rna"] = _matrix_config(data_raw["pretrained_rna"])
     data_raw["methylation"] = _matrix_config(data_raw["methylation"])
     data_raw["locus_embeddings"] = _matrix_config(data_raw["locus_embeddings"])
     data_raw["locus_features"] = _table_config(data_raw["locus_features"])

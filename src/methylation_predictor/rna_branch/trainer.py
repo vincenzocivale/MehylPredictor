@@ -5,10 +5,12 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 import time
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
 import torch
+from torch import nn
 
 from .config import RunConfig, save_config
 from .data import DataBundle, load_bundle, summarize_bundle
@@ -16,6 +18,23 @@ from .losses import residual_loss
 from .metrics import evaluate_predictions
 from .models import ResidualMethylationModel
 from .utils import resolve_device, runtime_manifest, seed_everything, write_json
+
+
+def freeze_parameters(model: nn.Module, names: Iterable[str]) -> list[str]:
+    """Sets ``requires_grad_(False)`` on exactly the named parameters (typically the
+    keys a warm start actually loaded from an F2 checkpoint) and returns the list of
+    parameter names that were frozen. A true hard freeze rather than a zero learning
+    rate: frozen parameters never accumulate a gradient at all, so a large backbone
+    gradient can never distort a shared ``clip_grad_norm_`` call's effect on a small
+    residual branch's gradient.
+    """
+    names = set(names)
+    frozen = []
+    for name, param in model.named_parameters():
+        if name in names:
+            param.requires_grad_(False)
+            frozen.append(name)
+    return frozen
 
 
 @dataclass(slots=True)
@@ -41,16 +60,16 @@ class ExperimentRunner:
             if self.bundle.gene_embeddings is not None
             else None
         )
+        raw_rna_dim = self.bundle.raw_rna_dim if config.model.encoder.kind == "pretrained_embedding" else None
         self.model = ResidualMethylationModel(
             self.bundle.rna_input_dim,
             self.bundle.locus_dim,
             config.model,
             epsilon=config.data.clip_beta_epsilon,
+            raw_rna_dim=raw_rna_dim,
             gene_embeddings=aligned_gene_embeddings,
         ).to(self.device)
-        self.reference_rna = torch.zeros(
-            (1, self.bundle.rna_input_dim), dtype=torch.float32, device=self.device
-        )
+        self.reference_rna = torch.from_numpy(self.bundle.reference_rna()[None, :]).to(self.device)
         # Fit variability thresholds on train CpGs only, then apply the frozen
         # genomic proxy to every locus. This supports locus-OOD tertile metrics
         # without using held-out beta values.
@@ -93,6 +112,12 @@ class ExperimentRunner:
         }
         if data.gene_embeddings is not None:
             paths["gene_embeddings"] = data.gene_embeddings.path
+        if data.pretrained_rna is not None:
+            paths["pretrained_rna"] = data.pretrained_rna.path
+        if self.config.model.encoder.module_weights_path:
+            paths["module_weights"] = self.config.model.encoder.module_weights_path
+        if self.config.model.encoder.gene_embedding_path:
+            paths["gene_token_embeddings"] = self.config.model.encoder.gene_embedding_path
         return paths
 
     def _tensor_inputs(
@@ -180,30 +205,64 @@ class ExperimentRunner:
         )
 
     def _apply_warm_start(self, checkpoint_path: str) -> dict[str, list[str]]:
-        """Load a checkpoint from a plain (e.g. linear) encoder into a residual encoder.
+        """Warm-start residual/global+token models from the production linear-F2 checkpoint.
 
-        `rna_encoder.*` keys are remapped to `rna_encoder.base.*` when the current
-        model exposes that submodule; every other key (interaction/gate/...) loads
-        unchanged. The residual branch and its scale are intentionally left at
-        their own (zero-)init, which is what makes the warm-started model produce
-        exactly the source checkpoint's predictions before any training step.
+        Linear encoder keys retain their original names.  When the target interaction wraps
+        F2 as ``interaction.baseline``, source interaction keys are remapped into that module;
+        newly introduced experts/tokens/query branches stay at their configured initialization.
         """
         source_state = torch.load(checkpoint_path, map_location=self.device, weights_only=False)["model_state"]
         target_state = self.model.state_dict()
-        remapped = {}
+        remapped: dict[str, torch.Tensor] = {}
         for key, value in source_state.items():
-            base_key = "rna_encoder.base." + key[len("rna_encoder."):] if key.startswith("rna_encoder.") else key
-            remapped[base_key if base_key in target_state else key] = value
+            candidates = [key]
+            if key.startswith("rna_encoder."):
+                candidates.append("rna_encoder.base." + key[len("rna_encoder."):])
+            if key.startswith("interaction."):
+                # The wrapped production F2 is authoritative.  New residual
+                # branches can share names (and sometimes dimensions) with F2.
+                candidates = ["interaction.baseline." + key[len("interaction."):], key]
+            # Some newly introduced residual branches intentionally reuse names
+            # from F2 (for example ``locus_product``) at a different width.
+            # Prefer the shape-compatible wrapped F2 key over that new branch.
+            target_key = next(
+                (
+                    candidate for candidate in candidates
+                    if candidate in target_state and target_state[candidate].shape == value.shape
+                ),
+                None,
+            )
+            if target_key is not None:
+                remapped[target_key] = value
         missing, unexpected = self.model.load_state_dict(remapped, strict=False)
-        expected_missing = {
-            name for name in target_state
-            if name.startswith("rna_encoder.residual") or name == "rna_encoder.residual_scale"
-        }
+        allowed_missing_prefixes = (
+            "rna_encoder.residual",
+            "rna_encoder.expert_projection",
+            "rna_encoder.module_",
+            "rna_encoder.value_encoder",
+            "rna_encoder.gene_identity",
+            "rna_encoder.gene_identity_source",
+            "rna_encoder.identity_projection",
+            "interaction.expert_",
+            "interaction.query",
+            "interaction.key",
+            "interaction.value",
+            "interaction.token_product",
+            "interaction.locus_product",
+            "interaction.residual",
+            "interaction.locus_product",
+            "interaction.embedding_product",
+        )
+        unaccounted = [
+            name for name in missing
+            if not name.startswith(allowed_missing_prefixes)
+            and name not in {"rna_encoder.residual_scale", "interaction.residual_scale"}
+        ]
         if unexpected:
             raise ValueError(f"warm start checkpoint has unexpected keys: {unexpected}")
-        if set(missing) != expected_missing:
-            raise ValueError(f"warm start checkpoint missing unaccounted keys: {set(missing) - expected_missing}")
-        return {"missing": missing, "unexpected": unexpected}
+        if unaccounted:
+            raise ValueError(f"warm start checkpoint missing unaccounted keys: {unaccounted}")
+        return {"missing": list(missing), "unexpected": list(unexpected), "loaded": sorted(remapped.keys())}
 
     def _save_predictions(self, panel_name: str, result: PanelResult) -> None:
         if result.target is None or result.prediction is None:
@@ -236,6 +295,12 @@ class ExperimentRunner:
         if not len(train_samples) or not len(train_cpgs):
             raise ValueError("training sample/CpG split is empty")
 
+        if config.training.freeze_warm_start_params and not config.training.warm_start_checkpoint:
+            raise ValueError("freeze_warm_start_params requires warm_start_checkpoint to be set")
+        if config.training.seed_initial_checkpoint and not config.training.warm_start_checkpoint:
+            raise ValueError("seed_initial_checkpoint requires warm_start_checkpoint to be set")
+
+        initial_validation = None
         if config.training.warm_start_checkpoint:
             warm_start_info = self._apply_warm_start(config.training.warm_start_checkpoint)
             initial_validation = self.predict_panel(
@@ -247,11 +312,21 @@ class ExperimentRunner:
             manifest["warm_start_checkpoint"] = config.training.warm_start_checkpoint
             manifest["warm_start_loaded_keys"] = warm_start_info
             manifest["warm_start_initial_validation_mse"] = float(initial_validation.metrics["mse"])
+            if config.training.freeze_warm_start_params:
+                manifest["frozen_warm_start_params"] = freeze_parameters(self.model, warm_start_info["loaded"])
             write_json(self.output_dir / "manifest.json", manifest)
 
+        residual_prefixes = (
+            "rna_encoder.residual", "rna_encoder.expert_projection", "rna_encoder.module_",
+            "rna_encoder.value_encoder", "rna_encoder.gene_identity", "rna_encoder.gene_identity_source",
+            "rna_encoder.identity_projection", "interaction.expert_",
+            "interaction.query", "interaction.key", "interaction.value", "interaction.token_product",
+            "interaction.residual", "interaction.locus_product", "interaction.embedding_product",
+        )
         residual_param_names = {
             name for name, _ in self.model.named_parameters()
-            if name.startswith("rna_encoder.residual") or name == "rna_encoder.residual_scale"
+            if name.startswith(residual_prefixes)
+            or name in {"rna_encoder.residual_scale", "interaction.residual_scale"}
         }
         if config.training.residual_learning_rate is not None:
             if not residual_param_names:
@@ -285,10 +360,23 @@ class ExperimentRunner:
         maximize_checkpoint = config.training.checkpoint_metric in {
             "skill_vs_prior", "dynamic_skill", "within_cancer_skill", "dynamic_pearson", "dynamic_spearman"
         }
-        best_metric = -float("inf") if maximize_checkpoint else float("inf")
-        best_epoch = -1
-        epochs_without_improvement = 0
         checkpoint_path = self.output_dir / "best.pt"
+        if config.training.seed_initial_checkpoint:
+            best_metric = float(initial_validation.metrics[config.training.checkpoint_metric])
+            best_epoch = 0
+            torch.save(
+                {
+                    "model_state": self.model.state_dict(),
+                    "epoch": 0,
+                    "validation_metrics": initial_validation.metrics,
+                    "config": config.as_dict(),
+                },
+                checkpoint_path,
+            )
+        else:
+            best_metric = -float("inf") if maximize_checkpoint else float("inf")
+            best_epoch = -1
+        epochs_without_improvement = 0
         started = time.time()
 
         try:

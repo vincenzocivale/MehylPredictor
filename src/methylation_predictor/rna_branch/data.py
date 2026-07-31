@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import hashlib
 from typing import Iterable, Sequence
 
 import numpy as np
@@ -149,6 +150,122 @@ class RNAStandardizer:
         return cls(mean.astype(np.float32), scale.astype(np.float32))
 
 
+def _stable_row_seed(base_seed: int, row_id: str) -> int:
+    digest = hashlib.blake2b(str(row_id).encode("utf-8"), digest_size=8).digest()
+    return (base_seed + int.from_bytes(digest, "little")) % (2**32)
+
+
+def _rank_rows(values: np.ndarray) -> np.ndarray:
+    """Within-sample average ranks in [0, 1] without gene-order tie leakage."""
+    values = np.nan_to_num(np.asarray(values, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    if values.shape[1] <= 1:
+        return np.zeros_like(values)
+    result = np.empty_like(values, dtype=np.float32)
+    denominator = float(values.shape[1] - 1)
+    for row_index, row in enumerate(values):
+        _, inverse, counts = np.unique(row, return_inverse=True, return_counts=True)
+        starts = np.cumsum(counts) - counts
+        average_ranks = starts + (counts - 1) / 2.0
+        result[row_index] = average_ranks[inverse] / denominator
+    return result
+
+
+def _methylprophet_quantize_rows(
+    values: np.ndarray,
+    row_ids: Sequence[str],
+    num_bins: int,
+    seed: int,
+) -> np.ndarray:
+    """Reproduce MethylProphet's per-sample non-zero quantile binning deterministically.
+
+    The upstream implementation randomly resolves repeated quantile boundaries.  Here the
+    same rule is seeded from the sample ID, making preprocessing invariant to batch order.
+    """
+    if num_bins < 3:
+        raise ValueError("rna_quantile_bins must be >= 3")
+    values = np.nan_to_num(np.asarray(values, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    result = np.zeros_like(values, dtype=np.float32)
+    quantiles = np.linspace(0.0, 1.0, num_bins - 1)
+    for index, (row, row_id) in enumerate(zip(values, row_ids)):
+        mask = row != 0
+        non_zero = row[mask]
+        if not len(non_zero):
+            continue
+        boundaries = np.quantile(non_zero, quantiles)
+        left = np.digitize(non_zero, boundaries, right=False)
+        right = np.digitize(non_zero, boundaries, right=True)
+        rng = np.random.default_rng(_stable_row_seed(seed, str(row_id)))
+        assigned = np.ceil(left + (right - left) * rng.random(len(non_zero)))
+        maximum = max(float(assigned.max(initial=1.0)), 1.0)
+        result[index, mask] = assigned.astype(np.float32) / maximum
+    return result
+
+
+@dataclass(slots=True)
+class RNAInputTransformer:
+    kind: str
+    standardizer: RNAStandardizer | None
+    reference: np.ndarray
+    quantile_bins: int = 51
+    seed: int = 17
+
+    @property
+    def output_multiplier(self) -> int:
+        return 2 if self.kind in {"continuous_rank", "continuous_binary"} else 1
+
+    def transform(self, values: np.ndarray, row_ids: Sequence[str]) -> np.ndarray:
+        raw = np.nan_to_num(np.asarray(values, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+        continuous = self.standardizer.transform(raw) if self.standardizer is not None else raw
+        if self.kind in {"none", "zscore"}:
+            return continuous.astype(np.float32, copy=False)
+        if self.kind == "rank":
+            return _rank_rows(raw)
+        if self.kind == "methylprophet_quantile":
+            return _methylprophet_quantize_rows(raw, row_ids, self.quantile_bins, self.seed)
+        if self.kind == "continuous_rank":
+            return np.concatenate([continuous, _rank_rows(raw)], axis=1).astype(np.float32, copy=False)
+        if self.kind == "continuous_binary":
+            return np.concatenate([continuous, (raw != 0).astype(np.float32)], axis=1)
+        raise ValueError(f"unknown rna_transform: {self.kind}")
+
+    @classmethod
+    def fit(
+        cls,
+        store: MatrixStore,
+        rows: np.ndarray,
+        row_ids: Sequence[str],
+        kind: str,
+        quantile_bins: int,
+        seed: int,
+        chunk_size: int = 128,
+    ) -> "RNAInputTransformer":
+        if kind not in {"none", "zscore", "methylprophet_quantile", "rank", "continuous_rank", "continuous_binary"}:
+            raise ValueError(f"unknown rna_transform: {kind}")
+        rows = np.asarray(rows, dtype=np.int64)
+        row_ids = np.asarray(row_ids, dtype=object)
+        standardizer = RNAStandardizer.fit(store, rows) if kind in {"zscore", "continuous_rank", "continuous_binary"} else None
+        width = store.shape[1] * (2 if kind in {"continuous_rank", "continuous_binary"} else 1)
+        # For z-score the train mean is exactly the intended anchor.  Other transforms
+        # need their train-only transformed mean, otherwise anchor_to_mean_rna silently
+        # anchors to an all-zero/unexpressed pseudo-sample.
+        if kind == "zscore":
+            reference = np.zeros(width, dtype=np.float32)
+            return cls(kind, standardizer, reference, quantile_bins, seed)
+        provisional = cls(kind, standardizer, np.zeros(width, dtype=np.float32), quantile_bins, seed)
+        total = np.zeros(width, dtype=np.float64)
+        count = 0
+        for start in range(0, len(rows), chunk_size):
+            stop = start + chunk_size
+            chunk = store.rows(rows[start:stop])
+            transformed = provisional.transform(chunk, row_ids[start:stop])
+            total += transformed.astype(np.float64).sum(axis=0)
+            count += len(transformed)
+        if count == 0:
+            raise ValueError("cannot fit RNA transform without training samples")
+        provisional.reference = (total / count).astype(np.float32)
+        return provisional
+
+
 @dataclass(slots=True)
 class LocusData:
     ids: np.ndarray
@@ -175,18 +292,39 @@ class DataBundle:
     samples: SampleData
     loci: LocusData
     methylation_cols: np.ndarray
-    standardizer: RNAStandardizer | None
+    rna_transformer: RNAInputTransformer | None
+    pretrained_store: MatrixStore | None
+    pretrained_rows: np.ndarray | None
+    pretrained_standardizer: RNAStandardizer | None
+    pretrained_reference: np.ndarray | None
     control_row_map: np.ndarray
+    pretrained_control_row_map: np.ndarray
     cancer_type_names: np.ndarray
     cancer_type_codes: np.ndarray
     gene_ids: np.ndarray | None = None
     gene_embeddings: np.ndarray | None = None
 
     @property
-    def rna_input_dim(self) -> int:
+    def raw_rna_dim(self) -> int:
+        """Width of the raw-RNA half of the input, before any pretrained embedding is
+        concatenated -- i.e. the exact input width F2 itself was trained on. Used by
+        ``pretrained_embedding`` encoders to split the concatenated input vector."""
         if self.config.rna_control == "cancer_type_only":
             return len(self.cancer_type_names)
-        return self.rna_store.shape[1]
+        raw_dim = self.rna_store.shape[1]
+        if self.rna_transformer is not None:
+            raw_dim *= self.rna_transformer.output_multiplier
+        return raw_dim
+
+    @property
+    def rna_input_dim(self) -> int:
+        raw_dim = self.raw_rna_dim
+        pretrained_dim = self.pretrained_store.shape[1] if self.pretrained_store is not None else 0
+        if self.config.pretrained_mode == "replace":
+            return pretrained_dim
+        if self.config.pretrained_mode == "concat":
+            return raw_dim + pretrained_dim
+        return raw_dim
 
     @property
     def locus_dim(self) -> int:
@@ -251,6 +389,25 @@ class DataBundle:
             selected.append(group[order[:k]])
         return np.sort(np.concatenate(selected))
 
+    def reference_rna(self) -> np.ndarray:
+        if self.config.rna_control == "cancer_type_only":
+            return np.zeros(len(self.cancer_type_names), dtype=np.float32)
+        raw_reference = (
+            self.rna_transformer.reference
+            if self.rna_transformer is not None
+            else np.zeros(self.rna_store.shape[1], dtype=np.float32)
+        )
+        pre_reference = self.pretrained_reference
+        if self.config.pretrained_mode == "replace":
+            if pre_reference is None:
+                raise ValueError("pretrained_mode=replace requires pretrained_rna")
+            return pre_reference.astype(np.float32, copy=False)
+        if self.config.pretrained_mode == "concat":
+            if pre_reference is None:
+                raise ValueError("pretrained_mode=concat requires pretrained_rna")
+            return np.concatenate([raw_reference, pre_reference]).astype(np.float32, copy=False)
+        return raw_reference.astype(np.float32, copy=False)
+
     def rna(self, sample_indices: Sequence[int]) -> np.ndarray:
         sample_indices = np.asarray(sample_indices, dtype=np.int64)
         if self.config.rna_control == "cancer_type_only":
@@ -258,13 +415,25 @@ class DataBundle:
             values[np.arange(len(sample_indices)), self.cancer_type_codes[sample_indices]] = 1.0
             return values
         if self.config.rna_control == "mean":
-            return np.zeros((len(sample_indices), self.rna_store.shape[1]), dtype=np.float32)
+            return np.repeat(self.reference_rna()[None, :], len(sample_indices), axis=0)
         mapped = self.control_row_map[sample_indices]
-        values = self.rna_store.rows(self.samples.rna_rows[mapped])
-        if self.standardizer is not None:
-            values = self.standardizer.transform(values)
-        values = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-        return values.astype(np.float32, copy=False)
+        raw = self.rna_store.rows(self.samples.rna_rows[mapped])
+        row_ids = self.samples.ids[mapped].astype(str)
+        values = self.rna_transformer.transform(raw, row_ids) if self.rna_transformer is not None else raw
+        values = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
+        if self.pretrained_store is None or self.config.pretrained_mode == "none":
+            return values
+        assert self.pretrained_rows is not None
+        pretrained_mapped = self.pretrained_control_row_map[sample_indices]
+        pretrained = self.pretrained_store.rows(self.pretrained_rows[pretrained_mapped])
+        if self.pretrained_standardizer is not None:
+            pretrained = self.pretrained_standardizer.transform(pretrained)
+        pretrained = np.nan_to_num(pretrained, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
+        if self.config.pretrained_mode == "replace":
+            return pretrained
+        if self.config.pretrained_mode == "concat":
+            return np.concatenate([values, pretrained], axis=1)
+        raise ValueError(f"unknown pretrained_mode: {self.config.pretrained_mode}")
 
     def beta(self, sample_indices: Sequence[int], cpg_indices: Sequence[int]) -> np.ndarray:
         sample_indices = np.asarray(sample_indices, dtype=np.int64)
@@ -275,6 +444,8 @@ class DataBundle:
 
     def close(self) -> None:
         self.rna_store.close()
+        if self.pretrained_store is not None:
+            self.pretrained_store.close()
         self.methylation_store.close()
 
 
@@ -342,7 +513,15 @@ def _control_permutation(
 
 
 def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
+    if config.pretrained_mode not in {"none", "replace", "concat"}:
+        raise ValueError(f"unknown pretrained_mode: {config.pretrained_mode}")
+    if config.pretrained_mode != "none" and config.pretrained_rna is None:
+        raise ValueError(f"pretrained_mode={config.pretrained_mode} requires data.pretrained_rna")
     rna_store = MatrixStore(config.rna)
+    pretrained_store = (
+        MatrixStore(config.pretrained_rna)
+        if config.pretrained_mode != "none" and config.pretrained_rna is not None else None
+    )
     methylation_store = MatrixStore(config.methylation)
     embedding_store = MatrixStore(config.locus_embeddings)
     gene_embedding_store = MatrixStore(config.gene_embeddings) if config.gene_embeddings is not None else None
@@ -382,6 +561,10 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
             raise ValueError("locus feature table contains duplicate CpG IDs")
 
         rna_map = _unique_mapping(rna_store.row_ids, "RNA sample ID")
+        pretrained_map = (
+            _unique_mapping(pretrained_store.row_ids, "pretrained RNA sample ID")
+            if pretrained_store is not None else None
+        )
         beta_sample_map = _unique_mapping(methylation_store.row_ids, "methylation sample ID")
         beta_cpg_map = _unique_mapping(methylation_store.col_ids, "methylation CpG ID")
         embedding_map = _unique_mapping(embedding_store.row_ids, "embedding CpG ID")
@@ -397,7 +580,8 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
         sample_rows = []
         missing_samples = []
         for sample_id in sample_meta[config.sample_id_column].tolist():
-            if sample_id not in rna_map or sample_id not in beta_sample_map:
+            missing_pretrained = pretrained_map is not None and sample_id not in pretrained_map
+            if sample_id not in rna_map or sample_id not in beta_sample_map or missing_pretrained:
                 missing_samples.append(sample_id)
                 continue
             sample_rows.append((sample_id, rna_map[sample_id], beta_sample_map[sample_id]))
@@ -458,10 +642,38 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
         sample_data = SampleData(sample_ids, cancer_types, sample_splits, rna_rows, beta_rows)
         locus_data = LocusData(cpg_ids, embeddings, prior, variability, locus_splits)
         train_rows = np.flatnonzero(sample_splits == "train")
-        standardizer = None
-        if config.standardize_rna and config.rna_control not in {"cancer_type_only", "mean"}:
-            standardizer = RNAStandardizer.fit(rna_store, rna_rows[train_rows])
+        transform_kind = config.rna_transform or ("zscore" if config.standardize_rna else "none")
+        rna_transformer = None
+        if config.rna_control not in {"cancer_type_only"}:
+            rna_transformer = RNAInputTransformer.fit(
+                rna_store,
+                rna_rows[train_rows],
+                sample_ids[train_rows].astype(str),
+                kind=transform_kind,
+                quantile_bins=config.rna_quantile_bins,
+                seed=config.rna_transform_seed,
+            )
+        pretrained_rows = None
+        pretrained_standardizer = None
+        pretrained_reference = None
+        if pretrained_store is not None:
+            assert pretrained_map is not None
+            pretrained_rows = np.asarray([pretrained_map[x] for x in sample_ids], dtype=np.int64)
+            if config.standardize_pretrained_rna:
+                pretrained_standardizer = RNAStandardizer.fit(pretrained_store, pretrained_rows[train_rows])
+                pretrained_reference = np.zeros(pretrained_store.shape[1], dtype=np.float32)
+            else:
+                total = np.zeros(pretrained_store.shape[1], dtype=np.float64)
+                for start in range(0, len(train_rows), 128):
+                    total += pretrained_store.rows(pretrained_rows[train_rows[start:start + 128]]).sum(axis=0)
+                pretrained_reference = (total / max(len(train_rows), 1)).astype(np.float32)
         control_map = _control_permutation(config.rna_control, cancer_types, sample_splits, seed)
+        pretrained_control_map = _control_permutation(
+            config.pretrained_control,
+            cancer_types,
+            sample_splits,
+            config.pretrained_control_seed,
+        )
 
         return DataBundle(
             config=config,
@@ -470,8 +682,13 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
             samples=sample_data,
             loci=locus_data,
             methylation_cols=beta_cols,
-            standardizer=standardizer,
+            rna_transformer=rna_transformer,
+            pretrained_store=pretrained_store,
+            pretrained_rows=pretrained_rows,
+            pretrained_standardizer=pretrained_standardizer,
+            pretrained_reference=pretrained_reference,
             control_row_map=control_map,
+            pretrained_control_row_map=pretrained_control_map,
             cancer_type_names=names,
             cancer_type_codes=codes.astype(np.int64),
             gene_ids=gene_ids,
@@ -479,6 +696,8 @@ def load_bundle(config: DataConfig, seed: int = 17) -> DataBundle:
         )
     except Exception:
         rna_store.close()
+        if pretrained_store is not None:
+            pretrained_store.close()
         methylation_store.close()
         raise
     finally:
@@ -509,5 +728,11 @@ def summarize_bundle(bundle: DataBundle) -> dict[str, object]:
             for value in np.unique(bundle.samples.cancer_types)
         },
         "rna_control": bundle.config.rna_control,
-        "standardized": bundle.standardizer is not None,
+        "rna_transform": bundle.rna_transformer.kind if bundle.rna_transformer is not None else None,
+        "pretrained_mode": bundle.config.pretrained_mode,
+        "pretrained_control": bundle.config.pretrained_control,
+        "pretrained_shape": list(bundle.pretrained_store.shape) if bundle.pretrained_store is not None else None,
+        "standardized": bool(
+            bundle.rna_transformer is not None and bundle.rna_transformer.standardizer is not None
+        ),
     }

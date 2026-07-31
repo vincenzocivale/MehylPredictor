@@ -11,12 +11,12 @@ runs:
   - name: t1_learned_gene_tokens_seed17
     override:
       model: {encoder: {kind: gene_token_perceiver, gene_identity_source: learned}}
-      training: {seed: 17, learning_rate: 0.0001}
+      training: {seed: 17, learning_rate: 0.00002}
   - name: t2_ntv3_gene_tokens_seed17
     override:
       model: {encoder: {kind: gene_token_perceiver, gene_identity_source: ntv3}}
-      training: {seed: 17, learning_rate: 0.0001}
+      training: {seed: 17, learning_rate: 0.0003}
   - name: t3_permuted_ntv3_gene_tokens_seed17
     override:
       model: {encoder: {kind: gene_token_perceiver, gene_identity_source: ntv3_permuted}}
-      training: {seed: 17, learning_rate: 0.0001}
+      training: {seed: 17, learning_rate: 0.00002}

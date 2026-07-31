@@ -23,7 +23,7 @@ METRIC_KEYS = [
     "macro_cancer_mse", "macro_cancer_skill_vs_prior",
 ]
 
-SEED_SUFFIX = re.compile(r"_seed(\d+)$")
+SEED_SUFFIX = re.compile(r"_(?:seed|s)(\d+)$")
 
 
 def load_runs(screening_dir: Path) -> pd.DataFrame:
@@ -115,6 +115,12 @@ def paired_comparison(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--screening-dir", required=True)
+    parser.add_argument(
+        "--baseline-dir",
+        action="append",
+        default=[],
+        help="additional directory of completed baseline runs to include in paired comparisons",
+    )
     parser.add_argument("--output", required=True)
     parser.add_argument(
         "--baseline-family",
@@ -123,6 +129,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     df = load_runs(Path(args.screening_dir))
+    for baseline_dir in args.baseline_dir:
+        df = pd.concat([df, load_runs(Path(baseline_dir))], ignore_index=True)
     df.to_csv(Path(args.output).with_suffix(".raw.csv"), index=False)
     summary = summarize(df)
     summary.to_csv(args.output, index=False)

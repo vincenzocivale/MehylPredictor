@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import math
 
 import torch
@@ -15,6 +16,7 @@ from .config import EncoderConfig, ModelConfig
 class RNARepresentation:
     global_vector: torch.Tensor
     tokens: torch.Tensor | None = None
+    token_keys: torch.Tensor | None = None
 
 
 def _activation(name: str) -> nn.Module:
@@ -449,9 +451,156 @@ class LinearMultiTokenRNAEncoder(nn.Module):
         return RNARepresentation(tokens.reshape(batch, -1), tokens)
 
 
+class GlobalExpertRNAEncoder(nn.Module):
+    """Strong global linear representation plus independent supervised RNA experts."""
+
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        num_experts: int,
+        expert_dim: int,
+        layer_norm: bool = True,
+    ):
+        super().__init__()
+        if num_experts < 2 or expert_dim < 1:
+            raise ValueError("global_experts requires num_experts >= 2 and expert_dim >= 1")
+        self.num_experts = num_experts
+        self.expert_dim = expert_dim
+        self.norm = nn.LayerNorm(input_dim) if layer_norm else nn.Identity()
+        # Names intentionally match LinearRNAEncoder, enabling exact F2 warm-start.
+        self.projection = nn.Linear(input_dim, latent_dim)
+        self.expert_projection = nn.Linear(input_dim, num_experts * expert_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        normalized = self.norm(x)
+        global_vector = self.projection(normalized)
+        experts = self.expert_projection(normalized).view(x.shape[0], self.num_experts, self.expert_dim)
+        return RNARepresentation(global_vector, experts)
+
+
+def _load_matrix(path: str, key: str) -> torch.Tensor:
+    import numpy as np
+
+    file = Path(path)
+    if not file.is_file():
+        raise FileNotFoundError(file)
+    if file.suffix.lower() == ".npy":
+        values = np.load(file, allow_pickle=False)
+    elif file.suffix.lower() == ".npz":
+        archive = np.load(file, allow_pickle=False)
+        if key not in archive:
+            raise KeyError(f"{key!r} not present in {file}")
+        values = archive[key]
+    else:
+        raise ValueError(f"module/gene matrices must be .npy or .npz: {file}")
+    return torch.as_tensor(values, dtype=torch.float32)
+
+
+class ModuleTokenRNAEncoder(nn.Module):
+    """Global linear RNA vector plus pathway/regulon/NMF tokens from a fixed gene-module map."""
+
+    def __init__(self, input_dim: int, config: EncoderConfig):
+        super().__init__()
+        if not config.module_weights_path:
+            raise ValueError("module_tokens requires model.encoder.module_weights_path")
+        weights = _load_matrix(config.module_weights_path, config.module_weights_key)
+        if weights.ndim != 2 or weights.shape[1] != input_dim:
+            raise ValueError(
+                f"module weights must have shape [modules, {input_dim}], got {tuple(weights.shape)}"
+            )
+        denominator = weights.abs().sum(dim=1, keepdim=True).clamp_min(1e-8)
+        self.register_buffer("module_weights", weights / denominator)
+        self.norm = nn.LayerNorm(input_dim) if config.layer_norm else nn.Identity()
+        self.projection = nn.Linear(input_dim, config.latent_dim)
+        self.module_identity = nn.Embedding(weights.shape[0], config.token_dim)
+        self.value_encoder = nn.Linear(1, config.token_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        normalized = self.norm(x)
+        global_vector = self.projection(normalized)
+        scores = normalized @ self.module_weights.transpose(0, 1)
+        identity = self.module_identity.weight.unsqueeze(0)
+        tokens = identity + self.value_encoder(scores.unsqueeze(-1))
+        return RNARepresentation(global_vector, tokens, self.module_identity.weight)
+
+
+class GeneTokenRNAEncoder(nn.Module):
+    """Global F2 vector plus explicit gene tokens for sparse CpG-to-gene routing."""
+
+    def __init__(self, input_dim: int, config: EncoderConfig):
+        super().__init__()
+        self.norm = nn.LayerNorm(input_dim) if config.layer_norm else nn.Identity()
+        self.projection = nn.Linear(input_dim, config.latent_dim)
+        if config.gene_embedding_path:
+            embeddings = _load_matrix(config.gene_embedding_path, config.gene_embedding_key)
+            if embeddings.ndim != 2 or embeddings.shape[0] != input_dim:
+                raise ValueError(
+                    f"gene embeddings must have shape [{input_dim}, dim], got {tuple(embeddings.shape)}"
+                )
+            if config.freeze_gene_embeddings:
+                self.register_buffer("gene_identity_source", embeddings)
+            else:
+                self.gene_identity_source = nn.Parameter(embeddings)
+            self.identity_projection = (
+                nn.Identity()
+                if embeddings.shape[1] == config.token_dim
+                else nn.Linear(embeddings.shape[1], config.token_dim, bias=False)
+            )
+        else:
+            self.gene_identity_source = nn.Parameter(
+                torch.randn(input_dim, config.token_dim) / math.sqrt(config.token_dim)
+            )
+            self.identity_projection = nn.Identity()
+        self.value_encoder = nn.Sequential(nn.Linear(1, config.token_dim), nn.Tanh())
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        normalized = self.norm(x)
+        global_vector = self.projection(normalized)
+        identity = self.identity_projection(self.gene_identity_source)
+        # Identity remains available separately as static routing keys. Expression affects values only.
+        tokens = identity.unsqueeze(0) + self.value_encoder(normalized.unsqueeze(-1))
+        return RNARepresentation(global_vector, tokens, identity)
+
+
+class PretrainedEmbeddingRNAEncoder(nn.Module):
+    """F2-identical linear projection of the raw RNA vector, plus a frozen pretrained
+    sample embedding (e.g. BulkRNABert) passed through untouched as ``tokens`` for a
+    downstream residual interaction to consume.
+
+    ``raw_rna_dim`` is derived from the data bundle at construction time (not a config
+    field) so it can never silently drift from the actual concatenated input layout.
+    Names intentionally match ``LinearRNAEncoder`` (``norm``/``projection``), enabling
+    exact F2 warm-start of the raw-RNA half via the existing checkpoint remap.
+    """
+
+    def __init__(self, input_dim: int, raw_rna_dim: int, latent_dim: int, layer_norm: bool = True):
+        super().__init__()
+        if not 0 < raw_rna_dim < input_dim:
+            raise ValueError(f"raw_rna_dim must be in (0, {input_dim}), got {raw_rna_dim}")
+        self.raw_rna_dim = raw_rna_dim
+        self.norm = nn.LayerNorm(raw_rna_dim) if layer_norm else nn.Identity()
+        self.projection = nn.Linear(raw_rna_dim, latent_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        if x.shape[1] <= self.raw_rna_dim:
+            raise ValueError(
+                f"expected input wider than raw_rna_dim={self.raw_rna_dim}, received width {x.shape[1]}"
+            )
+        raw, embedding = x[:, : self.raw_rna_dim], x[:, self.raw_rna_dim :]
+        return RNARepresentation(self.projection(self.norm(raw)), embedding)
+
+
 def build_rna_encoder(
-    input_dim: int, config: EncoderConfig, gene_embeddings: torch.Tensor | None = None
+    input_dim: int,
+    config: EncoderConfig,
+    gene_embeddings: torch.Tensor | None = None,
+    raw_rna_dim: int | None = None,
 ) -> nn.Module:
+    if config.kind == "pretrained_embedding":
+        if raw_rna_dim is None:
+            raise ValueError("pretrained_embedding requires raw_rna_dim")
+        return PretrainedEmbeddingRNAEncoder(input_dim, raw_rna_dim, config.latent_dim, config.layer_norm)
     if config.kind == "linear":
         return LinearRNAEncoder(input_dim, config.latent_dim, config.layer_norm)
     if config.kind == "mlp":
@@ -481,6 +630,14 @@ def build_rna_encoder(
         return LinearMultiTokenRNAEncoder(input_dim, config.num_latents, config.token_dim, config.layer_norm)
     if config.kind == "gene_token_perceiver":
         return GeneTokenPerceiverRNAEncoder(input_dim, config, gene_embeddings)
+    if config.kind == "global_experts":
+        return GlobalExpertRNAEncoder(
+            input_dim, config.latent_dim, config.num_experts, config.expert_dim, config.layer_norm
+        )
+    if config.kind == "module_tokens":
+        return ModuleTokenRNAEncoder(input_dim, config)
+    if config.kind == "gene_tokens":
+        return GeneTokenRNAEncoder(input_dim, config)
     raise ValueError(f"unknown RNA encoder: {config.kind}")
 
 
@@ -853,6 +1010,197 @@ class CrossAttentionInteraction(Interaction):
         nn.init.zeros_(self.output[-1].bias)
 
 
+
+
+class CpGExpertF2Interaction(Interaction):
+    """F2 baseline plus a CpG-gated mixture of independent RNA projections."""
+
+    def __init__(
+        self,
+        rna_dim: int,
+        expert_dim: int,
+        num_experts: int,
+        locus_dim: int,
+        hidden_dim: int,
+        dropout: float,
+        temperature: float,
+        residual_scale_init: float,
+    ):
+        super().__init__()
+        if temperature <= 0:
+            raise ValueError("expert_temperature must be positive")
+        self.baseline = ConcatInteraction(rna_dim, locus_dim, hidden_dim, dropout)
+        self.num_experts = num_experts
+        self.temperature = temperature
+        self.expert_gate = nn.Sequential(nn.LayerNorm(locus_dim), nn.Linear(locus_dim, num_experts))
+        product_dim = min(expert_dim, locus_dim)
+        self.expert_product = nn.Linear(expert_dim, product_dim)
+        self.locus_product = nn.Linear(locus_dim, product_dim)
+        joint_dim = expert_dim + locus_dim + product_dim
+        self.residual = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.residual_scale = nn.Parameter(torch.tensor(float(residual_scale_init)))
+        self.last_weights: torch.Tensor | None = None
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        if rna.tokens is None or rna.tokens.shape[1] != self.num_experts:
+            raise ValueError("cpg_expert_f2 requires the global_experts RNA encoder")
+        baseline = self.baseline(rna, loci)
+        weights = torch.softmax(self.expert_gate(loci) / self.temperature, dim=-1)
+        self.last_weights = weights.detach()
+        context = torch.einsum("lk,bkd->bld", weights, rna.tokens)
+        loci_expanded = loci[None, :, :].expand(context.shape[0], -1, -1)
+        product = self.expert_product(context) * self.locus_product(loci)[None, :, :]
+        residual = self.residual(torch.cat([context, loci_expanded, product], dim=-1)).squeeze(-1)
+        return baseline + self.residual_scale * residual
+
+    def zero_output(self) -> None:
+        self.baseline.zero_output()
+        nn.init.zeros_(self.residual[-1].weight)
+        nn.init.zeros_(self.residual[-1].bias)
+
+
+class CpGTokenF2Interaction(Interaction):
+    """F2 baseline plus CpG-query attention over pathway/regulon tokens."""
+
+    def __init__(
+        self,
+        rna_dim: int,
+        token_dim: int,
+        locus_dim: int,
+        hidden_dim: int,
+        dropout: float,
+        residual_scale_init: float,
+    ):
+        super().__init__()
+        self.baseline = ConcatInteraction(rna_dim, locus_dim, hidden_dim, dropout)
+        self.query = nn.Linear(locus_dim, token_dim)
+        self.key = nn.Linear(token_dim, token_dim)
+        self.value = nn.Linear(token_dim, token_dim)
+        self.scale = math.sqrt(token_dim)
+        product_dim = min(token_dim, locus_dim)
+        self.token_product = nn.Linear(token_dim, product_dim)
+        self.locus_product = nn.Linear(locus_dim, product_dim)
+        self.residual = nn.Sequential(
+            nn.LayerNorm(token_dim + locus_dim + product_dim),
+            nn.Linear(token_dim + locus_dim + product_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.residual_scale = nn.Parameter(torch.tensor(float(residual_scale_init)))
+        self.last_weights: torch.Tensor | None = None
+
+    def _context(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        if rna.tokens is None:
+            raise ValueError("cpg_module_f2 requires tokenized RNA")
+        q = self.query(loci)
+        k = self.key(rna.tokens)
+        v = self.value(rna.tokens)
+        scores = torch.einsum("ld,bkd->blk", q, k) / self.scale
+        weights = torch.softmax(scores, dim=-1)
+        self.last_weights = weights.detach()
+        return torch.einsum("blk,bkd->bld", weights, v)
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        baseline = self.baseline(rna, loci)
+        context = self._context(rna, loci)
+        loci_expanded = loci[None, :, :].expand(context.shape[0], -1, -1)
+        product = self.token_product(context) * self.locus_product(loci)[None, :, :]
+        residual = self.residual(torch.cat([context, loci_expanded, product], dim=-1)).squeeze(-1)
+        return baseline + self.residual_scale * residual
+
+    def zero_output(self) -> None:
+        self.baseline.zero_output()
+        nn.init.zeros_(self.residual[-1].weight)
+        nn.init.zeros_(self.residual[-1].bias)
+
+
+class CpGGeneTopKF2Interaction(CpGTokenF2Interaction):
+    """F2 plus sparse, locus-static top-k routing over explicit patient-specific gene tokens."""
+
+    def __init__(self, *args, top_k: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        if top_k < 1:
+            raise ValueError("token_top_k must be positive")
+        self.top_k = top_k
+
+    def _context(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        if rna.tokens is None or rna.token_keys is None:
+            raise ValueError("cpg_gene_topk_f2 requires gene_tokens with static token_keys")
+        q = self.query(loci)
+        static_keys = self.key(rna.token_keys)
+        routing_scores = q @ static_keys.transpose(0, 1) / self.scale
+        k = min(self.top_k, static_keys.shape[0])
+        selected_scores, selected = torch.topk(routing_scores, k=k, dim=-1)
+        selected_values = self.value(rna.tokens)[:, selected, :]
+        weights = torch.softmax(selected_scores, dim=-1)
+        self.last_weights = weights.detach()
+        return torch.einsum("lk,blkd->bld", weights, selected_values)
+
+
+class PretrainedEmbeddingF2Interaction(Interaction):
+    """F2 baseline (frozen via warm-start) plus a residual adapter over a single frozen
+    pretrained sample embedding (e.g. BulkRNABert), gated by locus identity.
+
+    Unlike ``CpGExpertF2Interaction``/``CpGTokenF2Interaction``, ``baseline`` is left at
+    its default initialization here rather than zero-initialized in ``zero_output()``:
+    the training entry point always warm-starts it from a real F2 checkpoint before any
+    forward pass is used for training, and relying on a call-order coincidence
+    (zero-init at construction, overwritten later by warm-start) is fragile. Only the
+    new residual branch's final layer is zero-init; ``residual_scale`` starts at
+    ``token_residual_scale_init`` (default 1.0, not 0) so the residual branch is not
+    permanently dead -- zeroing both simultaneously would make every gradient through
+    the branch identically zero, since ``residual_scale`` multiplies the (already zero)
+    residual output at every layer, not just the last one.
+    """
+
+    def __init__(
+        self,
+        rna_dim: int,
+        pretrained_embedding_dim: int,
+        locus_dim: int,
+        hidden_dim: int,
+        dropout: float,
+        residual_scale_init: float,
+    ):
+        super().__init__()
+        self.baseline = ConcatInteraction(rna_dim, locus_dim, hidden_dim, dropout)
+        product_dim = min(pretrained_embedding_dim, locus_dim)
+        self.embedding_product = nn.Linear(pretrained_embedding_dim, product_dim)
+        self.locus_product = nn.Linear(locus_dim, product_dim)
+        joint_dim = pretrained_embedding_dim + locus_dim + product_dim
+        self.residual = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.residual_scale = nn.Parameter(torch.tensor(float(residual_scale_init)))
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        if rna.tokens is None:
+            raise ValueError("cpg_pretrained_f2 requires the pretrained_embedding RNA encoder")
+        baseline = self.baseline(rna, loci)
+        embedding = rna.tokens
+        batch, n_loci = embedding.shape[0], loci.shape[0]
+        embedding_expanded = embedding[:, None, :].expand(batch, n_loci, -1)
+        loci_expanded = loci[None, :, :].expand(batch, n_loci, -1)
+        product = self.embedding_product(embedding)[:, None, :] * self.locus_product(loci)[None, :, :]
+        residual = self.residual(torch.cat([embedding_expanded, loci_expanded, product], dim=-1)).squeeze(-1)
+        return baseline + self.residual_scale * residual
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.residual[-1].weight)
+        nn.init.zeros_(self.residual[-1].bias)
+
+
 class ResidualGate(nn.Module):
     def __init__(self, kind: str, locus_dim: int, hidden_dim: int, dropout: float, initial_scale: float):
         super().__init__()
@@ -897,12 +1245,13 @@ class ResidualMethylationModel(nn.Module):
         config: ModelConfig,
         epsilon: float = 1e-4,
         gene_embeddings: torch.Tensor | None = None,
+        raw_rna_dim: int | None = None,
     ):
         super().__init__()
         self.config = config
         self.epsilon = epsilon
         encoder = config.encoder
-        self.rna_encoder = build_rna_encoder(input_dim, encoder, gene_embeddings)
+        self.rna_encoder = build_rna_encoder(input_dim, encoder, gene_embeddings, raw_rna_dim)
 
         interaction = config.interaction
         if interaction.kind == "bilinear":
@@ -956,6 +1305,37 @@ class ResidualMethylationModel(nn.Module):
                 raise ValueError("gene_token_cross_attention requires model.encoder.kind=gene_token_perceiver")
             self.interaction = GeneLatentCrossAttentionInteraction(
                 encoder.token_dim, locus_dim, interaction.hidden_dim, interaction.num_heads, interaction.dropout
+            )
+        elif interaction.kind == "cpg_expert_f2":
+            if encoder.kind != "global_experts":
+                raise ValueError("cpg_expert_f2 requires model.encoder.kind=global_experts")
+            self.interaction = CpGExpertF2Interaction(
+                encoder.latent_dim, encoder.expert_dim, encoder.num_experts, locus_dim,
+                interaction.hidden_dim, interaction.dropout, interaction.expert_temperature,
+                interaction.token_residual_scale_init,
+            )
+        elif interaction.kind == "cpg_module_f2":
+            if encoder.kind != "module_tokens":
+                raise ValueError("cpg_module_f2 requires model.encoder.kind=module_tokens")
+            self.interaction = CpGTokenF2Interaction(
+                encoder.latent_dim, encoder.token_dim, locus_dim, interaction.hidden_dim,
+                interaction.dropout, interaction.token_residual_scale_init,
+            )
+        elif interaction.kind == "cpg_gene_topk_f2":
+            if encoder.kind != "gene_tokens":
+                raise ValueError("cpg_gene_topk_f2 requires model.encoder.kind=gene_tokens")
+            self.interaction = CpGGeneTopKF2Interaction(
+                encoder.latent_dim, encoder.token_dim, locus_dim, interaction.hidden_dim,
+                interaction.dropout, interaction.token_residual_scale_init,
+                top_k=interaction.token_top_k,
+            )
+        elif interaction.kind == "cpg_pretrained_f2":
+            if encoder.kind != "pretrained_embedding":
+                raise ValueError("cpg_pretrained_f2 requires model.encoder.kind=pretrained_embedding")
+            pretrained_embedding_dim = input_dim - self.rna_encoder.raw_rna_dim
+            self.interaction = PretrainedEmbeddingF2Interaction(
+                encoder.latent_dim, pretrained_embedding_dim, locus_dim, interaction.hidden_dim,
+                interaction.dropout, interaction.token_residual_scale_init,
             )
         else:
             raise ValueError(f"unknown interaction: {interaction.kind}")

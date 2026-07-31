@@ -61,7 +61,9 @@ def main() -> None:
     np.savez_compressed(
         output,
         embeddings=result,
-        gene_ids=manifest.gene_idx.astype(str).to_numpy(),
+        # Keep the merged contract compatible with MatrixStore's
+        # np.load(..., allow_pickle=False) policy.
+        gene_ids=manifest.gene_idx.astype(str).to_numpy(dtype=str),
         matched=manifest.matched.to_numpy(bool),
     )
     metadata = {

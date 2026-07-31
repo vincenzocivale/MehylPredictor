@@ -136,11 +136,14 @@ def main() -> None:
     np.savez_compressed(
         output,
         embeddings=embeddings,
-        gene_ids=local.gene_idx.astype(str).to_numpy(),
+        # NPZ consumers deliberately use allow_pickle=False.  Pandas' default
+        # string conversion yields object arrays, so materialize native Unicode
+        # arrays instead of serialising Python objects.
+        gene_ids=local.gene_idx.astype(str).to_numpy(dtype=str),
         rna_col=local.rna_col.to_numpy(np.int64),
-        chromosome=local.chromosome.astype(str).to_numpy(),
+        chromosome=local.chromosome.astype(str).to_numpy(dtype=str),
         tss=local.tss.to_numpy(np.int64),
-        strand=local.strand.astype(str).to_numpy(),
+        strand=local.strand.astype(str).to_numpy(dtype=str),
     )
     metadata = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),

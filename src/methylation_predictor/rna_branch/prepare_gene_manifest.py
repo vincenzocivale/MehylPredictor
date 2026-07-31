@@ -79,13 +79,31 @@ def _unique_lookup(frame: pd.DataFrame, column: str) -> dict[str, int]:
     return {key: indices[0] for key, indices in grouped.items() if len(indices) == 1}
 
 
+def _rna_gene_id_candidates(raw: str) -> list[str]:
+    """Return ordered identifiers from one RNA feature label.
+
+    TCGA RNA matrices commonly label columns as ``SYMBOL;ENSG...<version>``.
+    Retaining both parts lets the stable Ensembl identifier take precedence while
+    still supporting symbol-only matrices.  Empty fields are ignored and repeated
+    tokens are considered once.
+    """
+    values = [raw.strip()]
+    values.extend(part.strip() for part in raw.split(";"))
+    return list(dict.fromkeys(value for value in values if value))
+
+
 def build_manifest(rna_gene_ids: np.ndarray, genes: pd.DataFrame) -> pd.DataFrame:
     exact = _unique_lookup(genes, "gene_id_gtf")
     normalized = _unique_lookup(genes, "gene_id_normalized")
     names = _unique_lookup(genes, "gene_name")
     records: list[dict[str, object]] = []
     for rna_col, raw in enumerate(rna_gene_ids.astype(str).tolist()):
-        candidates = [exact.get(raw), normalized.get(_strip_version(raw)), names.get(raw)]
+        identifiers = _rna_gene_id_candidates(raw)
+        candidates = (
+            [exact.get(value) for value in identifiers]
+            + [normalized.get(_strip_version(value)) for value in identifiers]
+            + [names.get(value) for value in identifiers]
+        )
         index = next((candidate for candidate in candidates if candidate is not None), None)
         if index is None:
             records.append(
@@ -159,7 +177,11 @@ def main() -> None:
         "genes": len(manifest),
         "matched": int(manifest.matched.sum()),
         "coverage": coverage,
-        "matching_order": ["exact gene_id", "version-stripped gene_id", "unique gene_name"],
+        "matching_order": [
+            "exact gene_id (including semicolon-delimited RNA label fields)",
+            "version-stripped gene_id",
+            "unique gene_name",
+        ],
         "output": str(output),
         "output_sha256": sha256(output),
     }
