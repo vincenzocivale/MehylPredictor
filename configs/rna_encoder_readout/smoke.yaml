@@ -1,0 +1,41 @@
+run_name: smoke_mean_layer2
+output_dir: artifacts/rna_encoder_readout/smoke
+
+token_cache:
+  path: artifacts/rna_encoder_readout/cache/bulkrnabert_smoke.h5
+  layers: [2, 3]
+
+rna:
+  path: artifacts/rna_branch/pretrained/inputs/tcga_rna_full_gene.h5
+
+model:
+  kind: mean
+  primary_layer: 2
+  output_dim: 256
+  hidden_dim: 64
+  num_heads: 4
+  num_queries: 1
+  dropout: 0.0
+
+objective:
+  target_gene_count: 256
+  total_weight: 1.0
+  within_weight: 1.0
+  consistency_weight: 0.0
+  input_target_overlap_allowed: false
+
+training:
+  seed: 17
+  batch_size: 8
+  num_workers: 0
+  epochs: 2
+  learning_rate: 0.001
+  weight_decay: 0.0
+  gradient_clip_norm: 1.0
+  patience: 2
+  min_delta: 0.0
+  device: auto
+  mixed_precision: true
+  warm_start_checkpoint: null
+  warm_start_mode: decoder_only
+  seed_initial_checkpoint: true

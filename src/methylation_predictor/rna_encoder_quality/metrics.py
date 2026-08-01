@@ -138,7 +138,8 @@ def _neighbors(x: np.ndarray, k: int) -> np.ndarray:
     if n < 2:
         return np.empty((n, 0), dtype=np.int64)
     k = min(k, n - 1)
-    model = NearestNeighbors(n_neighbors=k + 1, metric="euclidean")
+    n_neighbors = min(k + 1, n - 1)  # sklearn requires n_neighbors < n
+    model = NearestNeighbors(n_neighbors=n_neighbors, metric="euclidean")
     indices = model.fit(x).kneighbors(return_distance=False)
     return indices[:, 1:]
 

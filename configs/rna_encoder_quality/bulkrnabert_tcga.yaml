@@ -8,7 +8,7 @@ embeddings:
   layers:
     # Re-extractions made with this patch also contain the pre-Transformer
     # control: uncomment after confirming embeddings_layer0 exists.
-    # layer0: embeddings_layer0
+    layer0: embeddings_layer0
     layer1: embeddings_layer1
     layer2: embeddings_layer2
     layer3: embeddings_layer3
@@ -46,19 +46,68 @@ analysis:
   allow_partial_overlap: false
 
 # Enable after re-extracting with --token-sample-output (see docs).
-# token_embeddings:
-#   path: artifacts/rna_encoder_quality/inputs/bulkrnabert_token_sample.h5
-#   sample_ids_key: sample_idx
-#   gene_ids_key: gene_ids
-#   expression_key: expression_log2p1
-#   token_ids_key: token_ids
-#   layers:
-#     layer0: tokens_layer0
-#     layer1: tokens_layer1
-#     layer2: tokens_layer2
-#     layer3: tokens_layer3
-#     layer4: tokens_layer4
+token_embeddings:
+  path: artifacts/rna_encoder_quality/inputs/bulkrnabert_token_sample.h5
+  sample_ids_key: sample_idx
+  gene_ids_key: gene_ids
+  expression_key: expression_log2p1
+  token_ids_key: token_ids
+  layers:
+    layer0: tokens_layer0
+    layer1: tokens_layer1
+    layer2: tokens_layer2
+    layer3: tokens_layer3
+    layer4: tokens_layer4
+stability_views:
+  - path: artifacts/rna_encoder_quality/technical_views/multinomial_50pct_embeddings.h5
+    name: multinomial_50pct
+    layers:
+      layer0: embeddings_layer0
+      layer1: embeddings_layer1
+      layer2: embeddings_layer2
+      layer3: embeddings_layer3
+      layer4: embeddings_layer4
+  - path: artifacts/rna_encoder_quality/technical_views/gene_dropout_5pct_embeddings.h5
+    name: gene_dropout_5pct
+    layers:
+      layer0: embeddings_layer0
+      layer1: embeddings_layer1
+      layer2: embeddings_layer2
+      layer3: embeddings_layer3
+      layer4: embeddings_layer4
 
-token_embeddings: null
-stability_views: []
-perturbation_views: []
+perturbation_views:
+  - path: artifacts/rna_encoder_quality/module_perturbations/extract_hallmark_hypoxia_embeddings.h5
+    name: hallmark_hypoxia
+    control: hallmark_hypoxia_random
+    layers:
+      layer0: embeddings_layer0
+      layer1: embeddings_layer1
+      layer2: embeddings_layer2
+      layer3: embeddings_layer3
+      layer4: embeddings_layer4
+  - path: artifacts/rna_encoder_quality/module_perturbations/extract_hallmark_hypoxia_random_matched_embeddings.h5
+    name: hallmark_hypoxia_random
+    layers:
+      layer0: embeddings_layer0
+      layer1: embeddings_layer1
+      layer2: embeddings_layer2
+      layer3: embeddings_layer3
+      layer4: embeddings_layer4
+  - path: artifacts/rna_encoder_quality/module_perturbations/extract_hallmark_e2f_targets_embeddings.h5
+    name: hallmark_e2f_targets
+    control: hallmark_e2f_targets_random
+    layers:
+      layer0: embeddings_layer0
+      layer1: embeddings_layer1
+      layer2: embeddings_layer2
+      layer3: embeddings_layer3
+      layer4: embeddings_layer4
+  - path: artifacts/rna_encoder_quality/module_perturbations/extract_hallmark_e2f_targets_random_matched_embeddings.h5
+    name: hallmark_e2f_targets_random
+    layers:
+      layer0: embeddings_layer0
+      layer1: embeddings_layer1
+      layer2: embeddings_layer2
+      layer3: embeddings_layer3
+      layer4: embeddings_layer4
