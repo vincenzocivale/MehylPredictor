@@ -16,6 +16,16 @@ import numpy as np
 import torch
 
 
+def atomic_torch_save(obj: Any, path: str | Path) -> None:
+    """torch.save via temp-file + os.replace so a crash mid-write never leaves
+    a corrupt checkpoint at `path` (os.replace is atomic on the same filesystem)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)

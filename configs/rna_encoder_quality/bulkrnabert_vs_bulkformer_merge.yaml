@@ -1,0 +1,23 @@
+# Build the only two sample-level representations admitted to the primary
+# comparison. Do not add alternative pooling variants after inspecting results.
+output: artifacts/rna_encoder_quality/bulkrnabert_vs_bulkformer/embeddings.h5
+sources:
+  bulkrnabert:
+    path: artifacts/rna_branch/pretrained/bulkrnabert_gtex_encode_v2.h5
+    row_ids_key: sample_idx
+    datasets:
+      # Best frozen BulkRNABert readout locked before the BulkFormer comparison.
+      concat_means:
+        keys:
+          - embeddings_layer0
+          - embeddings_layer1
+          - embeddings_layer2
+          - embeddings_layer3
+          - embeddings_layer4
+        transform: concat
+  bulkformer147m:
+    path: artifacts/rna_branch/pretrained/bulkformer_147m_tcga.h5
+    row_ids_key: sample_idx
+    datasets:
+      # Exact interested-gene mean used by the official feature-extraction notebook.
+      official_mean: official_mean

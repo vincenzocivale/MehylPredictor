@@ -19,6 +19,15 @@ class RNARepresentation:
     token_keys: torch.Tensor | None = None
 
 
+@dataclass
+class FactorizedLocusState:
+    """Locus-only tensors that can be cached across arbitrary patient batches."""
+
+    factors: torch.Tensor
+    gate: torch.Tensor
+    prior_logit: torch.Tensor
+
+
 def _activation(name: str) -> nn.Module:
     if name == "gelu":
         return nn.GELU()
@@ -656,10 +665,17 @@ class BilinearInteraction(Interaction):
         self.locus_projection = nn.Sequential(nn.LayerNorm(locus_dim), nn.Dropout(dropout), nn.Linear(locus_dim, interaction_dim))
         self.scale = math.sqrt(interaction_dim)
 
+    def project_rna(self, rna: RNARepresentation) -> torch.Tensor:
+        return self.rna_projection(rna.global_vector)
+
+    def project_loci(self, loci: torch.Tensor) -> torch.Tensor:
+        return self.locus_projection(loci)
+
+    def combine(self, patient_factors: torch.Tensor, locus_factors: torch.Tensor) -> torch.Tensor:
+        return patient_factors @ locus_factors.transpose(0, 1) / self.scale
+
     def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
-        p = self.rna_projection(rna.global_vector)
-        q = self.locus_projection(loci)
-        return p @ q.transpose(0, 1) / self.scale
+        return self.combine(self.project_rna(rna), self.project_loci(loci))
 
     def zero_output(self) -> None:
         nn.init.zeros_(self.locus_projection[-1].weight)
@@ -868,6 +884,28 @@ class ConcatInteraction(Interaction):
     def zero_output(self) -> None:
         nn.init.zeros_(self.network[-1].weight)
         nn.init.zeros_(self.network[-1].bias)
+
+
+class BilinearConcatResidualInteraction(Interaction):
+    """Sum of a bilinear GEMM term and a ConcatInteraction (F2) term.
+
+    Matches BetweenWithinBilinear's convention: zero_output() zeroes both
+    constituents together, so under model.zero_init_residual (the project
+    default) this starts at pure prior, same initial point as every other
+    matched-seed screen run -- not pre-loaded with either branch's solo
+    solution."""
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
+        super().__init__()
+        self.bilinear = BilinearInteraction(rna_dim, locus_dim, hidden_dim, dropout)
+        self.residual = ConcatInteraction(rna_dim, locus_dim, hidden_dim, dropout)
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        return self.bilinear(rna, loci) + self.residual(rna, loci)
+
+    def zero_output(self) -> None:
+        self.bilinear.zero_output()
+        self.residual.zero_output()
 
 
 class FiLMInteraction(Interaction):
@@ -1282,6 +1320,10 @@ class ResidualMethylationModel(nn.Module):
             )
         elif interaction.kind == "concat":
             self.interaction = ConcatInteraction(encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout)
+        elif interaction.kind == "bilinear_concat_residual":
+            self.interaction = BilinearConcatResidualInteraction(
+                encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout
+            )
         elif interaction.kind == "raw_concat":
             self.interaction = RawConcatInteraction(encoder.latent_dim, locus_dim, interaction.hidden_dim, interaction.dropout)
         elif interaction.kind == "film":
@@ -1345,6 +1387,77 @@ class ResidualMethylationModel(nn.Module):
         if config.zero_init_residual:
             self.interaction.zero_output()
 
+    @property
+    def supports_factorized_inference(self) -> bool:
+        """Whether patient and locus towers can be evaluated and cached independently."""
+        return isinstance(self.interaction, BilinearInteraction)
+
+    def encode_patient_factors(
+        self,
+        rna: torch.Tensor,
+        reference_rna: torch.Tensor | None = None,
+        reference_factors: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Encode a patient batch once for reuse against any number of loci."""
+        if not isinstance(self.interaction, BilinearInteraction):
+            raise RuntimeError("factorized patient encoding requires a bilinear interaction")
+        if self.config.anchor_to_mean_rna and reference_factors is None:
+            if reference_rna is None:
+                reference_rna = torch.zeros((1, rna.shape[1]), dtype=rna.dtype, device=rna.device)
+            if reference_rna.shape[0] != 1:
+                raise ValueError("reference_rna must contain exactly one reference profile")
+            # One joint tower call is cheaper than encoding the patient batch and
+            # reference separately, and preserves a single matrix-oriented forward.
+            joint = torch.cat([rna, reference_rna], dim=0)
+            joint_factors = self.interaction.project_rna(self.rna_encoder(joint))
+            return joint_factors[:-1] - joint_factors[-1:]
+
+        patient_factors = self.interaction.project_rna(self.rna_encoder(rna))
+        if self.config.anchor_to_mean_rna:
+            assert reference_factors is not None
+            patient_factors = patient_factors - reference_factors
+        return patient_factors
+
+    def encode_reference_factors(self, reference_rna: torch.Tensor) -> torch.Tensor:
+        if not isinstance(self.interaction, BilinearInteraction):
+            raise RuntimeError("factorized reference encoding requires a bilinear interaction")
+        return self.interaction.project_rna(self.rna_encoder(reference_rna))
+
+    def encode_locus_factors(
+        self,
+        loci: torch.Tensor,
+        prior: torch.Tensor,
+        variability: torch.Tensor,
+    ) -> FactorizedLocusState:
+        """Encode locus-only quantities once for reuse across patient batches."""
+        if not isinstance(self.interaction, BilinearInteraction):
+            raise RuntimeError("factorized locus encoding requires a bilinear interaction")
+        prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
+        return FactorizedLocusState(
+            factors=self.interaction.project_loci(loci),
+            gate=self.gate(loci, variability),
+            prior_logit=torch.logit(prior),
+        )
+
+    def predict_from_factors(
+        self,
+        patient_factors: torch.Tensor,
+        locus_state: FactorizedLocusState,
+    ) -> dict[str, torch.Tensor]:
+        """Predict a complete patient x locus block with one matrix multiplication."""
+        if not isinstance(self.interaction, BilinearInteraction):
+            raise RuntimeError("factorized prediction requires a bilinear interaction")
+        raw = self.interaction.combine(patient_factors, locus_state.factors)
+        delta_logit = raw * locus_state.gate.unsqueeze(0)
+        beta = torch.sigmoid(locus_state.prior_logit.unsqueeze(0) + delta_logit)
+        return {
+            "beta": beta,
+            "delta_logit": delta_logit,
+            "raw_delta_logit": raw,
+            "gate": locus_state.gate,
+            "prior_logit": locus_state.prior_logit,
+        }
+
     def forward(
         self,
         rna: torch.Tensor,
@@ -1355,6 +1468,14 @@ class ResidualMethylationModel(nn.Module):
         cancer_codes: torch.Tensor | None = None,
         cancer_centroids: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
+        # The production bilinear model can be evaluated as two independent towers
+        # followed by one GEMM. This avoids recomputing the locus projection for the
+        # anchored reference and exposes cacheable inference without changing weights.
+        if isinstance(self.interaction, BilinearInteraction):
+            patient_factors = self.encode_patient_factors(rna, reference_rna)
+            locus_state = self.encode_locus_factors(loci, prior, variability)
+            return self.predict_from_factors(patient_factors, locus_state)
+
         representation = self.rna_encoder(rna)
         components: dict[str, torch.Tensor] = {}
         if self.config.interaction.kind == "between_within":

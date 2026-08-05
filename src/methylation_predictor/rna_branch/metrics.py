@@ -22,15 +22,29 @@ def _mae(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.mean(np.abs(x - y))) if len(x) else float("nan")
 
 
-def _pearson(x: np.ndarray, y: np.ndarray) -> float:
+def _subsample_pair(x: np.ndarray, y: np.ndarray, max_n: int | None, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    """Random subsample for large-N correlation estimates -- standard error of
+    Pearson/Spearman r shrinks as 1/sqrt(n), so at max_n>=1e6 the subsampled
+    estimate is statistically indistinguishable from the full-array one while
+    being >>100x cheaper. max_n=None (default everywhere except explicit opt-in)
+    preserves exact prior behaviour."""
+    if max_n is None or len(x) <= max_n:
+        return x, y
+    idx = np.random.default_rng(seed).choice(len(x), size=max_n, replace=False)
+    return x[idx], y[idx]
+
+
+def _pearson(x: np.ndarray, y: np.ndarray, max_n: int | None = None, seed: int = 0) -> float:
     x, y = _valid_pair(x, y)
+    x, y = _subsample_pair(x, y, max_n, seed)
     if len(x) < 2 or np.std(x) == 0 or np.std(y) == 0:
         return float("nan")
     return float(np.corrcoef(x, y)[0, 1])
 
 
-def _spearman(x: np.ndarray, y: np.ndarray) -> float:
+def _spearman(x: np.ndarray, y: np.ndarray, max_n: int | None = None, seed: int = 0) -> float:
     x, y = _valid_pair(x, y)
+    x, y = _subsample_pair(x, y, max_n, seed)
     if len(x) < 2 or np.std(x) == 0 or np.std(y) == 0:
         return float("nan")
     statistic = spearmanr(x, y).statistic
@@ -137,7 +151,23 @@ def evaluate_predictions(
     prior: np.ndarray,
     cancer_types: np.ndarray,
     cpg_tertiles: np.ndarray | None = None,
+    include_median_correlations: bool = True,
+    correlation_max_n: int | None = None,
 ) -> dict[str, object]:
+    """include_median_correlations=False skips the four *_dynamic_{pearson,spearman}_median
+    diagnostics (a per-row/per-column Python loop over scipy calls -- O(n_samples + n_cpgs)
+    calls, expensive at genome-wide scale with many samples). mse/skill_vs_prior and every
+    other field are unaffected; use this for large batch comparisons where those four
+    per-model diagnostics aren't needed (they're still available from any run that already
+    computed them with the default True).
+
+    correlation_max_n subsamples (fixed seed, reproducible) the full-array
+    dynamic_pearson/dynamic_spearman/within_cancer_pearson/within_cancer_spearman
+    calls above that size -- measured cost at genome-wide scale (~219M valid
+    entries): dynamic_spearman alone ~108s (full-array O(n log n) rank).
+    Standard error of r shrinks as 1/sqrt(n), so e.g. max_n=2_000_000 is
+    statistically indistinguishable from the exact value while being >100x
+    cheaper. Default None preserves the exact value for all existing callers."""
     target = np.asarray(target, dtype=np.float64)
     prediction = np.asarray(prediction, dtype=np.float64)
     prior = np.asarray(prior, dtype=np.float64)
@@ -218,23 +248,27 @@ def evaluate_predictions(
         "prior_mse": prior_mse,
         "skill_vs_prior": _safe_skill(model_mse, prior_mse),
         "dynamic_skill": _safe_skill(dynamic_mse, dynamic_baseline_mse),
-        "dynamic_pearson": _pearson(pred_centred, true_centred),
-        "dynamic_spearman": _spearman(pred_centred, true_centred),
-        "patient_dynamic_pearson_median": _median_axis_correlation(
-            pred_dynamic, true_dynamic, axis=1, statistic=_pearson
+        "dynamic_pearson": _pearson(pred_centred, true_centred, max_n=correlation_max_n),
+        "dynamic_spearman": _spearman(pred_centred, true_centred, max_n=correlation_max_n),
+        "patient_dynamic_pearson_median": (
+            _median_axis_correlation(pred_dynamic, true_dynamic, axis=1, statistic=_pearson)
+            if include_median_correlations else None
         ),
-        "patient_dynamic_spearman_median": _median_axis_correlation(
-            pred_dynamic, true_dynamic, axis=1, statistic=_spearman
+        "patient_dynamic_spearman_median": (
+            _median_axis_correlation(pred_dynamic, true_dynamic, axis=1, statistic=_spearman)
+            if include_median_correlations else None
         ),
-        "locus_dynamic_pearson_median": _median_axis_correlation(
-            pred_dynamic, true_dynamic, axis=0, statistic=_pearson
+        "locus_dynamic_pearson_median": (
+            _median_axis_correlation(pred_dynamic, true_dynamic, axis=0, statistic=_pearson)
+            if include_median_correlations else None
         ),
-        "locus_dynamic_spearman_median": _median_axis_correlation(
-            pred_dynamic, true_dynamic, axis=0, statistic=_spearman
+        "locus_dynamic_spearman_median": (
+            _median_axis_correlation(pred_dynamic, true_dynamic, axis=0, statistic=_spearman)
+            if include_median_correlations else None
         ),
         "within_cancer_skill": _safe_skill(within_mse, within_baseline_mse),
-        "within_cancer_pearson": _pearson(pred_within, true_within),
-        "within_cancer_spearman": _spearman(pred_within, true_within),
+        "within_cancer_pearson": _pearson(pred_within, true_within, max_n=correlation_max_n),
+        "within_cancer_spearman": _spearman(pred_within, true_within, max_n=correlation_max_n),
         "dynamic_calibration_alpha": alpha,
         "dynamic_amplitude_ratio": amplitude_ratio,
         "sample_win_fraction": float(np.nanmean(sample_model_mse < sample_prior_mse)),

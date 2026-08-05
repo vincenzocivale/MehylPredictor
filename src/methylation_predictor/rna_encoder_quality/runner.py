@@ -53,6 +53,21 @@ def _representations(data: AlignedData, config: QualityConfig) -> dict[str, np.n
     train = data.split_indices["train"]
     rna = _standardize_from_train(data.rna_selected, train)
     output = {f"encoder_{name}": values.astype(np.float32) for name, values in data.embeddings.items()}
+
+    # Probe capacity must not depend on the native embedding width.  Every encoder
+    # is therefore also evaluated after a train-only PCA projection to the same
+    # dimensionality.  Native representations remain available as a sensitivity
+    # analysis, but the matched representation is the preregistered primary one.
+    for name, values in data.embeddings.items():
+        values = _standardize_from_train(values, train)
+        for requested in config.analysis.matched_encoder_dimensions:
+            n_components = min(int(requested), len(train) - 1, values.shape[1])
+            if n_components < 1:
+                continue
+            model = PCA(n_components=n_components, svd_solver="randomized", random_state=config.analysis.seed)
+            model.fit(values[train])
+            output[f"encoder_{name}__pca{n_components}"] = model.transform(values).astype(np.float32)
+
     for dimension in config.analysis.pca_dimensions:
         n_components = min(int(dimension), len(train) - 1, rna.shape[1])
         if n_components < 1:
@@ -120,6 +135,9 @@ def _reconstruction(data: AlignedData, representations: dict[str, np.ndarray], c
             result = fit_ridge_probe(
                 values[train], values[validation], values[test],
                 target[train], target[validation], target[test], config.analysis.ridge_alphas,
+                cv_folds=config.analysis.ridge_cv_folds,
+                seed=config.analysis.seed,
+                cv_groups=data.cancer_types[train],
             )
             records.append({"representation": representation, "target": target_name, **asdict(result)})
     return pd.DataFrame.from_records(records)
@@ -199,6 +217,88 @@ def _token_quality(data: AlignedData, config: QualityConfig) -> pd.DataFrame:
     )
 
 
+def _encoder_ranking(
+    config: QualityConfig,
+    reconstruction: pd.DataFrame,
+    neighborhood: pd.DataFrame,
+    geometry: pd.DataFrame,
+) -> pd.DataFrame:
+    suffix = f"__pca{config.analysis.primary_encoder_dimension}"
+    primary = reconstruction[
+        reconstruction["representation"].str.startswith("encoder_")
+        & reconstruction["representation"].str.endswith(suffix)
+        & (reconstruction["target"] == "within_cancer_rna")
+    ].copy()
+    if primary.empty:
+        raise ValueError(
+            "no encoder representation matches the preregistered dimension "
+            f"{config.analysis.primary_encoder_dimension}; check native widths and "
+            "analysis.matched_encoder_dimensions"
+        )
+    primary = primary.rename(columns={
+        "train_cv_global_r2": "within_cancer_train_cv_global_r2",
+        "train_cv_mean_gene_pearson": "within_cancer_train_cv_mean_gene_pearson",
+        "validation_global_r2": "within_cancer_validation_global_r2",
+        "validation_mean_gene_pearson": "within_cancer_validation_mean_gene_pearson",
+        "global_r2": "within_cancer_test_global_r2",
+        "variance_weighted_r2": "within_cancer_test_variance_weighted_r2",
+        "median_gene_r2": "within_cancer_test_median_gene_r2",
+        "mean_gene_pearson": "within_cancer_test_mean_gene_pearson",
+    })
+    keep = [
+        "representation", "alpha", "train_cv_mse", "validation_mse", "test_mse",
+        "within_cancer_train_cv_global_r2", "within_cancer_train_cv_mean_gene_pearson",
+        "within_cancer_validation_global_r2", "within_cancer_validation_mean_gene_pearson",
+        "within_cancer_test_global_r2", "within_cancer_test_variance_weighted_r2",
+        "within_cancer_test_median_gene_r2", "within_cancer_test_mean_gene_pearson",
+    ]
+    ranking = primary[keep]
+    total = reconstruction[
+        reconstruction["representation"].isin(ranking["representation"])
+        & (reconstruction["target"] == "total_rna")
+    ][[
+        "representation", "train_cv_global_r2", "validation_global_r2", "global_r2",
+        "train_cv_mean_gene_pearson", "validation_mean_gene_pearson", "mean_gene_pearson",
+    ]].rename(columns={
+        "train_cv_global_r2": "total_rna_train_cv_global_r2",
+        "validation_global_r2": "total_rna_validation_global_r2",
+        "global_r2": "total_rna_test_global_r2",
+        "train_cv_mean_gene_pearson": "total_rna_train_cv_mean_gene_pearson",
+        "validation_mean_gene_pearson": "total_rna_validation_mean_gene_pearson",
+        "mean_gene_pearson": "total_rna_test_mean_gene_pearson",
+    })
+    ranking = ranking.merge(total, on="representation", how="left")
+    if not neighborhood.empty:
+        ranking = ranking.merge(neighborhood, on="representation", how="left")
+    test_geometry = (
+        geometry[geometry["split"] == "test"].copy()
+        if not geometry.empty and "split" in geometry.columns
+        else pd.DataFrame()
+    )
+    if not test_geometry.empty:
+        columns = [
+            "representation", "effective_rank", "within_cancer_effective_rank",
+            "between_within_ratio", "variance_top10",
+        ]
+        ranking = ranking.merge(test_geometry[columns], on="representation", how="left")
+    ranking = ranking.sort_values(
+        [
+            "within_cancer_train_cv_global_r2",
+            "within_cancer_validation_global_r2",
+            "within_cancer_train_cv_mean_gene_pearson",
+        ],
+        ascending=False,
+    ).reset_index(drop=True)
+    ranking.insert(0, "rank", np.arange(1, len(ranking) + 1))
+    validation_order = ranking.sort_values(
+        ["within_cancer_validation_global_r2", "within_cancer_validation_mean_gene_pearson"],
+        ascending=False,
+    )["representation"].tolist()
+    cv_order = ranking["representation"].tolist()
+    ranking["validation_confirms_cv_winner"] = bool(validation_order and cv_order and validation_order[0] == cv_order[0])
+    return ranking
+
+
 def _summary(
     config: QualityConfig,
     geometry: pd.DataFrame,
@@ -207,16 +307,27 @@ def _summary(
     stability: pd.DataFrame,
     perturbations: pd.DataFrame,
     token_quality: pd.DataFrame,
+    ranking: pd.DataFrame,
 ) -> dict[str, Any]:
-    encoder_rows = reconstruction[reconstruction["representation"].str.startswith("encoder_")]
-    best_within = encoder_rows[encoder_rows["target"] == "within_cancer_rna"].sort_values("global_r2", ascending=False)
-    best_total = encoder_rows[encoder_rows["target"] == "total_rna"].sort_values("global_r2", ascending=False)
+    winner = None if ranking.empty else ranking.iloc[0]
     return {
         "run_name": config.run_name,
-        "best_encoder_layer_within_cancer": None if best_within.empty else best_within.iloc[0]["representation"],
-        "best_encoder_within_cancer_global_r2": None if best_within.empty else float(best_within.iloc[0]["global_r2"]),
-        "best_encoder_layer_total_rna": None if best_total.empty else best_total.iloc[0]["representation"],
-        "best_encoder_total_rna_global_r2": None if best_total.empty else float(best_total.iloc[0]["global_r2"]),
+        "selection_rule": (
+            f"highest training-CV within-cancer RNA global R2 after train-only PCA to "
+            f"{config.analysis.primary_encoder_dimension} dimensions; validation is confirmation only; "
+            "test is exploratory"
+        ),
+        "best_encoder": None if winner is None else str(winner["representation"]),
+        "best_encoder_train_cv_within_cancer_global_r2": None if winner is None else float(
+            winner["within_cancer_train_cv_global_r2"]
+        ),
+        "best_encoder_validation_within_cancer_global_r2": None if winner is None else float(
+            winner["within_cancer_validation_global_r2"]
+        ),
+        "best_encoder_test_within_cancer_global_r2_exploratory": None if winner is None else float(
+            winner["within_cancer_test_global_r2"]
+        ),
+        "validation_confirms_cv_winner": None if winner is None else bool(winner["validation_confirms_cv_winner"]),
         "geometry_rows": int(len(geometry)),
         "reconstruction_rows": int(len(reconstruction)),
         "neighborhood_rows": int(len(neighborhood)),
@@ -226,29 +337,39 @@ def _summary(
     }
 
 
-def _report(summary: dict[str, Any], reconstruction: pd.DataFrame, output: Path) -> None:
+def _report(summary: dict[str, Any], ranking: pd.DataFrame, reconstruction: pd.DataFrame, output: Path) -> None:
     lines = [
         f"# RNA encoder quality — {summary['run_name']}",
         "",
         "This audit is transcriptome-only: it does not load methylation targets, CpG embeddings, an F2 checkpoint, or a methylation regressor.",
         "",
+        "## Preregistered decision rule",
+        "",
+        summary["selection_rule"],
+        "",
         "## Primary result",
         "",
-        f"- Best frozen encoder layer for within-cancer RNA reconstruction: `{summary['best_encoder_layer_within_cancer']}` "
-        f"(test global R² `{summary['best_encoder_within_cancer_global_r2']}`).",
-        f"- Best frozen encoder layer for total RNA reconstruction: `{summary['best_encoder_layer_total_rna']}` "
-        f"(test global R² `{summary['best_encoder_total_rna_global_r2']}`).",
+        f"- Best frozen encoder representation: `{summary['best_encoder']}`.",
+        f"- Training-CV within-cancer global R²: `{summary['best_encoder_train_cv_within_cancer_global_r2']}`.",
+        f"- Validation within-cancer global R²: `{summary['best_encoder_validation_within_cancer_global_r2']}`.",
+        f"- Validation confirms the CV winner: `{summary['validation_confirms_cv_winner']}`.",
+        f"- Test within-cancer global R² (exploratory): `{summary['best_encoder_test_within_cancer_global_r2_exploratory']}`.",
         "",
-        "## Reconstruction table",
+        "## Matched encoder ranking",
+        "",
+        "```csv",
+        ranking.to_csv(index=False).strip(),
+        "```",
+        "",
+        "## Complete reconstruction table",
         "",
         "```csv",
         reconstruction.sort_values(["target", "global_r2"], ascending=[True, False]).to_csv(index=False).strip(),
         "```",
         "",
-        "See `geometry.csv`, `cka.csv`, `neighborhood.csv`, `stability.csv`, `perturbation.csv`, and `token_quality.csv` for the complementary audits.",
+        "Native-width and test results are sensitivity analyses. The winner is determined only from training-CV on the matched-dimensionality rows in `encoder_ranking.csv`; validation may confirm or reject transportability but is never used to tune the Ridge penalty.",
     ]
     output.write_text("\n".join(lines) + "\n")
-
 
 def validate_inputs(config: QualityConfig) -> dict[str, Any]:
     data = load_aligned_data(config)
@@ -307,7 +428,9 @@ def run_quality_audit(config_path: str | Path) -> Path:
     perturbations.to_csv(output / "perturbation.csv", index=False)
     token_quality.to_csv(output / "token_quality.csv", index=False)
 
-    summary = _summary(config, geometry, reconstruction, neighborhood, stability, perturbations, token_quality)
+    ranking = _encoder_ranking(config, reconstruction, neighborhood, geometry)
+    ranking.to_csv(output / "encoder_ranking.csv", index=False)
+    summary = _summary(config, geometry, reconstruction, neighborhood, stability, perturbations, token_quality, ranking)
     _write_json(output / "summary.json", summary)
     manifest = {
         "config": str(config_path),
@@ -334,5 +457,5 @@ def run_quality_audit(config_path: str | Path) -> Path:
         manifest["token_embedding_path"] = config.token_embeddings.path
         manifest["token_embedding_sha256"] = _sha256(config.token_embeddings.path)
     _write_json(output / "manifest.json", manifest)
-    _report(summary, reconstruction, output / "report.md")
+    _report(summary, ranking, reconstruction, output / "report.md")
     return output

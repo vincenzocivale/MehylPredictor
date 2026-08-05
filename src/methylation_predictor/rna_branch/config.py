@@ -117,7 +117,8 @@ class InteractionConfig:
     kind: str = "bilinear"
     # bilinear|interaction_mlp|multihead_bilinear|between_within|concat|raw_concat|film|
     # film_locus|cross_attention|linear_token_cross_attention|concat_only|product_only|
-    # concat_product_linear|gene_token_cross_attention|cpg_expert_f2|cpg_module_f2|cpg_gene_topk_f2
+    # concat_product_linear|gene_token_cross_attention|cpg_expert_f2|cpg_module_f2|cpg_gene_topk_f2|
+    # cpg_pretrained_f2|bilinear_concat_residual
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
@@ -165,6 +166,10 @@ class TrainingConfig:
     weight_decay: float = 1e-4
     gradient_clip_norm: float = 1.0
     amp: bool = True
+    amp_dtype: str = "bfloat16"  # float16|bfloat16
+    allow_tf32: bool = True
+    matmul_precision: str = "high"  # highest|high|medium
+    fused_adamw: bool = True
     patience: int = 15
     min_delta: float = 1e-5
     num_workers: int = 0
@@ -177,7 +182,15 @@ class TrainingConfig:
     validation_max_cpgs: int | None = 512
     min_epochs: int = 0
     save_every_epoch: bool = False
-    cpg_sampling: str = "uniform"  # uniform|balanced_tertiles
+    cpg_sampling: str = "uniform"  # uniform|balanced_tertiles|full_coverage
+    # "best" (default): best.pt is overwritten only when checkpoint_metric improves
+    # (standard early-stopping selection). "final": every validation epoch
+    # overwrites best.pt unconditionally and resets the patience counter -- used
+    # for a final refit trained for a fixed, externally-chosen epoch count where
+    # early stopping must be structurally unreachable (e.g. re-running a
+    # development-selected best_epoch on the full training pool without ever
+    # touching held-out data again).
+    checkpoint_selection: str = "best"  # best|final
     residual_learning_rate: float | None = None
     warm_start_checkpoint: str | None = None
     freeze_backbone_epochs: int = 0
@@ -213,12 +226,28 @@ class EvaluationConfig:
 
 
 @dataclass(slots=True)
+class TrackingConfig:
+    backend: str = "none"  # none|wandb
+    project: str = "MethylationPredictor"
+    entity: str | None = None
+    group: str | None = None
+    name: str | None = None
+    job_type: str = "train"
+    tags: list[str] = field(default_factory=list)
+    mode: str = "online"  # online|offline|disabled
+    log_every_steps: int = 25
+    watch_model: bool = False
+    log_checkpoint: bool = True
+
+
+@dataclass(slots=True)
 class RunConfig:
     data: DataConfig
     model: ModelConfig = field(default_factory=ModelConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
     output_dir: str = "artifacts/rna_branch/screening/default"
     run_name: str = "rna_branch"
 
@@ -268,6 +297,7 @@ def load_config(path: str | Path) -> RunConfig:
         loss=LossConfig(**raw.get("loss", {})),
         training=TrainingConfig(**raw.get("training", {})),
         evaluation=EvaluationConfig(**raw.get("evaluation", {})),
+        tracking=TrackingConfig(**raw.get("tracking", {})),
         output_dir=raw.get("output_dir", "artifacts/rna_branch/screening/default"),
         run_name=raw.get("run_name", path.stem),
     )

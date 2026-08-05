@@ -74,12 +74,15 @@ class AnalysisSpec:
     pca_dimensions: tuple[int, ...] = (64, 256)
     random_projection_dim: int = 256
     ridge_alphas: tuple[float, ...] = (0.01, 0.1, 1.0, 10.0, 100.0)
+    ridge_cv_folds: int = 5
     knn_k: int = 15
     pair_sample_count: int = 50_000
     geometry_splits: tuple[str, ...] = ("train", "validation", "test", "all")
     token_ridge_alphas: tuple[float, ...] = (0.01, 0.1, 1.0, 10.0)
     token_global_pc_count: int = 8
     allow_partial_overlap: bool = False
+    matched_encoder_dimensions: tuple[int, ...] = (256,)
+    primary_encoder_dimension: int = 256
 
 
 @dataclass(slots=True)
@@ -151,12 +154,15 @@ def _analysis(data: dict[str, Any] | None) -> AnalysisSpec:
         pca_dimensions=tuple(int(x) for x in _tuple(data.get("pca_dimensions"), (64, 256))),
         random_projection_dim=int(data.get("random_projection_dim", 256)),
         ridge_alphas=tuple(float(x) for x in _tuple(data.get("ridge_alphas"), (0.01, 0.1, 1.0, 10.0, 100.0))),
+        ridge_cv_folds=int(data.get("ridge_cv_folds", 5)),
         knn_k=int(data.get("knn_k", 15)),
         pair_sample_count=int(data.get("pair_sample_count", 50_000)),
         geometry_splits=tuple(str(x) for x in _tuple(data.get("geometry_splits"), ("train", "validation", "test", "all"))),
         token_ridge_alphas=tuple(float(x) for x in _tuple(data.get("token_ridge_alphas"), (0.01, 0.1, 1.0, 10.0))),
         token_global_pc_count=int(data.get("token_global_pc_count", 8)),
         allow_partial_overlap=bool(data.get("allow_partial_overlap", False)),
+        matched_encoder_dimensions=tuple(int(x) for x in _tuple(data.get("matched_encoder_dimensions"), (256,))),
+        primary_encoder_dimension=int(data.get("primary_encoder_dimension", 256)),
     )
 
 
@@ -210,6 +216,12 @@ def validate_config(config: QualityConfig) -> None:
         raise ValueError("analysis.chunk_size must be positive")
     if config.analysis.knn_k < 1:
         raise ValueError("analysis.knn_k must be positive")
+    if config.analysis.ridge_cv_folds < 2:
+        raise ValueError("analysis.ridge_cv_folds must be at least 2")
+    if config.analysis.primary_encoder_dimension < 1:
+        raise ValueError("analysis.primary_encoder_dimension must be positive")
+    if any(value < 1 for value in config.analysis.matched_encoder_dimensions):
+        raise ValueError("analysis.matched_encoder_dimensions must be positive")
     if not config.analysis.ridge_alphas or min(config.analysis.ridge_alphas) < 0:
         raise ValueError("analysis.ridge_alphas must contain non-negative values")
     if config.token_embeddings is not None and not config.token_embeddings.layers:

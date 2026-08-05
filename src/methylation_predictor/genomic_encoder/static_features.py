@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Build the annotated, one-row-per-CpG table for Experiment 2 (hg38)."""
+"""Build the annotated, one-row-per-CpG table for Experiment 2 (hg38).
+
+Processes one chromosome per invocation (inferred from --prior/--cpg-map,
+not hardcoded) -- run once per chromosome to cover the genome."""
 from __future__ import annotations
 
 import argparse
@@ -25,11 +28,11 @@ def fasta(path: Path) -> str:
         return "".join(line.strip() for line in f if not line.startswith(">")).upper()
 
 
-def cgi_annotations(pos: np.ndarray, path: Path) -> tuple[np.ndarray, np.ndarray]:
+def cgi_annotations(pos: np.ndarray, path: Path, chromosome: str) -> tuple[np.ndarray, np.ndarray]:
     # UCSC positions are 0-based half-open; CpG coordinates are 1-based.
     table = pd.read_csv(path, sep="\t", header=None, compression="gzip", usecols=[1, 2, 3],
                         names=["chromosome", "start", "end"])
-    table = table[table.chromosome == "chr1"].sort_values("start")
+    table = table[table.chromosome == chromosome].sort_values("start")
     starts, ends = table.start.to_numpy(), table.end.to_numpy()
     ix = np.searchsorted(starts, pos - 1, side="right") - 1
     left_distance = np.where(ix >= 0, np.maximum(0, (pos - 1) - ends[np.maximum(ix, 0)]), np.inf)
@@ -41,18 +44,18 @@ def cgi_annotations(pos: np.ndarray, path: Path) -> tuple[np.ndarray, np.ndarray
     return category, distance.astype(np.int64)
 
 
-def genes(path: Path) -> pd.DataFrame:
+def genes(path: Path, chromosome: str) -> pd.DataFrame:
     rows = []
     with gzip.open(path, "rt") as f:
         for line in f:
             if line.startswith("#"):
                 continue
             values = line.rstrip("\n").split("\t")
-            if values[0] == "chr1" and values[2] == "gene":
+            if values[0] == chromosome and values[2] == "gene":
                 rows.append((int(values[3]), int(values[4]), values[6]))
     result = pd.DataFrame(rows, columns=["start", "end", "strand"]).sort_values("start")
     if result.empty:
-        raise ValueError("No chr1 gene rows in GENCODE annotation")
+        raise ValueError(f"No {chromosome} gene rows in GENCODE annotation")
     return result
 
 
@@ -69,9 +72,9 @@ def gene_annotations(pos: np.ndarray, gene: pd.DataFrame) -> tuple[np.ndarray, n
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--prior", required=True, help="Experiment-1 training-only per-CpG prior parquet")
+    p.add_argument("--prior", required=True, help="Training-only per-CpG prior parquet (cpg_idx, mean_train)")
     p.add_argument("--cpg-map", required=True, help="Released cpg_chr_pos_df.parquet; row index is cpg_idx")
-    p.add_argument("--fasta", required=True, help="UCSC hg38 chr1.fa.gz")
+    p.add_argument("--fasta", required=True, help="UCSC hg38 single-chromosome FASTA matching --prior's chromosome")
     p.add_argument("--cpg-islands", required=True, help="UCSC hg38 cpgIslandExt.txt.gz")
     p.add_argument("--gencode-gtf", required=True, help="GENCODE v41 annotation GTF")
     p.add_argument("--output", required=True)
@@ -84,8 +87,10 @@ def main() -> None:
     loci = mapping.iloc[prior.cpg_idx.to_numpy()].reset_index(names="cpg_idx")
     if not np.array_equal(loci.cpg_idx.to_numpy(), prior.cpg_idx.to_numpy()):
         raise ValueError("cpg_idx is not the row index of the released mapping")
-    if set(loci.chr) != {"chr1"}:
-        raise ValueError("This initial builder is intentionally restricted to chr1")
+    if loci.chr.nunique() != 1:
+        raise ValueError("This builder processes exactly one chromosome per invocation (found: "
+                          f"{sorted(loci.chr.unique())}) -- run once per chromosome")
+    chromosome = loci.chr.iloc[0]
     genome, pos = fasta(Path(args.fasta)), loci.pos.to_numpy(np.int64)
     if not np.all([genome[x - 1:x + 1] == "CG" for x in pos]):
         raise ValueError("Coordinates do not match hg38 CpG dinucleotides (expected 1-based positions)")
@@ -93,12 +98,14 @@ def main() -> None:
     windows = [genome[max(0, x - 1 - r):min(len(genome), x - 1 + r + 1)] for x in pos]
     gc = np.array([(s.count("G") + s.count("C")) / len(s) for s in windows])
     density = np.array([sum(s[i:i + 2] == "CG" for i in range(len(s) - 1)) / len(s) * 100 for s in windows])
-    cgi, cgi_distance = cgi_annotations(pos, Path(args.cpg_islands))
-    region, tss_distance = gene_annotations(pos, genes(Path(args.gencode_gtf)))
+    cgi, cgi_distance = cgi_annotations(pos, Path(args.cpg_islands), chromosome)
+    region, tss_distance = gene_annotations(pos, genes(Path(args.gencode_gtf), chromosome))
     out = pd.DataFrame({"cpg_idx": prior.cpg_idx, "mean_train": prior.mean_train, "chromosome": loci.chr,
                         "position": pos, "sequence_201bp": windows, "gc_content": gc, "cpg_density_per_100bp": density,
                         "cgi_category": cgi, "distance_to_cgi_bp": cgi_distance, "tss_distance": tss_distance,
                         "genomic_region": region})
+    if "split" in prior.columns:
+        out["split"] = prior.split.to_numpy()
     if args.within_stats:
         stats = pd.read_parquet(args.within_stats, columns=["cpg_idx", "n", "gt_within_ss"])
         stats["within_cpg_variance"] = stats.gt_within_ss / stats.n

@@ -1,0 +1,125 @@
+# Stage 3A: development training for the rigorous genome-wide concat
+# protocol. Byte-identical to configs/rna_branch/tcga_genome_wide_concat.yaml
+# (the frozen concat architecture/hyperparameters) except:
+#   - data.sample_metadata/cpg_splits point at the NEW nested dev split
+#     (scripts/rna_branch/build_dev_split.py) -- 90% of official train_cpg/
+#     train_sample (relabeled "train") is the actual fit pool, 10%
+#     ("dev_heldout") is this stage's early-stopping validation, seed 17,
+#     stratified by chromosome/cancer_type. Official validation/test
+#     (= official val_cpg/val_sample) are NEVER referenced by this config.
+#   - training.cpg_sampling: full_coverage (deterministic full-CpG-coverage
+#     sampler, replacing per-step random draws -- necessary correction to
+#     support full-coverage training per constraint #1).
+#   - tracking enabled (W&B scalars only; log_checkpoint left false given
+#     the earlier epoch-47 SIGTERM history tied to inline artifact upload --
+#     see docs/tcga_matrix_model.md).
+#   - evaluation.panels emptied: real evaluation is the separate, streaming
+#     Fase 7 step, not this in-training panel loop.
+run_name: concat-genomewide-fullcoverage-seed17-dev
+output_dir: artifacts/rna_branch/concat_genomewide_fullcoverage_seed17_v1/development
+
+data:
+  rna:
+    path: /data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs/tcga_rna.h5
+    values_key: X
+    row_ids_key: sample_idx
+    col_ids_key: gene_ids
+  methylation:
+    path: /data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs/tcga_genome_wide_beta.h5
+    values_key: beta
+    row_ids_key: sample_idx
+    col_ids_key: cpg_idx
+  locus_embeddings:
+    path: /data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs/locus_embeddings.h5
+    values_key: embeddings
+    row_ids_key: cpg_idx
+  locus_features:
+    path: /data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs/locus_features.parquet
+    id_column: cpg_idx
+  sample_metadata:
+    path: /data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs_dev_seed17/sample_metadata_dev.parquet
+    id_column: sample_idx
+  cpg_splits:
+    path: /data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs_dev_seed17/cpg_split_manifest_dev.parquet
+    id_column: cpg_idx
+  rna_control: real
+  standardize_rna: true
+  clip_beta_epsilon: 1.0e-4
+
+model:
+  encoder:
+    kind: linear
+    latent_dim: 64
+    layer_norm: true
+  interaction:
+    kind: concat
+    hidden_dim: 128
+    dropout: 0.1
+  gate:
+    kind: variability
+    hidden_dim: 64
+    dropout: 0.0
+  anchor_to_mean_rna: true
+  zero_init_residual: true
+
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.1
+  residual_huber_delta: 1.0
+  shrinkage_weight: 1.0e-4
+
+training:
+  seed: 17
+  device: auto
+  epochs: 50
+  min_epochs: 10
+  # steps_per_epoch is NOT used in full_coverage mode (the sampler derives
+  # the real per-epoch step count from cpg_batch_size/sample_batch_size and
+  # the actual pool sizes -- see full_coverage_sampler.py); left at its
+  # frozen value here purely for diff-clarity against the original config.
+  steps_per_epoch: 64
+  sample_batch_size: 64
+  cpg_batch_size: 2048
+  cpg_sampling: full_coverage
+  learning_rate: 2.0e-5
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+  patience: 10
+  min_delta: 1.0e-5
+  checkpoint_metric: mse
+  checkpoint_selection: best
+  validation_every: 1
+  validation_sample_split: dev_heldout
+  validation_cpg_split: dev_heldout
+  train_sample_split: train
+  train_cpg_split: train
+  validation_max_cpgs: 1024
+  save_every_epoch: false
+
+evaluation:
+  sample_chunk_size: 128
+  cpg_chunk_size: 512
+  max_cpgs_per_panel: null
+  save_predictions: false
+  panels: {}
+
+tracking:
+  backend: wandb
+  project: MethylationPredictor
+  group: tcga-matrix-genomewide-fullcoverage
+  name: concat-genomewide-fullcoverage-seed17-dev
+  job_type: train
+  tags: ["concat", "genome-wide", "full-coverage", "stage-3a-dev", "seed17"]
+  log_every_steps: 25
+  watch_model: false
+  # Kept false during training -- an earlier run with log_checkpoint=true
+  # was SIGTERM'd twice at the same deterministic epoch, suspected cause a
+  # network stall in the inline W&B artifact upload. The checkpoint+manifest
+  # are uploaded as a W&B artifact in a separate post-hoc step instead
+  # (see `cli.py upload-artifact`).
+  log_checkpoint: false

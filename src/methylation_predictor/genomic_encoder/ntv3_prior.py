@@ -66,7 +66,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", required=True); p.add_argument("--embeddings", required=True); p.add_argument("--output-dir", required=True)
     p.add_argument("--reverse-embeddings"); p.add_argument("--representation", choices=("centre", "pool_32", "pool_128", "transformer", "multiscale"), required=True)
-    p.add_argument("--split", choices=("random", "block"), required=True); p.add_argument("--block-size", type=int, default=5_000_000); p.add_argument("--seed", type=int, default=20260728)
+    p.add_argument("--split", choices=("random", "block", "fixed"), required=True); p.add_argument("--block-size", type=int, default=5_000_000); p.add_argument("--seed", type=int, default=20260728)
     p.add_argument("--seeds", default="17,29,43"); p.add_argument("--epochs", type=int, default=500); p.add_argument("--lr", type=float, default=1e-3); p.add_argument("--weight-decay", type=float, default=1e-4); p.add_argument("--dropout", type=float, default=.1)
     p.add_argument("--validation-only", dest="include_test", action="store_false", default=True,
                    help="do not write held-out test predictions (required during configuration screening)")
