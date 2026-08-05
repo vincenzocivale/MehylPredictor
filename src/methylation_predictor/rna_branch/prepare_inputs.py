@@ -51,13 +51,18 @@ def _str_array(values) -> np.ndarray:
 REPO = Path(__file__).resolve().parents[3]
 MP_DATA = Path("/data/dataset/methylation/MethylProphetData")
 
-CPG_FEATURES = REPO / "artifacts/genomic_encoder/static_prior/tcga_val_cpg_static_features.parquet"
-CPG_SPLIT_DIR = REPO / "artifacts/genomic_encoder/ntv3_prior/split_manifests"
-EMBEDDINGS_NPZ = REPO / "artifacts/genomic_encoder/ntv3_prior/650M_post_embeddings/NTv3_650M_post_L32768_forward.npz"
-PRIOR_VAL_TEST = REPO / "artifacts/genomic_encoder/ntv3_prior/final_NTv3_650M_post/NTv3_650M_post_L32768_centre_forward/locus_predictions.parquet"
-VARIABILITY_TARGETS = REPO / "artifacts/genomic_encoder/ntv3_variability_final/block_validation/train_only_variance_targets.parquet"
-BETWEEN_METRICS = REPO / "artifacts/genomic_encoder/ntv3_variability_components/between_block/metrics.json"
-WITHIN_METRICS = REPO / "artifacts/genomic_encoder/ntv3_variability_components/within_block/metrics.json"
+GENOME_WIDE_SCRATCH = Path("/data/dataset/methylation/genomic_encoder_genome_wide_scratch")
+CPG_FEATURES = GENOME_WIDE_SCRATCH / "genome_wide_features.parquet"
+EMBEDDINGS_NPZ = GENOME_WIDE_SCRATCH / "genome_wide_embeddings_centre.npz"
+PRIOR_VAL_TEST = GENOME_WIDE_SCRATCH / "prior_probe_genome_wide/locus_predictions.parquet"
+VARIABILITY_TARGETS = GENOME_WIDE_SCRATCH / "genome_wide_targets.parquet"
+# Optional soft parity-check references (see build_variability_component); none
+# exist yet for the genome-wide between/within components specifically (Fase 5's
+# variability-probe ran --variance-component total, not per-component), so
+# these intentionally point nowhere and the check is skipped, not compared
+# against mismatched chr1-scale numbers.
+BETWEEN_METRICS = GENOME_WIDE_SCRATCH / "no_stored_between_cancer_metrics.json"
+WITHIN_METRICS = GENOME_WIDE_SCRATCH / "no_stored_within_cancer_metrics.json"
 
 SAMPLE_CANCER_TYPE = REPO / "artifacts/diagnostics/methylprophet/locus_dominance/tcga_metadata/sample_idx_cancer_type.parquet"
 OFFICIAL_TRAIN_SAMPLES = MP_DATA / "parquet/241231-tcga_array/metadata/subset_sample_split/ind_cancer/train_sample_tissue_count_with_idx.csv"
@@ -170,25 +175,22 @@ def _report_metrics(y, p) -> Metrics:
 
 def build_cpg_universe() -> pd.DataFrame:
     frame = pd.read_parquet(CPG_FEATURES, columns=["cpg_idx", "chromosome", "position", "mean_train"])
-    if (frame.chromosome != "chr1").any():
-        raise ValueError("expected chr1-only CpG universe")
     if frame.cpg_idx.duplicated().any():
         raise ValueError("duplicate cpg_idx in CpG universe")
     return frame.reset_index(drop=True)
 
 
 def build_cpg_splits(universe: pd.DataFrame) -> pd.DataFrame:
-    parts = []
-    for split in ("train", "validation", "test"):
-        part = pd.read_parquet(CPG_SPLIT_DIR / f"{split}_cpg_manifest.parquet")
-        part = part[["cpg_idx"]].copy()
-        part["split"] = split
-        parts.append(part)
-    splits = pd.concat(parts, ignore_index=True)
-    if splits.cpg_idx.duplicated().any():
-        raise ValueError("a CpG appears in more than one split")
+    # Genome-wide (all 22 autosomes): CPG_FEATURES already carries the real
+    # MethylProphet train_cpg/val_cpg-derived split (see
+    # build_genome_wide_targets.assign_methylprophet_split) as its own "split"
+    # column -- read separately from `universe` (kept split-free) so
+    # downstream `universe.merge(splits, ...)` calls never collide columns.
+    splits = pd.read_parquet(CPG_FEATURES, columns=["cpg_idx", "split"])
+    if not splits.split.isin(["train", "validation", "test"]).all():
+        raise ValueError("cpg split column contains unexpected values")
     if set(splits.cpg_idx) != set(universe.cpg_idx):
-        raise ValueError("cpg split manifests do not cover the exact CpG universe")
+        raise ValueError("cpg split column does not cover the exact CpG universe")
     return splits
 
 
@@ -342,38 +344,61 @@ def build_rna_matrix(sample_universe: pd.DataFrame, output_path: Path) -> dict:
     return {"shape": list(values.shape), "path": str(output_path)}
 
 
-def build_beta_matrix(sample_universe: pd.DataFrame, cpg_universe: pd.DataFrame, output_path: Path) -> dict:
-    wanted_cpg = set(int(c) for c in cpg_universe.cpg_idx)
+def build_beta_matrix(
+    sample_universe: pd.DataFrame, cpg_universe: pd.DataFrame, output_path: Path, cpg_chunk_size: int = 20_000,
+) -> dict:
+    """Genome-wide (408k CpGs): train_cpg-train_sample.parquet alone has ~2.7B
+    rows and our universe now genuinely spans train_cpg (unlike the old
+    chr1-val_cpg-only universe, which matched zero rows in that file) --
+    materializing one combined long table would need 40-50GB+ RAM. Instead,
+    process the CpG axis in chunks, writing each chunk directly into the
+    pre-allocated HDF5 dataset's column slice, so peak memory stays bounded
+    to one chunk's matching rows regardless of total CpG count."""
     wanted_sample = set(int(s) for s in sample_universe.sample_idx)
-    frames = []
-    for part_dir in ME_CPG_BG_DIRS:
-        dataset = ds.dataset(part_dir, format="parquet")
-        table = dataset.to_table(
-            columns=["cpg_idx", "sample_idx", "methylation"],
-            filter=(ds.field("cpg_idx").isin(list(wanted_cpg)) & ds.field("sample_idx").isin(list(wanted_sample))),
-        )
-        frames.append(table.to_pandas())
-        print(f"    read {part_dir.name}: {len(frames[-1])} rows", flush=True)
-    long = pd.concat(frames, ignore_index=True)
-    if long.duplicated(["cpg_idx", "sample_idx"]).any():
-        raise ValueError("duplicate (cpg_idx, sample_idx) pairs in beta long table")
-
     sample_order = sample_universe.sample_idx.to_numpy(dtype=np.int64)
     cpg_order = cpg_universe.cpg_idx.to_numpy(dtype=np.int64)
     sample_pos = {s: i for i, s in enumerate(sample_order.tolist())}
-    cpg_pos = {c: i for i, c in enumerate(cpg_order.tolist())}
 
-    dense = np.full((len(sample_order), len(cpg_order)), np.nan, dtype=np.float32)
-    rows = long.sample_idx.map(sample_pos).to_numpy()
-    cols = long.cpg_idx.map(cpg_pos).to_numpy()
-    dense[rows, cols] = long.methylation.to_numpy(np.float32)
-
-    coverage = 1.0 - np.isnan(dense).mean()
+    total_rows = 0
+    total_filled = 0
     with h5py.File(output_path, "w") as handle:
-        handle.create_dataset("beta", data=dense)
+        beta_ds = handle.create_dataset(
+            "beta", shape=(len(sample_order), len(cpg_order)), dtype=np.float32, fillvalue=np.nan,
+        )
         handle.create_dataset("sample_idx", data=_str_array(sample_order), dtype=STR_DTYPE)
         handle.create_dataset("cpg_idx", data=_str_array(cpg_order), dtype=STR_DTYPE)
-    return {"shape": list(dense.shape), "coverage": float(coverage), "path": str(output_path)}
+
+        for start in range(0, len(cpg_order), cpg_chunk_size):
+            chunk = cpg_order[start:start + cpg_chunk_size]
+            wanted_cpg_chunk = set(int(c) for c in chunk)
+            cpg_pos_chunk = {c: i for i, c in enumerate(chunk.tolist())}
+            frames = []
+            for part_dir in ME_CPG_BG_DIRS:
+                dataset = ds.dataset(part_dir, format="parquet")
+                table = dataset.to_table(
+                    columns=["cpg_idx", "sample_idx", "methylation"],
+                    filter=(ds.field("cpg_idx").isin(list(wanted_cpg_chunk)) & ds.field("sample_idx").isin(list(wanted_sample))),
+                )
+                frames.append(table.to_pandas())
+            long = pd.concat(frames, ignore_index=True)
+            if long.duplicated(["cpg_idx", "sample_idx"]).any():
+                raise ValueError(f"duplicate (cpg_idx, sample_idx) pairs in beta chunk starting at {start}")
+
+            dense_chunk = np.full((len(sample_order), len(chunk)), np.nan, dtype=np.float32)
+            rows = long.sample_idx.map(sample_pos).to_numpy()
+            cols = long.cpg_idx.map(cpg_pos_chunk).to_numpy()
+            dense_chunk[rows, cols] = long.methylation.to_numpy(np.float32)
+            beta_ds[:, start:start + len(chunk)] = dense_chunk
+
+            total_rows += len(long)
+            total_filled += int(np.isfinite(dense_chunk).sum())
+            print(f"    chunk {start}-{start + len(chunk)}/{len(cpg_order)}: {len(long)} rows", flush=True)
+
+    coverage = total_filled / (len(sample_order) * len(cpg_order))
+    return {
+        "shape": [len(sample_order), len(cpg_order)], "coverage": float(coverage),
+        "total_rows_read": total_rows, "path": str(output_path),
+    }
 
 
 def build_embeddings_h5(cpg_universe: pd.DataFrame, embeddings: np.ndarray, output_path: Path) -> dict:
@@ -432,12 +457,12 @@ def main() -> None:
     rna_info = build_rna_matrix(sample_universe, output_dir / "tcga_rna.h5")
 
     print("[8/8] beta matrix", flush=True)
-    beta_info = build_beta_matrix(sample_universe, cpg_universe, output_dir / "tcga_chr1_beta.h5")
+    beta_info = build_beta_matrix(sample_universe, cpg_universe, output_dir / "tcga_genome_wide_beta.h5")
 
     manifest = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "command": "python -m methylation_predictor.rna_branch.prepare_inputs --output-dir " + str(output_dir),
-        "cpg_universe": {"n": int(len(cpg_universe)), "chromosome": "chr1", "source": str(CPG_FEATURES)},
+        "cpg_universe": {"n": int(len(cpg_universe)), "chromosomes": sorted(cpg_universe.chromosome.unique().tolist()), "source": str(CPG_FEATURES)},
         "cpg_split_counts": cpg_splits.split.value_counts().to_dict(),
         "sample_universe": {
             "n": int(len(sample_universe)),

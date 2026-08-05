@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse, json
 from pathlib import Path
 import sys
+import time
 import numpy as np
 import pandas as pd
 import pyarrow.dataset as ds
@@ -90,6 +91,22 @@ def quick_metrics(target, prediction, prior, cancer):
             "within_cancer_skill": 1 - within_error / within_ss}
 
 
+def genomic_blocks(chromosome, position, block_bp: int = 5_000_000):
+    """Chromosome-aware N-bp genomic bins for the bootstrap's "genomic_blocks"
+    resampling unit. `position` alone is chromosome-LOCAL (see
+    genomic_encoder/build_genome_wide_targets.py, which renames raw per-
+    chromosome chr/pos without computing a genome-wide cumulative
+    coordinate) -- combining with `chromosome` is required once more than one
+    chromosome is in play, or two CpGs on different chromosomes at the same
+    local position silently collide into the same block. No-op for chr1-only
+    callers (this repo's existing usages of `pos // block_bp` alone), since a
+    single chromosome can't collide with itself."""
+    chromosome = np.asarray(chromosome).astype(str)
+    label = np.char.add(np.char.add(chromosome, "_"), (np.asarray(position, dtype=np.int64) // block_bp).astype(str))
+    _, inverse = np.unique(label, return_inverse=True)
+    return [np.flatnonzero(inverse == group) for group in range(inverse.max() + 1)]
+
+
 def bootstrap(target, prior, cancer, blocks, candidate_predictions, reference, replicates, seed, include_draws=False):
     """Bootstrap a (possibly multi-seed) candidate; aggregate seeds at metric level."""
     rng = np.random.default_rng(seed)
@@ -112,6 +129,15 @@ def bootstrap(target, prior, cancer, blocks, candidate_predictions, reference, r
             for key in values: values[key].append(value[key])
             if rep % 100 == 0 or rep == replicates:
                 print(f"bootstrap seed={seed} mode={mode} replicate={rep}/{replicates}", file=sys.stderr, flush=True)
+            if rep % 200 == 0:
+                # Brief pacing pause: a hardware-crash pattern was observed
+                # coinciding with many hours of sustained near-100% CPU/GPU
+                # utilization on this machine (see project memory). This
+                # yields the CPU periodically instead of pegging it
+                # uninterrupted for the full multi-hour bootstrap -- cheap
+                # (<1% wall-clock overhead at 2000 replicates) insurance,
+                # not a correctness change.
+                time.sleep(1.5)
         out[mode] = {f"{key}_{tail}": float(np.quantile(value, q)) for key, value in values.items() for tail, q in (("ci_low", .025), ("ci_high", .975))}
         if include_draws:
             out[mode]["draws"] = values

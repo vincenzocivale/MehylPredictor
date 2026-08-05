@@ -100,13 +100,21 @@ def main() -> None:
     p.add_argument("--bf16", action="store_true"); p.add_argument("--limit", type=int)
     p.add_argument("--progress-every", type=int, default=25,
                    help="emit a nohup-friendly progress bar every N batches (0 disables)")
+    p.add_argument("--orientations", default="forward,reverse_complement",
+                   help="comma list; use 'forward' alone to skip the reverse-complement pass "
+                        "(halves GPU time -- the locked production config is forward-only)")
     a = p.parse_args()
     if not torch.cuda.is_available() and a.device.startswith("cuda"):
         raise RuntimeError("CUDA is required for the complete NTv3 extraction but is unavailable")
+    orientations = [x.strip() for x in a.orientations.split(",") if x.strip()]
+    if not orientations or set(orientations) - {"forward", "reverse_complement"}:
+        raise ValueError(f"--orientations must be a subset of forward,reverse_complement, got {orientations}")
     frame = pd.read_parquet(a.input)
     required = {"cpg_idx", "chromosome", "position"}
     if missing := required - set(frame): raise ValueError(f"input lacks {sorted(missing)}")
-    if frame.cpg_idx.duplicated().any() or set(frame.chromosome) != {"chr1"}: raise ValueError("input must be unique chr1 CpGs")
+    if frame.cpg_idx.duplicated().any() or frame.chromosome.nunique() != 1:
+        raise ValueError("input must be unique CpGs from exactly one chromosome per invocation "
+                          f"(found: {sorted(frame.chromosome.unique())})")
     frame = frame.sort_values("cpg_idx").reset_index(drop=True)
     if a.limit: frame = frame.iloc[:a.limit].copy()
     genome = load_fasta(Path(a.fasta)); lengths = [int(x) for x in a.lengths.split(",")]
@@ -120,10 +128,10 @@ def main() -> None:
                 "checkpoint_files": [{"path": item.rfilename, "size": item.size} for item in info.siblings], "species": "human", "genome_build": "GRCh38/hg38",
                 "coordinate_convention": "1-based C of validated CG", "input": str(a.input), "input_sha256": sha256(Path(a.input)),
                 "fasta": str(a.fasta), "fasta_sha256": sha256(Path(a.fasta)), "n_cpg": len(frame), "lengths": lengths,
-                "dtype_saved": "float32", "orientations": ["forward", "reverse_complement"]}
+                "dtype_saved": "float32", "orientations": orientations}
     for length in lengths:
         sequences = [centred_window(genome, int(pos), length) for pos in frame.position]
-        for orientation in ("forward", "reverse_complement"):
+        for orientation in orientations:
             seqs = sequences if orientation == "forward" else [reverse_complement(s) for s in sequences]
             collected: dict[str, list[np.ndarray]] = {}
             total_batches = (len(seqs) + a.batch_size - 1) // a.batch_size

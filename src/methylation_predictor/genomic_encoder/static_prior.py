@@ -58,6 +58,15 @@ def _file_sha256(path: Path) -> str:
 
 def _partition(frame: pd.DataFrame, split: str, cpg_id: str, chromosome: str, position: str,
                block_size: int, seed: int) -> pd.Series:
+    if split == "fixed":
+        # Caller already attached the split column (e.g. MethylProphet's real
+        # train_cpg/val_cpg boundary via build_genome_wide_targets.py) --
+        # reuse it verbatim instead of re-deriving one by hashing.
+        if "split" not in frame.columns:
+            raise ValueError("split='fixed' requires an existing 'split' column in the input")
+        if not frame["split"].isin(["train", "validation", "test"]).all():
+            raise ValueError("split column must contain only train/validation/test")
+        return frame["split"]
     if split == "random":
         keys = frame[cpg_id].astype(str)
     else:
@@ -176,7 +185,7 @@ def main() -> None:
     p.add_argument("--categorical", default="", help="Comma-separated static categorical features")
     p.add_argument("--sequence", help="Optional local DNA-sequence column; enables k-mer sequence models")
     p.add_argument("--kmer", type=int, default=3)
-    p.add_argument("--split", choices=("random", "block"), required=True)
+    p.add_argument("--split", choices=("random", "block", "fixed"), required=True)
     p.add_argument("--block-size", type=int, default=5_000_000)
     p.add_argument("--seed", type=int, default=20260728)
     p.add_argument("--target-space", choices=("beta", "logit"), default="logit")

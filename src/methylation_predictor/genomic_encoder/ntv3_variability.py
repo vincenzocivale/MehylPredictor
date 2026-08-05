@@ -84,12 +84,18 @@ def run_probe(frame, z, split, device, output, include_test, component, test_mod
     output.mkdir(parents=True,exist_ok=True); (output/"metrics.json").write_text(json.dumps(report,indent=2)+"\n")
 
 def main():
- p=argparse.ArgumentParser(); p.add_argument("--input",required=True); p.add_argument("--embeddings",required=True); p.add_argument("--matrix",required=True); p.add_argument("--train-manifest",required=True); p.add_argument("--sample-metadata",required=True); p.add_argument("--output-dir",required=True); p.add_argument("--targets", help="existing train-only variance targets parquet"); p.add_argument("--minimum-per-cancer-type",type=int,default=10); p.add_argument("--split",choices=("block","random"),default="block"); p.add_argument("--variance-component",choices=("total","between_cancer","within_cancer"),default="total"); p.add_argument("--test-model",choices=("all","mlp_ensemble"),default="all"); p.add_argument("--validation-only",action="store_true"); p.add_argument("--device",default="cuda"); a=p.parse_args()
+ p=argparse.ArgumentParser(); p.add_argument("--input",required=True); p.add_argument("--embeddings",required=True); p.add_argument("--matrix",required=True); p.add_argument("--train-manifest",required=True); p.add_argument("--sample-metadata",required=True); p.add_argument("--output-dir",required=True); p.add_argument("--targets", help="existing train-only variance targets parquet"); p.add_argument("--minimum-per-cancer-type",type=int,default=10); p.add_argument("--split",choices=("block","random","fixed"),default="block"); p.add_argument("--variance-component",choices=("total","between_cancer","within_cancer"),default="total"); p.add_argument("--test-model",choices=("all","mlp_ensemble"),default="all"); p.add_argument("--validation-only",action="store_true"); p.add_argument("--device",default="cuda"); a=p.parse_args()
  print("[variability] starting", flush=True); frame=pd.read_parquet(a.input); target_path=Path(a.targets) if a.targets else Path(a.output_dir)/"train_only_variance_targets.parquet"
  if target_path.exists():
   print(f"[variability] reusing existing train-only targets: {target_path}", flush=True); targets=pd.read_parquet(target_path)
  else:
   targets=build_targets(frame,Path(a.matrix),Path(a.train_manifest),Path(a.sample_metadata),a.minimum_per_cancer_type); target_path.parent.mkdir(parents=True,exist_ok=True); targets.to_parquet(target_path,index=False)
+ if "split" in targets.columns and "split" in frame.columns:
+  # build_genome_wide_targets.py's output doubles as --prior (consumed by
+  # static_features.py, which is where --input's own split column came from)
+  # and as --targets here; --input's split is authoritative, drop the
+  # duplicate to avoid a split_x/split_y merge collision.
+  targets=targets.drop(columns="split")
  frame=frame.merge(targets,on="cpg_idx",validate="one_to_one")
  for component in ("total", "between_cancer", "within_cancer"):
   frame[f"log_{component}_variance"] = np.log(frame[f"{component}_variance"] + 1e-8)
