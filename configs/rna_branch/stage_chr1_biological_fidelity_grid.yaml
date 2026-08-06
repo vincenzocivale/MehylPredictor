@@ -1,0 +1,59 @@
+# Single-seed mechanistic ablation on the complete chr1 train split.
+# Select only on the complete validation split; do not run the held-out test
+# evaluator until the loss configuration is frozen.
+base_config: stage_chr1_biological_fidelity_base.yaml
+runs:
+- name: b0_fullcoverage_mse_control
+  override:
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      global_prior_ratio_weight: 0.0
+      locus_skill_weight: 0.0
+      locus_ccc_weight: 0.0
+      within_cancer_dynamic_weight: 0.0
+      locus_pearson_weight: 0.0
+      objective_warmup_epochs: 0
+      objective_ramp_epochs: 0
+    training:
+      checkpoint_metric: mse
+      checkpoint_min_global_skill: null
+      checkpoint_min_amplitude_ratio: null
+      checkpoint_max_amplitude_ratio: null
+    output_dir: artifacts/rna_branch/chr1_biological_fidelity/b0_mse_control
+
+- name: b1_locus_skill
+  override:
+    loss:
+      locus_skill_weight: 1.0
+      locus_ccc_weight: 0.0
+      within_cancer_dynamic_weight: 0.0
+      locus_pearson_weight: 0.0
+    output_dir: artifacts/rna_branch/chr1_biological_fidelity/b1_locus_skill
+
+- name: b2_locus_skill_plus_ccc
+  override:
+    loss:
+      locus_skill_weight: 1.0
+      locus_ccc_weight: 0.25
+      within_cancer_dynamic_weight: 0.0
+      locus_pearson_weight: 0.0
+    output_dir: artifacts/rna_branch/chr1_biological_fidelity/b2_skill_ccc
+
+- name: b3_locus_skill_plus_within_cancer
+  override:
+    loss:
+      locus_skill_weight: 1.0
+      locus_ccc_weight: 0.0
+      within_cancer_dynamic_weight: 0.5
+      locus_pearson_weight: 0.0
+    output_dir: artifacts/rna_branch/chr1_biological_fidelity/b3_skill_within
+
+- name: b4_recommended_combined
+  override:
+    loss:
+      locus_skill_weight: 1.0
+      locus_ccc_weight: 0.25
+      within_cancer_dynamic_weight: 0.5
+      locus_pearson_weight: 0.05
+    output_dir: artifacts/rna_branch/chr1_biological_fidelity/b4_combined

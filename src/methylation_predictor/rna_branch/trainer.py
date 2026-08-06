@@ -16,7 +16,7 @@ from torch import nn
 from .config import RunConfig, save_config
 from .data import DataBundle, load_bundle, summarize_bundle
 from .full_coverage_sampler import build_epoch_schedule
-from .losses import residual_loss
+from .losses import ramp_loss_config, residual_loss, scheduled_loss_config
 from .metrics import evaluate_predictions
 from .models import ResidualMethylationModel
 from .streaming_metrics import StreamingPanelMetrics
@@ -278,6 +278,23 @@ class ExperimentRunner:
             self.bundle.loci.prior[cpg_indices],
             self.bundle.samples.cancer_types[sample_indices],
             cpg_tertiles=self.cpg_tertiles[cpg_indices],
+            include_biological_fidelity=(
+                self.config.evaluation.include_biological_fidelity
+                or self.config.training.checkpoint_metric in {
+                    "mas_pcc_variable", "mas_skill_vs_prior_variable",
+                    "mean_skill_vs_prior_variable", "positive_skill_fraction_variable",
+                    "mas_ccc_variable", "mas_dynamic_r2_variable",
+                    "within_cancer_mas_pcc_variable",
+                    "within_cancer_mas_ccc_variable",
+                    "within_cancer_mas_dynamic_r2_variable",
+                    "mac_pcc_median", "mac_ccc_median",
+                }
+            ),
+            biological_min_observed_samples=self.config.evaluation.biological_min_observed_samples,
+            biological_min_target_std=self.config.evaluation.biological_min_target_std,
+            biological_min_cancer_group_samples=(
+                self.config.evaluation.biological_min_cancer_group_samples
+            ),
         )
         metrics["inference_seconds"] = elapsed
         metrics["inference_pairs_per_second"] = len(sample_indices) * len(cpg_indices) / max(elapsed, 1e-9)
@@ -706,7 +723,16 @@ class ExperimentRunner:
         history: list[dict[str, float | int]] = []
         global_step = 0
         maximize_checkpoint = config.training.checkpoint_metric in {
-            "skill_vs_prior", "dynamic_skill", "within_cancer_skill", "dynamic_pearson", "dynamic_spearman"
+            "skill_vs_prior", "dynamic_skill", "within_cancer_skill",
+            "dynamic_pearson", "dynamic_spearman",
+            "patient_dynamic_pearson_median", "patient_dynamic_spearman_median",
+            "locus_dynamic_pearson_median", "locus_dynamic_spearman_median",
+            "mas_pcc", "mas_pcc_variable",
+            "mas_skill_vs_prior_variable", "mean_skill_vs_prior_variable",
+            "positive_skill_fraction_variable", "mas_ccc_variable",
+            "mas_dynamic_r2_variable", "within_cancer_mas_pcc_variable",
+            "within_cancer_mas_ccc_variable", "within_cancer_mas_dynamic_r2_variable",
+            "mac_pcc_median", "mac_ccc_median",
         }
         checkpoint_path = self.output_dir / "best.pt"
         checkpoint_latest_path = self.output_dir / "checkpoint_latest.pt"
@@ -781,7 +807,12 @@ class ExperimentRunner:
                     torch.cuda.reset_peak_memory_stats(self.device)
                 self._refresh_train_centroids()
                 self.model.train()
-                running = {"loss": 0.0, "beta_mse": 0.0, "beta_macro_mse": 0.0, "residual_huber": 0.0, "shrinkage": 0.0}
+                epoch_loss_config = (
+                    ramp_loss_config(config.loss, epoch)
+                    if config.loss.ramp_epochs > 0
+                    else scheduled_loss_config(config.loss, epoch)
+                )
+                running: dict[str, float] = {}
                 observed = 0
                 valid_steps = 0
 
@@ -821,9 +852,10 @@ class ExperimentRunner:
                             outputs,
                             beta,
                             prior,
-                            config.loss,
+                            epoch_loss_config,
                             epsilon=config.data.clip_beta_epsilon,
                             tertile_labels=torch.from_numpy(self.cpg_tertiles[cpg_indices]).to(self.device),
+                            cancer_type_codes=codes,
                         )
                     if not torch.isfinite(loss):
                         raise FloatingPointError(
@@ -834,9 +866,11 @@ class ExperimentRunner:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.training.gradient_clip_norm)
                     scaler.step(optimizer)
                     scaler.update()
-                    for key in running:
-                        running[key] += pieces[key]
-                    observed += pieces["observed"]
+                    for key, value in pieces.items():
+                        if key == "observed":
+                            continue
+                        running[key] = running.get(key, 0.0) + float(value)
+                    observed += int(pieces["observed"])
                     valid_steps += 1
                     global_step += 1
                     if tracker.enabled and global_step % max(1, config.tracking.log_every_steps) == 0:
@@ -849,8 +883,21 @@ class ExperimentRunner:
                                 "train/step_in_epoch": step_in_epoch + 1,
                                 "train/loss": pieces["loss"],
                                 "train/beta_mse": pieces["beta_mse"],
+                                "train/beta_huber": pieces["beta_huber"],
                                 "train/residual_huber": pieces["residual_huber"],
                                 "train/shrinkage": pieces["shrinkage"],
+                                "train/locus_pearson_loss": pieces["locus_pearson_loss"],
+                                "train/locus_lower_tail_loss": pieces["locus_lower_tail_loss"],
+                                "train/pairwise_difference_loss": pieces["pairwise_difference_loss"],
+                                "train/centered_mse_loss": pieces["centered_mse_loss"],
+                                "train/amplitude_loss": pieces["amplitude_loss"],
+                                "train/global_prior_ratio_loss": pieces["global_prior_ratio_loss"],
+                                "train/locus_skill_loss": pieces["locus_skill_loss"],
+                                "train/locus_ccc_loss": pieces["locus_ccc_loss"],
+                                "train/within_cancer_dynamic_loss": pieces["within_cancer_dynamic_loss"],
+                                "train/valid_skill_loci": pieces["valid_skill_loci"],
+                                "train/valid_ccc_loci": pieces["valid_ccc_loci"],
+                                "train/valid_within_cancer_loci": pieces["valid_within_cancer_loci"],
                                 "train/observed": pieces["observed"],
                                 "train/compute_pairs_per_second": pieces["observed"] / max(batch_seconds, 1e-9),
                                 "train/learning_rate": optimizer.param_groups[0]["lr"],
@@ -892,8 +939,14 @@ class ExperimentRunner:
                     for key in [
                         "mse", "skill_vs_prior", "dynamic_skill", "within_cancer_skill",
                         "dynamic_pearson", "dynamic_spearman",
-                        "patient_dynamic_pearson_median", "locus_dynamic_pearson_median",
+                        "patient_dynamic_pearson_median", "locus_dynamic_pearson_median", "mas_pcc",
                         "dynamic_amplitude_ratio", "dynamic_calibration_alpha",
+                        "variable_cpgs_evaluated", "mas_skill_vs_prior_variable",
+                        "mean_skill_vs_prior_variable", "positive_skill_fraction_variable",
+                        "mas_pcc_variable", "mas_ccc_variable", "mas_dynamic_r2_variable",
+                        "within_cancer_mas_pcc_variable", "within_cancer_mas_ccc_variable",
+                        "within_cancer_mas_dynamic_r2_variable",
+                        "median_amplitude_ratio_variable", "mac_pcc_median", "mac_ccc_median",
                     ]:
                         value = validation.metrics.get(key)
                         row[f"validation_{key}"] = float(value) if value is not None else float("nan")
@@ -912,12 +965,32 @@ class ExperimentRunner:
                              "validation_metrics": validation.metrics, "config": config.as_dict()},
                             self.output_dir / f"epoch_{epoch:03d}.pt",
                         )
+                    global_skill = float(validation.metrics.get("skill_vs_prior", float("nan")))
+                    amplitude = float(validation.metrics.get("dynamic_amplitude_ratio", float("nan")))
+                    guardrail_ok = True
+                    if config.training.checkpoint_min_global_skill is not None:
+                        guardrail_ok &= (
+                            np.isfinite(global_skill)
+                            and global_skill >= config.training.checkpoint_min_global_skill
+                        )
+                    if config.training.checkpoint_min_amplitude_ratio is not None:
+                        guardrail_ok &= (
+                            np.isfinite(amplitude)
+                            and amplitude >= config.training.checkpoint_min_amplitude_ratio
+                        )
+                    if config.training.checkpoint_max_amplitude_ratio is not None:
+                        guardrail_ok &= (
+                            np.isfinite(amplitude)
+                            and amplitude <= config.training.checkpoint_max_amplitude_ratio
+                        )
+                    row["validation_checkpoint_guardrail_ok"] = bool(guardrail_ok)
+                    improved_by_metric = (
+                        current > best_metric + config.training.min_delta
+                        if maximize_checkpoint else current < best_metric - config.training.min_delta
+                    )
                     improved = (
                         True if config.training.checkpoint_selection == "final"
-                        else (
-                            current > best_metric + config.training.min_delta
-                            if maximize_checkpoint else current < best_metric - config.training.min_delta
-                        )
+                        else guardrail_ok and np.isfinite(current) and improved_by_metric
                     )
                     if improved:
                         best_metric = current
@@ -994,7 +1067,13 @@ class ExperimentRunner:
                 "run_name": config.run_name,
                 "encoder_kind": config.model.encoder.kind,
                 "best_epoch": best_epoch,
-                "best_validation_mse": best_metric,
+                # Preserve the historical field while exposing the actual
+                # selection metric used by biological-fidelity runs.
+                "best_validation_mse": float(
+                    checkpoint.get("validation_metrics", {}).get("mse", float("nan"))
+                ),
+                "best_validation_metric": best_metric,
+                "best_validation_metric_name": config.training.checkpoint_metric,
                 "elapsed_seconds": time.time() - started,
                 "num_parameters": sum(p.numel() for p in self.model.parameters()),
                 "num_trainable_parameters": sum(p.numel() for p in self.model.parameters() if p.requires_grad),

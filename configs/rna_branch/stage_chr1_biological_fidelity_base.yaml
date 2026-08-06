@@ -1,0 +1,137 @@
+# Full TCGA chromosome-1 training for quantitative biological fidelity.
+# Every training sample and every train CpG is visited at least once per epoch
+# through the existing deterministic full_coverage schedule.
+run_name: chr1_biological_fidelity_seed17
+output_dir: artifacts/rna_branch/chr1_biological_fidelity/seed17
+
+data:
+  rna:
+    path: artifacts/rna_branch/2026-07-29_first_benchmark/inputs/tcga_rna.h5
+    values_key: X
+    row_ids_key: sample_idx
+    col_ids_key: gene_ids
+  methylation:
+    path: artifacts/rna_branch/2026-07-29_first_benchmark/inputs/tcga_chr1_beta.h5
+    values_key: beta
+    row_ids_key: sample_idx
+    col_ids_key: cpg_idx
+  locus_embeddings:
+    path: artifacts/rna_branch/2026-07-29_first_benchmark/inputs/locus_embeddings.h5
+    values_key: embeddings
+    row_ids_key: cpg_idx
+  locus_features:
+    path: artifacts/rna_branch/2026-07-29_first_benchmark/inputs/locus_features.parquet
+    id_column: cpg_idx
+  sample_metadata:
+    path: artifacts/rna_branch/2026-07-29_first_benchmark/inputs/sample_metadata.parquet
+    id_column: sample_idx
+  cpg_splits:
+    path: artifacts/rna_branch/2026-07-29_first_benchmark/inputs/cpg_split_manifest.parquet
+    id_column: cpg_idx
+  rna_control: real
+  standardize_rna: true
+  clip_beta_epsilon: 1.0e-4
+  train_sample_fraction: 1.0
+  train_cpg_fraction: 1.0
+
+model:
+  encoder:
+    kind: linear
+    latent_dim: 64
+    layer_norm: true
+    dropout: 0.1
+  interaction:
+    kind: concat
+    hidden_dim: 128
+    dropout: 0.1
+  gate:
+    kind: variability
+    hidden_dim: 64
+    dropout: 0.0
+  anchor_to_mean_rna: true
+  zero_init_residual: true
+
+loss:
+  # Absolute-value guardrails retained throughout training.
+  beta_mse_weight: 0.1
+  global_prior_ratio_weight: 0.5
+  global_prior_ratio_epsilon: 1.0e-8
+  global_prior_ratio_clip: 4.0
+  residual_huber_weight: 0.05
+  residual_huber_delta: 1.0
+  shrinkage_weight: 1.0e-4
+  # Primary objective: improve each variable CpG over the same fixed prior.
+  locus_skill_weight: 1.0
+  # Penalizes the scale/bias collapse that Pearson alone allowed in P1-P4.
+  locus_ccc_weight: 0.25
+  # Forces signal beyond cancer-type means.
+  within_cancer_dynamic_weight: 0.5
+  # Small directional auxiliary only; it cannot dominate scale calibration.
+  locus_pearson_weight: 0.05
+  locus_min_observed_samples: 64
+  locus_min_target_std: 0.05
+  locus_skill_denominator_epsilon: 1.0e-4
+  locus_skill_loss_clip: 4.0
+  within_cancer_min_samples: 4
+  # Stable MSE start followed by a gradual structured-objective transition.
+  objective_warmup_epochs: 3
+  objective_ramp_epochs: 5
+  warmup_beta_mse_weight: 1.0
+  warmup_residual_huber_weight: 0.1
+  warmup_shrinkage_weight: 1.0e-4
+
+training:
+  seed: 17
+  device: auto
+  epochs: 30
+  min_epochs: 12
+  steps_per_epoch: 1  # ignored by full_coverage; retained only for schema compatibility
+  sample_batch_size: 256
+  cpg_batch_size: 1024
+  cpg_sampling: full_coverage
+  learning_rate: 5.0e-5
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+  patience: 7
+  min_delta: 1.0e-4
+  checkpoint_metric: mas_skill_vs_prior_variable
+  # A checkpoint cannot win by destroying absolute prediction or dynamic scale.
+  checkpoint_min_global_skill: 0.05
+  checkpoint_min_amplitude_ratio: 0.40
+  checkpoint_max_amplitude_ratio: 1.60
+  validation_every: 1
+  validation_max_cpgs: null
+  save_every_epoch: true
+
+# Evaluation here is still development-only. The matched held-out test comparison
+# is performed once with evaluate_chr1_biological_fidelity.py after selection.
+evaluation:
+  sample_chunk_size: 128
+  cpg_chunk_size: 512
+  max_cpgs_per_panel: null
+  save_predictions: false
+  include_biological_fidelity: true
+  biological_min_observed_samples: 20
+  biological_min_target_std: 0.05
+  biological_min_cancer_group_samples: 4
+  panels:
+    validation_double_ood:
+      sample_split: validation
+      cpg_split: validation
+
+tracking:
+  backend: wandb
+  project: MethylationPredictor
+  group: chr1-biological-fidelity
+  name: chr1-biological-fidelity-seed17
+  job_type: train
+  tags: [tcga, chr1, f2, full-coverage, locus-skill, ccc, within-cancer]
+  mode: online
+  log_every_steps: 10
+  watch_model: false
+  log_checkpoint: true

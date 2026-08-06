@@ -148,10 +148,77 @@ class ModelConfig:
 @dataclass(slots=True)
 class LossConfig:
     beta_mse_weight: float = 1.0
+    beta_huber_weight: float = 0.0
+    beta_huber_delta: float = 0.05
     residual_huber_weight: float = 0.1
     residual_huber_delta: float = 1.0
     shrinkage_weight: float = 1e-4
     beta_macro_weight: float = 0.0
+    # MAS-PCC-oriented objectives. Correlations are computed across samples for
+    # every CpG in the Cartesian minibatch. Disabled by default so all existing
+    # experiments remain numerically unchanged.
+    locus_pearson_weight: float = 0.0
+    locus_lower_tail_weight: float = 0.0
+    locus_lower_tail_fraction: float = 0.60
+    locus_min_observed_samples: int = 8
+    locus_pearson_epsilon: float = 1e-8
+    # Pairwise sample differences remove the locus-static prior exactly and force
+    # the dynamic branch to preserve inter-patient direction and amplitude.
+    pairwise_difference_weight: float = 0.0
+    pairwise_huber_delta: float = 0.05
+    pairwise_pairs_per_batch: int = 512
+    # Quantitative biological-fidelity objectives (chr1_biological_fidelity stage).
+    # The global ratio keeps absolute accuracy competitive with the fixed prior,
+    # while the locus terms prevent that global objective from being dominated by
+    # easy/static CpGs.
+    global_prior_ratio_weight: float = 0.0
+    global_prior_ratio_epsilon: float = 1e-8
+    global_prior_ratio_clip: float = 4.0
+    locus_skill_weight: float = 0.0
+    locus_ccc_weight: float = 0.0
+    within_cancer_dynamic_weight: float = 0.0
+    locus_min_target_std: float = 0.05
+    locus_skill_denominator_epsilon: float = 1e-4
+    locus_skill_loss_clip: float = 4.0
+    within_cancer_min_samples: int = 4
+    # Optional deterministic MSE warm-up before the configured objective becomes
+    # active. This supports a fair P5 test without chaining checkpoints between
+    # grid jobs. Epochs are one-indexed; 0 disables the schedule.
+    objective_warmup_epochs: int = 0
+    warmup_beta_mse_weight: float = 1.0
+    warmup_beta_huber_weight: float = 0.0
+    warmup_residual_huber_weight: float = 0.1
+    warmup_shrinkage_weight: float = 1e-4
+    # Linearly interpolate every non-warmup objective (including the biological-
+    # fidelity terms above) from zero to its configured weight during these
+    # epochs, via scheduled_loss_config. 0 keeps the historical hard switch. This
+    # is independent of the separate ramp_epochs/ramp_start_epoch mechanism below
+    # (Stage MAS-PCC-v2), which ramps warmup_locus_pearson_weight/etc instead.
+    objective_ramp_epochs: int = 0
+    # Value-space, scale-sensitive complement to the (scale-invariant) Pearson
+    # terms above. Per-locus centering removes exactly what a locus-static prior
+    # already explains, but unlike locus_pearson_weight, squared error on the
+    # centred residual grows monotonically if the model shrinks amplitude toward
+    # zero -- it cannot be gamed by amplitude collapse the way raw correlation can.
+    centered_mse_weight: float = 0.0
+    # Direct regularizer on the per-locus predicted/true amplitude ratio
+    # (std(pred_centred) / std(true_centred)), pushed toward 1. Targets the same
+    # failure mode as centered_mse_weight from the opposite direction: an
+    # explicit penalty on amplitude collapse rather than an implicit one.
+    amplitude_weight: float = 0.0
+    amplitude_epsilon: float = 1e-6
+    # Stage MAS-PCC-v2: gradual linear ramp of the objective between the
+    # warmup_* weights and the configured (target) weights, instead of
+    # scheduled_loss_config's instant switch. ramp_epochs <= 0 disables the ramp
+    # entirely (trainer falls back to scheduled_loss_config / objective_warmup_epochs).
+    # lambda(e) = warmup + (target - warmup) * clamp((e - ramp_start_epoch) / ramp_epochs, 0, 1)
+    ramp_start_epoch: int = 0
+    ramp_epochs: int = 0
+    warmup_locus_pearson_weight: float = 0.0
+    warmup_locus_lower_tail_weight: float = 0.0
+    warmup_pairwise_difference_weight: float = 0.0
+    warmup_centered_mse_weight: float = 0.0
+    warmup_amplitude_weight: float = 0.0
 
 
 @dataclass(slots=True)
@@ -178,6 +245,11 @@ class TrainingConfig:
     train_sample_split: str = "train"
     train_cpg_split: str = "train"
     checkpoint_metric: str = "mse"
+    # Optional biological guardrails for checkpoint selection. A candidate that
+    # violates any non-null bound is logged but cannot overwrite best.pt.
+    checkpoint_min_global_skill: float | None = None
+    checkpoint_min_amplitude_ratio: float | None = None
+    checkpoint_max_amplitude_ratio: float | None = None
     validation_every: int = 1
     validation_max_cpgs: int | None = 512
     min_epochs: int = 0
@@ -214,6 +286,12 @@ class EvaluationConfig:
     cpg_chunk_size: int = 256
     max_cpgs_per_panel: int | None = None
     save_predictions: bool = False
+    # Per-CpG biological metrics require an additional locus loop. Keep them
+    # opt-in for legacy and very large genome-wide panels.
+    include_biological_fidelity: bool = False
+    biological_min_observed_samples: int = 20
+    biological_min_target_std: float = 0.05
+    biological_min_cancer_group_samples: int = 4
     prediction_format: str = "npz"
     panels: dict[str, dict[str, str]] = field(
         default_factory=lambda: {

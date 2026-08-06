@@ -1,0 +1,141 @@
+# Stage MAS-PCC-v2: follow-up to stage_mas_pcc_grid.yaml (P0-P5). That screening
+# showed locus_pearson_weight/pairwise_difference_weight raise validation MAS-PCC
+# by gaming it -- amplitude collapse toward the locus mean stays well-correlated
+# (pearson loss ~0) while destroying real skill (skill_vs_prior fell 3-6x,
+# dynamic_amplitude_ratio fell to 0.04-0.12, dynamic_calibration_alpha blew up to
+# 4-13x). See docs/rna_branch_mas_pcc_experiments.md and the Stage MAS-PCC memory.
+#
+# This grid keeps P1 (mse + locus_pearson_weight=0.5) as the working baseline and
+# adds two anti-collapse terms that are NOT scale-invariant like Pearson:
+#   - centered_mse_weight: MSE on the per-locus centred residual (penalizes wrong
+#     amplitude directly, in value space).
+#   - amplitude_weight: explicit per-locus penalty on the predicted/true amplitude
+#     ratio deviating from 1 (same quantity as dynamic_amplitude_ratio).
+# Q6/Q7 replace scheduled_loss_config's hard epoch-N switch with ramp_loss_config's
+# gradual linear interpolation: lambda(e) = warmup + (target-warmup) *
+# clamp((e-ramp_start_epoch)/ramp_epochs, 0, 1). ramp_start_epoch=4, ramp_epochs=5
+# means epochs 1-4 = warmup weights, epochs 5-8 linear increase, epoch 9+ = target.
+base_config: stage_mas_pcc_base.yaml
+runs:
+- name: q0_p1_25epochs
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q1_p5_25epochs
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      objective_warmup_epochs: 5
+      beta_mse_weight: 0.0
+      beta_huber_weight: 0.10
+      residual_huber_weight: 0.0
+      shrinkage_weight: 0.0001
+      locus_pearson_weight: 1.0
+      locus_lower_tail_weight: 0.5
+      locus_lower_tail_fraction: 0.60
+      pairwise_difference_weight: 0.25
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q2_p1_centered_mse_005
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+      centered_mse_weight: 0.05
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q3_p1_centered_mse_020
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+      centered_mse_weight: 0.20
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q4_p1_amplitude_001
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+      amplitude_weight: 0.01
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q5_p1_centered_mse_010_amplitude_001
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+      centered_mse_weight: 0.10
+      amplitude_weight: 0.01
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q6_pearson_ramp_plus_centered_mse
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      # locus_pearson ramps 0 -> 0.5 over epochs 4-9; everything else constant
+      # from step 1 (their warmup_* equals their own target, so lerp is a no-op).
+      locus_pearson_weight: 0.5
+      warmup_locus_pearson_weight: 0.0
+      centered_mse_weight: 0.05
+      warmup_centered_mse_weight: 0.05
+      ramp_start_epoch: 4
+      ramp_epochs: 5
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
+
+- name: q7_p5_gradual_ramp
+  override:
+    training:
+      epochs: 25
+      min_epochs: 15
+    loss:
+      # Same target objective as P5/Q1, reached by a linear ramp (epochs 4-9)
+      # instead of P5's hard switch at epoch 6.
+      beta_mse_weight: 0.0
+      beta_huber_weight: 0.10
+      residual_huber_weight: 0.0
+      shrinkage_weight: 0.0001
+      locus_pearson_weight: 1.0
+      locus_lower_tail_weight: 0.5
+      locus_lower_tail_fraction: 0.60
+      pairwise_difference_weight: 0.25
+      warmup_beta_mse_weight: 1.0
+      warmup_beta_huber_weight: 0.0
+      warmup_residual_huber_weight: 0.1
+      warmup_shrinkage_weight: 0.0001
+      warmup_locus_pearson_weight: 0.0
+      warmup_locus_lower_tail_weight: 0.0
+      warmup_pairwise_difference_weight: 0.0
+      ramp_start_epoch: 4
+      ramp_epochs: 5
+      objective_warmup_epochs: 0
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening_v2/default
