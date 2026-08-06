@@ -6,6 +6,13 @@ from collections.abc import Callable
 import numpy as np
 from scipy.stats import spearmanr
 
+from .biological_metrics import (
+    BiologicalMetricConfig,
+    per_locus_biological_metrics,
+    per_sample_biological_metrics,
+    summarize_biological_fidelity,
+)
+
 
 def _valid_pair(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     mask = np.isfinite(x) & np.isfinite(y)
@@ -153,6 +160,10 @@ def evaluate_predictions(
     cpg_tertiles: np.ndarray | None = None,
     include_median_correlations: bool = True,
     correlation_max_n: int | None = None,
+    include_biological_fidelity: bool = False,
+    biological_min_observed_samples: int = 20,
+    biological_min_target_std: float = 0.05,
+    biological_min_cancer_group_samples: int = 4,
 ) -> dict[str, object]:
     """include_median_correlations=False skips the four *_dynamic_{pearson,spearman}_median
     diagnostics (a per-row/per-column Python loop over scipy calls -- O(n_samples + n_cpgs)
@@ -229,6 +240,26 @@ def evaluate_predictions(
     cpg_model_mse = _masked_axis_mean((target - prediction) ** 2, valid, axis=0)
     cpg_prior_mse = _masked_axis_mean((target - prior_matrix) ** 2, valid, axis=0)
 
+    mas_pcc = (
+        _median_axis_correlation(pred_dynamic, true_dynamic, axis=0, statistic=_pearson)
+        if include_median_correlations else None
+    )
+
+    biological_summary: dict[str, object] = {}
+    if include_biological_fidelity:
+        biological_config = BiologicalMetricConfig(
+            min_observed_samples=biological_min_observed_samples,
+            min_target_std=biological_min_target_std,
+            min_cancer_group_samples=biological_min_cancer_group_samples,
+        )
+        per_locus_bio = per_locus_biological_metrics(
+            target, prediction, prior, cancer_types, config=biological_config
+        )
+        per_sample_bio = per_sample_biological_metrics(
+            target, prediction, prior, cancer_types=cancer_types
+        )
+        biological_summary = summarize_biological_fidelity(per_locus_bio, per_sample_bio)
+
     per_tertile: dict[str, dict[str, float | int]] = {}
     if cpg_tertiles is not None:
         cpg_tertiles = np.asarray(cpg_tertiles, dtype=np.int64)
@@ -258,10 +289,8 @@ def evaluate_predictions(
             _median_axis_correlation(pred_dynamic, true_dynamic, axis=1, statistic=_spearman)
             if include_median_correlations else None
         ),
-        "locus_dynamic_pearson_median": (
-            _median_axis_correlation(pred_dynamic, true_dynamic, axis=0, statistic=_pearson)
-            if include_median_correlations else None
-        ),
+        "locus_dynamic_pearson_median": mas_pcc,
+        "mas_pcc": mas_pcc,
         "locus_dynamic_spearman_median": (
             _median_axis_correlation(pred_dynamic, true_dynamic, axis=0, statistic=_spearman)
             if include_median_correlations else None
@@ -275,6 +304,7 @@ def evaluate_predictions(
         "cpg_win_fraction": float(np.nanmean(cpg_model_mse < cpg_prior_mse)),
         "macro_cancer_mse": float(np.mean(cancer_mses)) if cancer_mses else float("nan"),
         "macro_cancer_skill_vs_prior": float(np.mean(cancer_skills)) if cancer_skills else float("nan"),
+        **biological_summary,
         "per_cancer": per_cancer,
         "per_variability_tertile": per_tertile,
     }

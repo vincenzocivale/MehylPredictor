@@ -73,7 +73,19 @@ def metrics(target, prediction, prior, cancer):
 
 
 def quick_metrics(target, prediction, prior, cancer):
-    """Only the three bootstrap endpoints; avoids correlation/per-cancer work."""
+    """Only the three bootstrap endpoints; avoids correlation/per-cancer work.
+
+    (A sort+reduceat vectorization of the within-cancer loop below was tried
+    and measured SLOWER than this loop at real genome-wide panel scale
+    -- 4.16s vs 2.58s at 812x81493 -- so it was reverted; the loop's actual
+    cost is dominated by array-copy volume proportional to n_samples x
+    n_cpgs regardless of how it's chunked, and the vectorized version added
+    several full-array-sized intermediate allocations (sorted copies,
+    np.where materializations, the final np.repeat) that outweighed the
+    saved Python-loop overhead. The real, measured win was eliminating
+    `delta()`'s redundant repeated `target[np.ix_(rows,cols)]` slicing
+    across the reference/candidate quick_metrics calls -- see `bootstrap()`.)
+    """
     valid = np.isfinite(target) & np.isfinite(prediction)
     error = float(np.mean((target[valid] - prediction[valid]) ** 2))
     base = np.broadcast_to(prior[None, :], target.shape)
@@ -111,8 +123,16 @@ def bootstrap(target, prior, cancer, blocks, candidate_predictions, reference, r
     """Bootstrap a (possibly multi-seed) candidate; aggregate seeds at metric level."""
     rng = np.random.default_rng(seed)
     def delta(rows, cols):
-        r = quick_metrics(target[np.ix_(rows, cols)], reference[np.ix_(rows, cols)], prior[cols], cancer[rows])
-        cs = [quick_metrics(target[np.ix_(rows, cols)], p[np.ix_(rows, cols)], prior[cols], cancer[rows]) for p in candidate_predictions]
+        # target/prior/cancer don't depend on which prediction (reference vs.
+        # candidate) is being scored -- slice them once instead of once per
+        # quick_metrics call (was a redundant full fancy-index copy of the
+        # panel, e.g. ~530MB at genome-wide official-val scale, every time).
+        idx = np.ix_(rows, cols)
+        target_sub = target[idx]
+        prior_sub = prior[cols]
+        cancer_sub = cancer[rows]
+        r = quick_metrics(target_sub, reference[idx], prior_sub, cancer_sub)
+        cs = [quick_metrics(target_sub, p[idx], prior_sub, cancer_sub) for p in candidate_predictions]
         return {"delta_mse": float(np.mean([c["mse"] for c in cs]) - r["mse"]),
                 "delta_skill": float(np.mean([c["skill_vs_prior"] for c in cs]) - r["skill_vs_prior"]),
                 "delta_within_cancer_skill": float(np.mean([c["within_cancer_skill"] for c in cs]) - r["within_cancer_skill"])}

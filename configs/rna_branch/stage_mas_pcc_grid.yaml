@@ -1,0 +1,64 @@
+# Single-seed screening. Promote only a validation MAS-PCC winner to seeds 23/41.
+base_config: stage_mas_pcc_base.yaml
+runs:
+- name: p0_f2_mse_control
+  override:
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening/default
+
+- name: p1_mse_plus_pearson
+  override:
+    loss:
+      beta_mse_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening/default
+
+- name: p2_huber_plus_pearson
+  override:
+    loss:
+      beta_mse_weight: 0.0
+      beta_huber_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening/default
+
+- name: p3_huber_pearson_pairwise
+  override:
+    loss:
+      beta_mse_weight: 0.0
+      beta_huber_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.5
+      pairwise_difference_weight: 0.5
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening/default
+
+- name: p4_lower60_pearson_pairwise
+  override:
+    loss:
+      beta_mse_weight: 0.0
+      beta_huber_weight: 1.0
+      residual_huber_weight: 0.1
+      locus_pearson_weight: 0.25
+      locus_lower_tail_weight: 0.50
+      locus_lower_tail_fraction: 0.60
+      pairwise_difference_weight: 0.5
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening/default
+
+- name: p5_mse_warmup_then_correlation
+  override:
+    loss:
+      # Epochs 1-5 use the historical MSE objective via the warm-up schedule.
+      # From epoch 6 onward these correlation-dominant weights are active.
+      objective_warmup_epochs: 5
+      beta_mse_weight: 0.0
+      beta_huber_weight: 0.10
+      residual_huber_weight: 0.0
+      shrinkage_weight: 0.0001
+      locus_pearson_weight: 1.0
+      locus_lower_tail_weight: 0.5
+      locus_lower_tail_fraction: 0.60
+      pairwise_difference_weight: 0.25
+    output_dir: artifacts/rna_branch/stage_mas_pcc/screening/default
