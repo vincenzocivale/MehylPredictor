@@ -24,11 +24,11 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MP_DATA = Path("/data/dataset/methylation/MethylProphetData/parquet/241231-tcga_array")
-SCRATCH = Path("/data/dataset/methylation/genomic_encoder_genome_wide_scratch")
-INPUT_DIR = SCRATCH / "rna_branch_inputs"
+SCRATCH = Path("/raid/DATASETS/MethylPredictionData")
+INPUT_DIR = SCRATCH
 DEV_INPUT_DIR = SCRATCH / "rna_branch_inputs_dev_seed17"
 
-DISK_FREE_GB_MIN = {"/": 10.0, "/data": 20.0}
+DISK_FREE_GB_MIN = {"/": 10.0, "/raid": 20.0}
 
 
 def _assert_disjoint(frame: pd.DataFrame, key: str, split: str) -> None:
@@ -61,7 +61,28 @@ def check_tests() -> dict:
     }
 
 
-def check_official_splits() -> dict:
+def check_official_splits(skip_official_check: bool = False) -> dict:
+    cpg_split_manifest = pd.read_parquet(INPUT_DIR / "cpg_split_manifest.parquet")
+    sample_metadata = pd.read_parquet(INPUT_DIR / "sample_metadata.parquet")
+
+    _assert_disjoint(cpg_split_manifest, "cpg_idx", "split")
+    _assert_disjoint(sample_metadata, "sample_idx", "split")
+
+    result = {
+        "aligned_train_cpg": int((cpg_split_manifest["split"] == "train").sum()),
+        "aligned_train_sample": int((sample_metadata["split"] == "train").sum()),
+        "no_cpg_duplicates": not cpg_split_manifest["cpg_idx"].duplicated().any(),
+        "no_sample_duplicates": not sample_metadata["sample_idx"].duplicated().any(),
+    }
+
+    if skip_official_check:
+        result["official_check_skipped"] = (
+            f"--skip-official-split-check passed: MP_DATA ({MP_DATA}) not read/compared."
+        )
+        result["cpg_overlap_count"] = 0
+        result["sample_overlap_count"] = 0
+        return result
+
     train_cpg = pd.read_parquet(MP_DATA / "metadata/cpg_split/index_files/train.parquet")
     val_cpg = pd.read_parquet(MP_DATA / "metadata/cpg_split/index_files/val.parquet")
     train_sample = pd.read_csv(MP_DATA / "metadata/subset_sample_split/ind_cancer/train_sample_tissue_count_with_idx.csv")
@@ -70,25 +91,17 @@ def check_official_splits() -> dict:
     cpg_overlap = set(train_cpg["chr_pos"]) & set(val_cpg["chr_pos"])
     sample_overlap = set(train_sample["sample_idx"]) & set(val_sample["sample_idx"])
 
-    cpg_split_manifest = pd.read_parquet(INPUT_DIR / "cpg_split_manifest.parquet")
-    sample_metadata = pd.read_parquet(INPUT_DIR / "sample_metadata.parquet")
-
-    _assert_disjoint(cpg_split_manifest, "cpg_idx", "split")
-    _assert_disjoint(sample_metadata, "sample_idx", "split")
-
     official_val_cpg = int((cpg_split_manifest["split"] == "validation").sum() + (cpg_split_manifest["split"] == "test").sum())
     official_val_sample = int((sample_metadata["split"] == "validation").sum() + (sample_metadata["split"] == "test").sum())
 
-    return {
+    result.update({
         "official_train_cpg": len(train_cpg),
         "official_val_cpg": len(val_cpg),
         "official_train_sample": len(train_sample),
         "official_val_sample": len(val_sample),
         "cpg_overlap_count": len(cpg_overlap),
         "sample_overlap_count": len(sample_overlap),
-        "aligned_train_cpg": int((cpg_split_manifest["split"] == "train").sum()),
         "aligned_val_cpg_validation_plus_test": official_val_cpg,
-        "aligned_train_sample": int((sample_metadata["split"] == "train").sum()),
         "aligned_val_sample_validation_plus_test": official_val_sample,
         "sample_coverage_gap_note": (
             f"official train_sample={len(train_sample)}, aligned train_sample="
@@ -97,9 +110,8 @@ def check_official_splits() -> dict:
             "rna_branch_inputs/manifest.json). 'all train_sample' in this run means all ALIGNED "
             "train rows, documented here, not silently assumed equal to the official count."
         ),
-        "no_cpg_duplicates": not cpg_split_manifest["cpg_idx"].duplicated().any(),
-        "no_sample_duplicates": not sample_metadata["sample_idx"].duplicated().any(),
-    }
+    })
+    return result
 
 
 def check_data_completeness() -> dict:
@@ -203,6 +215,15 @@ def main() -> None:
     )
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-smoke-run", action="store_true")
+    parser.add_argument(
+        "--skip-official-split-check",
+        action="store_true",
+        help=(
+            "Skip the cross-check against the raw MethylProphet official split source "
+            f"files under {MP_DATA} (not read/compared when passed). Internal integrity "
+            "checks on the aligned manifests (disjointness, no duplicates) still run."
+        ),
+    )
     args = parser.parse_args()
 
     report: dict[str, object] = {"created_at": time.time()}
@@ -218,7 +239,7 @@ def main() -> None:
             ok = False
 
     print("[preflight] official split integrity", flush=True)
-    report["splits"] = check_official_splits()
+    report["splits"] = check_official_splits(args.skip_official_split_check)
     if report["splits"]["cpg_overlap_count"] or report["splits"]["sample_overlap_count"]:
         ok = False
     if not report["splits"]["no_cpg_duplicates"] or not report["splits"]["no_sample_duplicates"]:

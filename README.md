@@ -1,90 +1,57 @@
-# MethylProphetTest — training-only
+# MethylPredictor — RNA-to-DNAm training
 
-Minimal repository for training the final RNA-to-DNAm model.
+Trains a single canonical model, `RNA2DNAmModel`, that predicts per-CpG DNA
+methylation (beta value) for a TCGA patient from that patient's bulk RNA-seq
+expression profile, as a residual correction on top of a frozen, externally
+computed per-CpG prior. The historical research code (architecture search,
+baselines, ablations, diagnostics, bootstrap analyses, paper reports) has
+been removed; git history is the archive if any of it is needed again.
 
-The historical research code (MethylProphet diagnostics, baselines, ablations,
-RNA-encoder experiments, biological-fidelity evaluation, bootstrap analyses,
-paper reports and generated results) has intentionally been removed. Git
-history is the archive.
+Documentation:
+- [`docs/architecture.md`](docs/architecture.md) — the model, its
+  components, and the frozen prior it corrects.
+- [`docs/training.md`](docs/training.md) — the two-stage training protocol,
+  loss/optimizer, sampling strategy, and preflight checks.
+- [`docs/data.md`](docs/data.md) — input files, splits, and how the nested
+  development split is built.
+- [`docs/evaluation.md`](docs/evaluation.md) — how to evaluate a checkpoint
+  on held-out data and what the metrics mean.
 
-## Canonical model — `RNA2DNAmModel`
+## Performance
 
-For patient `s` and CpG `i`:
+Current final-refit checkpoint (`artifacts/train/seed17/final_refit/best.pt`,
+epoch 45), evaluated on the **official test set** — 414 test samples ×
+40,689 test CpGs, both axes held out from all training/dev data (see
+[`docs/data.md`](docs/data.md#splits)):
 
-```text
-RNA_s
-  -> LayerNorm
-  -> Linear(21792 -> 64)
-  -> z_s
+| metric | model | frozen prior | skill |
+|---|---|---|---|
+| MSE | 0.02241 | 0.02823 | **+20.6%** |
+| Pearson (dynamic, per-cell) | 0.545 | — | — |
+| Pearson (within cancer type) | 0.456 | — | +20.6% skill |
+| fraction of samples beating the prior | 98.1% | — | — |
 
-CpG embedding_i (frozen) + variability_i
-  -> variability gate g_i
+Full breakdown (per cancer type, per CpG-variability tertile):
+`artifacts/train/seed17/final_refit/test_metrics.json`. See
+[`docs/evaluation.md`](docs/evaluation.md) for what each metric means and
+[`docs/data.md`](docs/data.md#splits) for exactly which data this was
+trained on vs. tested on.
 
-[z_s, e_i, P_rna(z_s) * P_locus(e_i)]
-  -> LayerNorm
-  -> Linear(... -> 128)
-  -> GELU
-  -> Dropout(0.1)
-  -> Linear(128 -> 1)
-  -> raw residual
-```
-
-With mean-RNA anchoring:
-
-```text
-delta_si = g_i * (
-    interaction(RNA_s, CpG_i)
-    - interaction(mean_RNA, CpG_i)
-)
-
-beta_hat_si = sigmoid(logit(prior_i) + delta_si)
-```
-
-The residual head is zero-initialized so training starts exactly from the
-frozen CpG prior, in logit space.
-
-## Training
-
-Install the canonical training dependencies and package:
+## Running
 
 ```bash
 python -m pip install -r requirements.txt
 python -m pip install -e .
-```
 
-Run the complete training protocol:
+bash scripts/train.sh          # preflight -> dev split -> dev training -> final refit
 
-```bash
-bash scripts/train.sh
-```
+python -m methylation_predictor train --config configs/train.yaml     # single stage, direct CLI
+python -m methylation_predictor validate --config configs/train.yaml  # summarize aligned inputs, no training
 
-The runner performs only:
-
-1. data preflight;
-2. nested development split creation;
-3. development training;
-4. best-epoch selection;
-5. final refit.
-
-It deliberately does **not** run test evaluation, MethylProphet comparisons,
-ablations, bootstraps or report generation.
-
-The canonical config is:
-
-```text
-configs/train.yaml
-```
-
-`scripts/render_final_refit_config.py` derives the final-refit config from
-`configs/train.yaml` plus the development stage's measured `best_epoch`; the
-result is written under the run's `artifacts/` directory, not tracked in
-`configs/`.
-
-The CLI can also be invoked directly:
-
-```bash
-python -m methylation_predictor train --config configs/train.yaml
-python -m methylation_predictor validate --config configs/train.yaml
+python scripts/evaluate_official_test.py \
+  --config artifacts/train/seed17/final_config.yaml \
+  --checkpoint artifacts/train/seed17/final_refit/best.pt \
+  --output artifacts/train/seed17/final_refit/test_metrics.json
 ```
 
 Generated checkpoints and runtime artifacts belong under `artifacts/`, which
