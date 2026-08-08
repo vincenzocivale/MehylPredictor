@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "methylation-predictor-audit"
-version = "0.1.0"
-description = "MethylProphet diagnosis and independent genomic-encoder evaluation"
+name = "methylation-predictor"
+version = "0.2.0"
+description = "Training-only RNA-to-DNAm residual methylation predictor"
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
@@ -13,10 +13,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-  "gpu: requires a GPU",
-  "data: requires external data artifacts",
-  "regression: expensive reproducibility regression test",
-]
-addopts = "-m 'not gpu and not data and not regression'"
 pythonpath = ["src"]
+addopts = "-q"
