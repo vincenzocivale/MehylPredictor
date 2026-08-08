@@ -1239,6 +1239,118 @@ class PretrainedEmbeddingF2Interaction(Interaction):
         nn.init.zeros_(self.residual[-1].bias)
 
 
+class RegionalAdapterF2Interaction(Interaction):
+    """Warm-started F2 plus a low-rank, regional-context residual adapter.
+
+    The locus tensor is ``[base_f2_embedding ; regional_features]``.  F2 and
+    the existing residual gate see only the unchanged base prefix.  The adapter
+    factorizes its patient-specific correction as a product of a patient factor,
+    a region descriptor and a locus loading.  Each CpG receives the leave-one-out descriptor of its annotated region,
+    while the loading remains locus-specific.  A fixed regulatory mask makes open-sea predictions exactly F2.
+    """
+
+    def __init__(
+        self,
+        rna_dim: int,
+        locus_dim: int,
+        base_locus_dim: int,
+        hidden_dim: int,
+        dropout: float,
+        rank: int,
+        context_dim: int | None,
+        gate_kind: str,
+        gate_hidden_dim: int,
+        mask_index: int,
+        residual_scale_init: float,
+    ):
+        super().__init__()
+        if not 0 < base_locus_dim < locus_dim:
+            raise ValueError(
+                f"regional_adapter_f2 requires 0 < base_locus_dim < locus_dim; "
+                f"received {base_locus_dim} and {locus_dim}"
+            )
+        if rank < 1:
+            raise ValueError("regional_rank must be positive")
+        if gate_kind not in {"fixed", "learned"}:
+            raise ValueError("regional_gate_kind must be fixed or learned")
+        self.base_locus_dim = int(base_locus_dim)
+        self.region_dim = int(locus_dim - base_locus_dim)
+        self.context_dim = self.region_dim if context_dim is None else int(context_dim)
+        if not 1 <= self.context_dim <= self.region_dim:
+            raise ValueError(
+                f"regional_context_dim must be in [1, {self.region_dim}], received {context_dim}"
+            )
+        self.local_dim = self.region_dim - self.context_dim
+        self.mask_index = mask_index if mask_index >= 0 else self.region_dim + mask_index
+        if not 0 <= self.mask_index < self.region_dim:
+            raise ValueError(
+                f"regional_mask_index={mask_index} resolves outside regional feature width {self.region_dim}"
+            )
+        self.gate_kind = gate_kind
+        self.baseline = ConcatInteraction(rna_dim, base_locus_dim, hidden_dim, dropout)
+        self.patient_projection = nn.Sequential(nn.LayerNorm(rna_dim), nn.Linear(rna_dim, rank))
+        self.region_projection = nn.Sequential(nn.LayerNorm(self.context_dim), nn.Linear(self.context_dim, rank))
+        loading_dim = base_locus_dim + self.local_dim
+        self.locus_loading = nn.Sequential(nn.LayerNorm(loading_dim), nn.Linear(loading_dim, rank))
+        self.regional_decoder = nn.Sequential(
+            nn.LayerNorm(rank),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(rank, 1),
+        )
+        self.learned_gate = (
+            nn.Sequential(
+                nn.LayerNorm(self.region_dim),
+                nn.Linear(self.region_dim, gate_hidden_dim),
+                nn.GELU(),
+                nn.Linear(gate_hidden_dim, 1),
+            )
+            if gate_kind == "learned"
+            else None
+        )
+        self.residual_scale = nn.Parameter(torch.tensor(float(residual_scale_init)))
+        self.last_regional_gate: torch.Tensor | None = None
+        self.last_regional_residual: torch.Tensor | None = None
+
+    def split_loci(self, loci: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if loci.ndim != 2 or loci.shape[1] != self.base_locus_dim + self.region_dim:
+            raise ValueError(
+                "regional_adapter_f2 received a locus tensor incompatible with "
+                f"base_locus_dim={self.base_locus_dim}, region_dim={self.region_dim}: {tuple(loci.shape)}"
+            )
+        return loci[:, : self.base_locus_dim], loci[:, self.base_locus_dim :]
+
+    def regional_gate(self, regional: torch.Tensor) -> torch.Tensor:
+        fixed = regional[:, self.mask_index].clamp(0.0, 1.0)
+        if self.learned_gate is None:
+            return fixed
+        return fixed * torch.sigmoid(self.learned_gate(regional)).squeeze(-1)
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        base_loci, regional = self.split_loci(loci)
+        baseline = self.baseline(rna, base_loci)
+        patient = self.patient_projection(rna.global_vector)[:, None, :]
+        shared = regional[:, : self.context_dim]
+        local = regional[:, self.context_dim :]
+        region = self.region_projection(shared)[None, :, :]
+        loading_input = torch.cat([base_loci, local], dim=-1)
+        loading = torch.tanh(self.locus_loading(loading_input))[None, :, :]
+        joint = patient * region * loading
+        residual = self.regional_decoder(joint).squeeze(-1)
+        gate = self.regional_gate(regional)
+        gated_residual = self.residual_scale * residual * gate.unsqueeze(0)
+        self.last_regional_gate = gate.detach()
+        self.last_regional_residual = gated_residual.detach()
+        return baseline + gated_residual
+
+    def zero_output(self) -> None:
+        # Do not zero the wrapped F2 baseline: the trainer overwrites it with the
+        # fold-specific F2 checkpoint. Only the new adapter starts at exact zero.
+        nn.init.zeros_(self.regional_decoder[-1].weight)
+        nn.init.zeros_(self.regional_decoder[-1].bias)
+
+
+
 class ResidualGate(nn.Module):
     def __init__(self, kind: str, locus_dim: int, hidden_dim: int, dropout: float, initial_scale: float):
         super().__init__()
@@ -1379,13 +1491,42 @@ class ResidualMethylationModel(nn.Module):
                 encoder.latent_dim, pretrained_embedding_dim, locus_dim, interaction.hidden_dim,
                 interaction.dropout, interaction.token_residual_scale_init,
             )
+        elif interaction.kind == "regional_adapter_f2":
+            if encoder.kind != "linear":
+                raise ValueError("regional_adapter_f2 requires model.encoder.kind=linear")
+            if interaction.base_locus_dim is None:
+                raise ValueError("regional_adapter_f2 requires model.interaction.base_locus_dim")
+            self.interaction = RegionalAdapterF2Interaction(
+                encoder.latent_dim, locus_dim, interaction.base_locus_dim, interaction.hidden_dim,
+                interaction.dropout, interaction.regional_rank, interaction.regional_context_dim,
+                interaction.regional_gate_kind,
+                interaction.regional_gate_hidden_dim, interaction.regional_mask_index,
+                interaction.regional_residual_scale_init,
+            )
         else:
             raise ValueError(f"unknown interaction: {interaction.kind}")
 
         gate = config.gate
-        self.gate = ResidualGate(gate.kind, locus_dim, gate.hidden_dim, gate.dropout, gate.initial_global_scale)
+        gate_locus_dim = (
+            interaction.base_locus_dim
+            if interaction.kind == "regional_adapter_f2"
+            else locus_dim
+        )
+        assert gate_locus_dim is not None
+        self.gate_locus_dim = int(gate_locus_dim)
+        self.gate = ResidualGate(
+            gate.kind, self.gate_locus_dim, gate.hidden_dim, gate.dropout, gate.initial_global_scale
+        )
         if config.zero_init_residual:
             self.interaction.zero_output()
+
+    def gate_loci(self, loci: torch.Tensor) -> torch.Tensor:
+        """Return the immutable F2 locus prefix used by the outer residual gate."""
+        if loci.shape[1] < self.gate_locus_dim:
+            raise ValueError(
+                f"locus width {loci.shape[1]} is smaller than gate_locus_dim={self.gate_locus_dim}"
+            )
+        return loci[:, : self.gate_locus_dim]
 
     @property
     def supports_factorized_inference(self) -> bool:
@@ -1435,7 +1576,7 @@ class ResidualMethylationModel(nn.Module):
         prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
         return FactorizedLocusState(
             factors=self.interaction.project_loci(loci),
-            gate=self.gate(loci, variability),
+            gate=self.gate(self.gate_loci(loci), variability),
             prior_logit=torch.logit(prior),
         )
 
@@ -1495,7 +1636,7 @@ class ResidualMethylationModel(nn.Module):
                 reference = self.rna_encoder(reference_rna)
                 reference_raw = self.interaction(reference, loci)
                 raw = raw - reference_raw.expand_as(raw)
-        gate = self.gate(loci, variability)
+        gate = self.gate(self.gate_loci(loci), variability)
         delta_logit = raw if self.config.interaction.kind == "between_within" else raw * gate.unsqueeze(0)
         prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
         prior_logit = torch.logit(prior)

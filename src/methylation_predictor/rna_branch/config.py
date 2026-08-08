@@ -118,7 +118,7 @@ class InteractionConfig:
     # bilinear|interaction_mlp|multihead_bilinear|between_within|concat|raw_concat|film|
     # film_locus|cross_attention|linear_token_cross_attention|concat_only|product_only|
     # concat_product_linear|gene_token_cross_attention|cpg_expert_f2|cpg_module_f2|cpg_gene_topk_f2|
-    # cpg_pretrained_f2|bilinear_concat_residual
+    # cpg_pretrained_f2|bilinear_concat_residual|regional_adapter_f2
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
@@ -126,6 +126,21 @@ class InteractionConfig:
     expert_temperature: float = 1.0
     token_top_k: int = 128
     token_residual_scale_init: float = 1.0
+    # Region-aware F2 adapter. Regional input features are appended to the frozen
+    # locus embedding by ``regional_experiment prepare-embeddings``. The first
+    # ``base_locus_dim`` columns remain bit-identical to the F2 locus input and
+    # are the only columns consumed by the warm-started baseline and outer gate.
+    base_locus_dim: int | None = None
+    regional_rank: int = 16
+    # Width of the appended feature prefix that is identical for every CpG in
+    # the same region (projected regional NTv3 mean + region count/span).
+    regional_context_dim: int | None = None
+    regional_gate_kind: str = "fixed"  # fixed|learned
+    regional_gate_hidden_dim: int = 32
+    # Index inside the appended regional feature block. -1 selects the final
+    # feature, which the preparation command reserves for the regulatory mask.
+    regional_mask_index: int = -1
+    regional_residual_scale_init: float = 1.0
 
 
 @dataclass(slots=True)
@@ -292,6 +307,11 @@ class EvaluationConfig:
     biological_min_observed_samples: int = 20
     biological_min_target_std: float = 0.05
     biological_min_cancer_group_samples: int = 4
+    # Optional split used only to freeze CpG eligibility thresholds. When set,
+    # biological metrics evaluate validation/test predictions but determine
+    # variable-CpG eligibility from this reference split (normally ``train``).
+    # None preserves the historical behaviour for legacy configs.
+    biological_eligibility_sample_split: str | None = None
     prediction_format: str = "npz"
     panels: dict[str, dict[str, str]] = field(
         default_factory=lambda: {

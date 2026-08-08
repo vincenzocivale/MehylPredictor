@@ -164,6 +164,7 @@ def evaluate_predictions(
     biological_min_observed_samples: int = 20,
     biological_min_target_std: float = 0.05,
     biological_min_cancer_group_samples: int = 4,
+    biological_eligibility_target: np.ndarray | None = None,
 ) -> dict[str, object]:
     """include_median_correlations=False skips the four *_dynamic_{pearson,spearman}_median
     diagnostics (a per-row/per-column Python loop over scipy calls -- O(n_samples + n_cpgs)
@@ -253,7 +254,12 @@ def evaluate_predictions(
             min_cancer_group_samples=biological_min_cancer_group_samples,
         )
         per_locus_bio = per_locus_biological_metrics(
-            target, prediction, prior, cancer_types, config=biological_config
+            target,
+            prediction,
+            prior,
+            cancer_types,
+            eligibility_target=biological_eligibility_target,
+            config=biological_config,
         )
         per_sample_bio = per_sample_biological_metrics(
             target, prediction, prior, cancer_types=cancer_types

@@ -88,6 +88,7 @@ class ExperimentRunner:
         self.cpg_tertile_thresholds = np.quantile(proxy[train_cpgs], [1.0 / 3.0, 2.0 / 3.0])
         self.cpg_tertiles = np.digitize(proxy, self.cpg_tertile_thresholds, right=True).astype(np.int64)
         self.cancer_centroids: torch.Tensor | None = None
+        self._biological_eligibility_cache: dict[tuple[str, bytes], np.ndarray] = {}
 
     @torch.no_grad()
     def _refresh_train_centroids(self) -> None:
@@ -191,6 +192,37 @@ class ExperimentRunner:
             chunks.append(factors.float().cpu())
         return torch.cat(chunks, dim=0)
 
+    def _biological_eligibility_target(
+        self,
+        cpg_indices: np.ndarray,
+        *,
+        enabled: bool,
+    ) -> np.ndarray | None:
+        """Return a target matrix used only to freeze variable-CpG eligibility.
+
+        The optional reference split is independent of the samples whose predictions
+        are being scored.  This prevents validation/test variance from deciding which
+        loci enter MAS-skill, MAS-CCC and checkpoint selection.
+        """
+        reference_split = self.config.evaluation.biological_eligibility_sample_split
+        if not enabled or reference_split is None:
+            return None
+        key = (reference_split, np.asarray(cpg_indices, dtype=np.int64).tobytes())
+        cached = self._biological_eligibility_cache.get(key)
+        if cached is not None:
+            return cached
+        reference_samples = self.bundle.sample_indices(reference_split)
+        if not len(reference_samples):
+            raise ValueError(
+                "biological_eligibility_sample_split has no samples: "
+                f"{reference_split!r}"
+            )
+        eligibility_target = self.bundle.beta(reference_samples, cpg_indices).astype(
+            np.float32, copy=False
+        )
+        self._biological_eligibility_cache[key] = eligibility_target
+        return eligibility_target
+
     @torch.no_grad()
     def predict_panel(
         self,
@@ -272,29 +304,35 @@ class ExperimentRunner:
                 ] = outputs["beta"].float().cpu().numpy()
 
         elapsed = time.perf_counter() - started
+        include_biological_fidelity = (
+            self.config.evaluation.include_biological_fidelity
+            or self.config.training.checkpoint_metric in {
+                "mas_pcc_variable", "mas_skill_vs_prior_variable",
+                "mean_skill_vs_prior_variable", "positive_skill_fraction_variable",
+                "mas_ccc_variable", "mas_dynamic_r2_variable",
+                "within_cancer_mas_pcc_variable",
+                "within_cancer_mas_ccc_variable",
+                "within_cancer_mas_dynamic_r2_variable",
+                "mac_pcc_median", "mac_ccc_median",
+            }
+        )
+        biological_eligibility_target = self._biological_eligibility_target(
+            cpg_indices,
+            enabled=include_biological_fidelity,
+        )
         metrics = evaluate_predictions(
             target,
             prediction,
             self.bundle.loci.prior[cpg_indices],
             self.bundle.samples.cancer_types[sample_indices],
             cpg_tertiles=self.cpg_tertiles[cpg_indices],
-            include_biological_fidelity=(
-                self.config.evaluation.include_biological_fidelity
-                or self.config.training.checkpoint_metric in {
-                    "mas_pcc_variable", "mas_skill_vs_prior_variable",
-                    "mean_skill_vs_prior_variable", "positive_skill_fraction_variable",
-                    "mas_ccc_variable", "mas_dynamic_r2_variable",
-                    "within_cancer_mas_pcc_variable",
-                    "within_cancer_mas_ccc_variable",
-                    "within_cancer_mas_dynamic_r2_variable",
-                    "mac_pcc_median", "mac_ccc_median",
-                }
-            ),
+            include_biological_fidelity=include_biological_fidelity,
             biological_min_observed_samples=self.config.evaluation.biological_min_observed_samples,
             biological_min_target_std=self.config.evaluation.biological_min_target_std,
             biological_min_cancer_group_samples=(
                 self.config.evaluation.biological_min_cancer_group_samples
             ),
+            biological_eligibility_target=biological_eligibility_target,
         )
         metrics["inference_seconds"] = elapsed
         metrics["inference_pairs_per_second"] = len(sample_indices) * len(cpg_indices) / max(elapsed, 1e-9)
@@ -597,6 +635,11 @@ class ExperimentRunner:
             "interaction.residual",
             "interaction.locus_product",
             "interaction.embedding_product",
+            "interaction.patient_projection",
+            "interaction.region_projection",
+            "interaction.locus_loading",
+            "interaction.regional_decoder",
+            "interaction.learned_gate",
         )
         unaccounted = [
             name for name in missing
