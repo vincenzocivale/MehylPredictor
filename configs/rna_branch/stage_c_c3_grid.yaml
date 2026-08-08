@@ -1,5 +1,0 @@
-base_config: stage_c_base.yaml
-runs:
-  - {name: c3_between_within_seed17, override: {model: {interaction: {kind: between_within, hidden_dim: 128}}, training: {seed: 17}}}
-  - {name: c3_between_within_seed29, override: {model: {interaction: {kind: between_within, hidden_dim: 128}}, training: {seed: 29}}}
-  - {name: c3_between_within_seed43, override: {model: {interaction: {kind: between_within, hidden_dim: 128}}, training: {seed: 43}}}

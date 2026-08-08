@@ -1,9 +1,0 @@
-# Install only in the offline embedding-extraction environment, not in the main trainer.
--r requirements-rna.txt
-h5py>=3.10
-huggingface-hub>=0.24
-transformers>=4.45
-anndata>=0.10
-scanpy>=1.10
-# scGPT is installed from its official package/repository together with its checkpoint.
-# The clean BulkRNABert GTEx+ENCODE checkpoint uses the official JAX repository and its setup.py.

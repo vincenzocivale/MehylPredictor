@@ -1,9 +1,0 @@
-# Use this only in the offline BulkFormer extraction environment.
-# Install the correct PyTorch / PyG / torch-sparse wheels for the local CUDA
-# version first, or create the upstream environment from BulkFormer/bulkformer.yaml.
-h5py>=3.10
-numpy>=2.0
-pandas>=2.2
-pyyaml>=6.0
-performer-pytorch==1.1.4
-torch-geometric>=2.6
