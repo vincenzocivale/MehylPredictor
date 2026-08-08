@@ -1,0 +1,20 @@
+# Matched-source training, chr1 (secondary comparison level -- see
+# docs/data/METHYLPROPHET_PROTOCOLS.md's "two-level comparison policy").
+# Default source-mixing policy is `explicit_balanced` with equal weights
+# ("equal-source"): a named, documented, swappable choice, not a claimed
+# reproduction of MethylProphet's own internal MDS mixing ratio (see
+# methylation_predictor.tcga_canonical.sampler for why that ratio isn't
+# recoverable from the released checkpoint config). Primary model-vs-model
+# comparison should use the published-model benchmark instead -- the shared
+# Array evaluation views (Protocol.evaluation_views()), unaffected by this
+# choice. Cheap ablations over this policy: configs/protocols/ablations/.
+protocol: tcga_mix_chr1
+source_sampling:
+  policy: explicit_balanced
+  weights:
+    array: 1.0
+    epic: 1.0
+    wgbs: 1.0
+batch:
+  sample_size: 32
+  cpg_size: 256

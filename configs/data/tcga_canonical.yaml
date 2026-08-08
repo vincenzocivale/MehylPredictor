@@ -1,0 +1,12 @@
+# Canonical MethylProphet-compatible TCGA bundle location.
+#
+# Resolution order (highest priority first), implemented in
+# methylation_predictor.tcga_canonical.config.resolve_bundle_root:
+#   1. an explicit `root=` argument passed in code / `--data-root` on the CLI
+#   2. the TCGA_CANONICAL_ROOT environment variable
+#   3. `root` below
+#
+# Every artifact under this root is read-only: it must never be written to,
+# regenerated, or have loci/rows dropped to match historical counts. See
+# docs/data/TCGA_CANONICAL_DATA.md.
+root: /raid/DATASETS/MethylPredictionData/methylprophet_official/official_training_data

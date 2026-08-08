@@ -1,0 +1,16 @@
+# Matched-source training, chr1-3 (secondary comparison level -- see
+# docs/data/METHYLPROPHET_PROTOCOLS.md). Array split is exact (note1 union
+# note4 reconstruction); EPIC/WGBS CpG pools are source-revision-compatible
+# (documented 241213 vs 241231 drift -- not corrected, not silently
+# filtered to match). Default mixing policy: explicit_balanced / equal
+# weights; see configs/protocols/ablations/ for alternatives.
+protocol: tcga_mix_chr123
+source_sampling:
+  policy: explicit_balanced
+  weights:
+    array: 1.0
+    epic: 1.0
+    wgbs: 1.0
+batch:
+  sample_size: 32
+  cpg_size: 256
