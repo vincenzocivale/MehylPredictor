@@ -24,8 +24,8 @@ from pathlib import Path
 
 import yaml
 
-ORIGINAL_SAMPLE_METADATA = "/data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs/sample_metadata.parquet"
-ORIGINAL_CPG_SPLITS = "/data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs/cpg_split_manifest.parquet"
+ORIGINAL_SAMPLE_METADATA = "/raid/DATASETS/MethylPredictionData/sample_metadata.parquet"
+ORIGINAL_CPG_SPLITS = "/raid/DATASETS/MethylPredictionData/cpg_split_manifest.parquet"
 
 
 def render(dev_config_path: Path, best_epoch: int, output_path: Path) -> Path:

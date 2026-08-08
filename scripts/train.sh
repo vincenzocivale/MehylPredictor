@@ -25,12 +25,18 @@ if phase_done "$MANIFEST_DIR"; then
   echo "[skip] preflight already complete"
 else
   echo "=== 0/4 preflight ==="
+  PREFLIGHT_EXTRA_ARGS=()
+  if [[ ! -d "/data/dataset/methylation/MethylProphetData/parquet/241231-tcga_array" ]]; then
+    echo "[preflight] official MethylProphet split source not found on this machine -- skipping cross-check"
+    PREFLIGHT_EXTRA_ARGS+=("--skip-official-split-check")
+  fi
   python scripts/preflight_genomewide_fullcoverage.py \
-    --output "$MANIFEST_DIR/preflight.json"
+    --output "$MANIFEST_DIR/preflight.json" \
+    "${PREFLIGHT_EXTRA_ARGS[@]}"
   mark_phase_done "$MANIFEST_DIR"
 fi
 
-DEV_SPLIT_DIR="${DEV_SPLIT_DIR:-/data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs_dev_seed17}"
+DEV_SPLIT_DIR="${DEV_SPLIT_DIR:-/raid/DATASETS/MethylPredictionData/rna_branch_inputs_dev_seed17}"
 if [[ -f "$DEV_SPLIT_DIR/manifest.json" ]]; then
   echo "[skip] nested development split already exists"
 else

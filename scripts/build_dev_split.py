@@ -41,9 +41,9 @@ import pandas as pd
 DEV_HELDOUT_FRACTION = 0.10
 DEV_SPLIT_SEED = 17
 
-DEFAULT_INPUT_DIR = Path("/data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs")
-DEFAULT_FEATURES_PATH = Path("/data/dataset/methylation/genomic_encoder_genome_wide_scratch/genome_wide_features.parquet")
-DEFAULT_OUTPUT_DIR = Path("/data/dataset/methylation/genomic_encoder_genome_wide_scratch/rna_branch_inputs_dev_seed17")
+DEFAULT_INPUT_DIR = Path("/raid/DATASETS/MethylPredictionData")
+DEFAULT_FEATURES_PATH = Path("/raid/DATASETS/MethylPredictionData/genome_wide_features.parquet")
+DEFAULT_OUTPUT_DIR = Path("/raid/DATASETS/MethylPredictionData/rna_branch_inputs_dev_seed17")
 
 
 def _assert_disjoint(frame: pd.DataFrame, key: str, split: str) -> None:
