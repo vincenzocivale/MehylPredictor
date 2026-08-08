@@ -1,5 +1,16 @@
 # Data
 
+> **Legacy path notice.** This document describes the original, self-contained
+> training pipeline (`21,792`-gene RNA, chr1-only universe, custom
+> `7,304`/`398`/`414` sample split derived from the official MethylProphet
+> pool). It remains the active path behind the checkpoint reported in the
+> top-level README and is not dead code. For training a model comparable to
+> published MethylProphet TCGA checkpoints (all `25,017` genes, the official
+> Array/EPIC/WGBS splits, chr1/chr1-3 protocols), use the newer canonical
+> data/protocol layer instead: [`docs/data/TCGA_CANONICAL_DATA.md`](data/TCGA_CANONICAL_DATA.md)
+> and [`docs/data/METHYLPROPHET_PROTOCOLS.md`](data/METHYLPROPHET_PROTOCOLS.md).
+> The two paths are independent; nothing below changed.
+
 All training/evaluation inputs live in a single flat directory (no
 sub-folders except the generated dev split), currently
 `/raid/DATASETS/MethylPredictionData/` on this machine. Paths are hardcoded

@@ -1,0 +1,11 @@
+# Exact released evaluation protocol: chr1 Array only.
+# See official_training_data/protocols/tcga_array_chr1/protocol.json for the
+# frozen split provenance -- this file only carries training knobs.
+protocol: tcga_array_chr1
+source_sampling:
+  policy: explicit_balanced  # single source: policy choice is moot here
+  weights:
+    array: 1.0
+batch:
+  sample_size: 32
+  cpg_size: 256

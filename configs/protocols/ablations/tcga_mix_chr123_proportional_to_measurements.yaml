@@ -1,0 +1,6 @@
+protocol: tcga_mix_chr123
+source_sampling:
+  policy: proportional_to_measurements
+batch:
+  sample_size: 32
+  cpg_size: 256

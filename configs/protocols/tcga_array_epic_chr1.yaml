@@ -1,0 +1,12 @@
+# Array + EPIC auxiliary training data, chr1. Array split is the exact
+# released evaluation protocol; EPIC has no held-out split (training-only
+# auxiliary source, no official EPIC evaluation panel).
+protocol: tcga_array_epic_chr1
+source_sampling:
+  policy: explicit_balanced
+  weights:
+    array: 1.0
+    epic: 1.0
+batch:
+  sample_size: 32
+  cpg_size: 256

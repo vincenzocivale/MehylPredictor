@@ -1,0 +1,13 @@
+# Source-mixing ablation: equal-source (identical to configs/protocols/tcga_mix_chr1.yaml's
+# default -- kept as an explicit named member of the ablation set for symmetry).
+# 1/3 draw probability per source regardless of pool size.
+protocol: tcga_mix_chr1
+source_sampling:
+  policy: explicit_balanced
+  weights:
+    array: 1.0
+    epic: 1.0
+    wgbs: 1.0
+batch:
+  sample_size: 32
+  cpg_size: 256

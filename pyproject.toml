@@ -15,3 +15,6 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+    "slow: reads real multi-GB slices of the canonical TCGA bundle (exact regression counts, not something to fake-speed-up)",
+]

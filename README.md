@@ -16,6 +16,14 @@ Documentation:
   development split is built.
 - [`docs/evaluation.md`](docs/evaluation.md) — how to evaluate a checkpoint
   on held-out data and what the metrics mean.
+- [`docs/data/TCGA_CANONICAL_DATA.md`](docs/data/TCGA_CANONICAL_DATA.md) and
+  [`docs/data/METHYLPROPHET_PROTOCOLS.md`](docs/data/METHYLPROPHET_PROTOCOLS.md)
+  — a separate, newer data/protocol layer
+  (`methylation_predictor.tcga_canonical`) for training models comparable to
+  published MethylProphet TCGA checkpoints (all 25,017 genes, official
+  Array/EPIC/WGBS splits). Data/protocol layer only, no model wired to it
+  yet; the pipeline described below and the checkpoint under Performance
+  are unaffected.
 
 ## Performance
 
