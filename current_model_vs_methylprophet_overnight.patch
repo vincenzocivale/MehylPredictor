@@ -1,0 +1,736 @@
+diff --git a/scripts/evaluate_current_model_vs_methylprophet.py b/scripts/evaluate_current_model_vs_methylprophet.py
+new file mode 100755
+index 0000000..3423775
+--- /dev/null
++++ b/scripts/evaluate_current_model_vs_methylprophet.py
+@@ -0,0 +1,272 @@
++#!/usr/bin/env python3
++"""Memory-safe evaluation of the current RNA2DNAmModel on exact MP chr1 views.
++
++Optionally scans a released MethylProphet evaluation parquet dataset and computes
++identically-oriented MSE/MAE/MAS-PCC/MAC-PCC on the same protocol IDs.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++
++# Match tcga_canonical.__init__: pyarrow must load before h5py on this server.
++import pyarrow.dataset as ds
++import h5py  # noqa: F401
++import numpy as np
++import torch
++
++from methylation_predictor.config import load_config
++from methylation_predictor.trainer import ExperimentRunner
++from methylation_predictor.utils import json_safe
++
++EXPECTED_FINITE = {
++    "train_cpg_x_val_sample": 30_574_946,
++    "val_cpg_x_train_sample": 55_155_121,
++    "val_cpg_x_val_sample": 6_129_547,
++}
++GROUP_IDX = {
++    "train_cpg_x_val_sample": 0,
++    "val_cpg_x_train_sample": 1,
++    "val_cpg_x_val_sample": 2,
++}
++
++
++def _pearson_from_moments(n, sx, sy, sxx, syy, sxy):
++    n = np.asarray(n, np.float64)
++    with np.errstate(invalid="ignore", divide="ignore"):
++        cov = sxy - sx * sy / n
++        vx = sxx - sx * sx / n
++        vy = syy - sy * sy / n
++        denom = vx * vy
++        r = np.where((n >= 2) & (denom > 0), cov / np.sqrt(np.where(denom > 0, denom, 1.0)), np.nan)
++    return r
++
++
++class DenseChunkStats:
++    def __init__(self, n_samples: int):
++        self.n = 0
++        self.sse = 0.0
++        self.sae = 0.0
++        self.prior_sse = 0.0
++        self.sample_n = np.zeros(n_samples, np.float64)
++        self.sample_st = np.zeros(n_samples, np.float64)
++        self.sample_sp = np.zeros(n_samples, np.float64)
++        self.sample_stt = np.zeros(n_samples, np.float64)
++        self.sample_spp = np.zeros(n_samples, np.float64)
++        self.sample_stp = np.zeros(n_samples, np.float64)
++        self.sample_model_sse = np.zeros(n_samples, np.float64)
++        self.sample_prior_sse = np.zeros(n_samples, np.float64)
++        self.cpg_r: list[np.ndarray] = []
++        self.cpg_model_mse: list[np.ndarray] = []
++        self.cpg_prior_mse: list[np.ndarray] = []
++
++    def add(self, target: np.ndarray, pred: np.ndarray, prior: np.ndarray):
++        target = np.asarray(target, np.float64)
++        pred = np.asarray(pred, np.float64)
++        pm = np.broadcast_to(np.asarray(prior, np.float64)[None, :], target.shape)
++        valid = np.isfinite(target) & np.isfinite(pred) & np.isfinite(pm)
++        t = np.where(valid, target, 0.0)
++        p = np.where(valid, pred, 0.0)
++        pr = np.where(valid, pm, 0.0)
++        err = np.where(valid, pred - target, 0.0)
++        perr = np.where(valid, pm - target, 0.0)
++        self.n += int(valid.sum())
++        self.sse += float((err * err).sum())
++        self.sae += float(np.abs(err).sum())
++        self.prior_sse += float((perr * perr).sum())
++
++        self.sample_n += valid.sum(axis=1)
++        self.sample_st += t.sum(axis=1); self.sample_sp += p.sum(axis=1)
++        self.sample_stt += (t*t).sum(axis=1); self.sample_spp += (p*p).sum(axis=1); self.sample_stp += (t*p).sum(axis=1)
++        self.sample_model_sse += (err*err).sum(axis=1); self.sample_prior_sse += (perr*perr).sum(axis=1)
++
++        cn = valid.sum(axis=0).astype(np.float64)
++        st = t.sum(axis=0); sp = p.sum(axis=0)
++        stt = (t*t).sum(axis=0); spp = (p*p).sum(axis=0); stp = (t*p).sum(axis=0)
++        self.cpg_r.append(_pearson_from_moments(cn, st, sp, stt, spp, stp))
++        with np.errstate(invalid="ignore", divide="ignore"):
++            self.cpg_model_mse.append(np.where(cn > 0, (err*err).sum(axis=0)/cn, np.nan))
++            self.cpg_prior_mse.append(np.where(cn > 0, (perr*perr).sum(axis=0)/cn, np.nan))
++
++    def finalize(self):
++        r_s = _pearson_from_moments(self.sample_n, self.sample_st, self.sample_sp, self.sample_stt, self.sample_spp, self.sample_stp)
++        r_c = np.concatenate(self.cpg_r) if self.cpg_r else np.array([])
++        cm = np.concatenate(self.cpg_model_mse) if self.cpg_model_mse else np.array([])
++        cp = np.concatenate(self.cpg_prior_mse) if self.cpg_prior_mse else np.array([])
++        mse = self.sse / self.n
++        pmse = self.prior_sse / self.n
++        return {
++            "rows": self.n,
++            "mse": mse,
++            "mae": self.sae / self.n,
++            "prior_mse": pmse,
++            "skill_vs_prior": 1.0 - mse / pmse if pmse > 0 else float("nan"),
++            "mas_pcc": float(np.nanmedian(r_c)),
++            "mac_pcc": float(np.nanmedian(r_s)),
++            "sample_win_fraction": float(np.nanmean((self.sample_model_sse/self.sample_n) < (self.sample_prior_sse/self.sample_n))),
++            "cpg_win_fraction": float(np.nanmean(cm < cp)),
++            "per_cpg_mse": cm,
++            "per_cpg_prior_mse": cp,
++        }
++
++
++class IndexedStats:
++    def __init__(self, sample_ids: np.ndarray, cpg_ids: np.ndarray, prior: np.ndarray):
++        self.sample_ids = np.asarray(sample_ids, np.int64)
++        self.cpg_ids = np.asarray(cpg_ids, np.int64)
++        self.prior = np.asarray(prior, np.float64)
++        self.s_order = np.argsort(self.sample_ids); self.s_sorted = self.sample_ids[self.s_order]
++        self.c_order = np.argsort(self.cpg_ids); self.c_sorted = self.cpg_ids[self.c_order]
++        ns, nc = len(sample_ids), len(cpg_ids)
++        self.n = 0; self.sse = 0.0; self.sae = 0.0; self.prior_sse = 0.0
++        self.sn=np.zeros(ns); self.st=np.zeros(ns); self.sp=np.zeros(ns); self.stt=np.zeros(ns); self.spp=np.zeros(ns); self.stp=np.zeros(ns)
++        self.ssse=np.zeros(ns); self.spse=np.zeros(ns)
++        self.cn=np.zeros(nc); self.ct=np.zeros(nc); self.cp=np.zeros(nc); self.ctt=np.zeros(nc); self.cpp=np.zeros(nc); self.ctp=np.zeros(nc)
++        self.csse=np.zeros(nc); self.cpse=np.zeros(nc)
++
++    @staticmethod
++    def _acc(dst, idx, weights):
++        dst += np.bincount(idx, weights=weights, minlength=len(dst))
++
++    def _map(self, values, sorted_values, order, name):
++        values = np.asarray(values, np.int64)
++        pos = np.searchsorted(sorted_values, values)
++        ok = (pos < len(sorted_values))
++        if not np.all(ok):
++            raise RuntimeError(f"released MP contains {name} outside protocol")
++        if not np.array_equal(sorted_values[pos], values):
++            raise RuntimeError(f"released MP contains {name} outside protocol")
++        return order[pos]
++
++    def add(self, sample, cpg, target, pred):
++        sample=np.asarray(sample,np.int64); cpg=np.asarray(cpg,np.int64)
++        target=np.asarray(target,np.float64); pred=np.asarray(pred,np.float64)
++        si=self._map(sample,self.s_sorted,self.s_order,"sample_idx"); ci=self._map(cpg,self.c_sorted,self.c_order,"cpg_idx")
++        valid=np.isfinite(target)&np.isfinite(pred)
++        si=si[valid]; ci=ci[valid]; t=target[valid]; p=pred[valid]; pr=self.prior[ci]
++        e=p-t; pe=pr-t
++        self.n += len(t); self.sse += float(np.dot(e,e)); self.sae += float(np.abs(e).sum()); self.prior_sse += float(np.dot(pe,pe))
++        one=np.ones(len(t))
++        for dst,w in ((self.sn,one),(self.st,t),(self.sp,p),(self.stt,t*t),(self.spp,p*p),(self.stp,t*p),(self.ssse,e*e),(self.spse,pe*pe)):
++            self._acc(dst,si,w)
++        for dst,w in ((self.cn,one),(self.ct,t),(self.cp,p),(self.ctt,t*t),(self.cpp,p*p),(self.ctp,t*p),(self.csse,e*e),(self.cpse,pe*pe)):
++            self._acc(dst,ci,w)
++
++    def finalize(self):
++        rs=_pearson_from_moments(self.sn,self.st,self.sp,self.stt,self.spp,self.stp)
++        rc=_pearson_from_moments(self.cn,self.ct,self.cp,self.ctt,self.cpp,self.ctp)
++        mse=self.sse/self.n; pmse=self.prior_sse/self.n
++        with np.errstate(divide="ignore",invalid="ignore"):
++            cm=self.csse/self.cn; cp=self.cpse/self.cn
++            sm=self.ssse/self.sn; sp=self.spse/self.sn
++        return {"rows":self.n,"mse":mse,"mae":self.sae/self.n,"prior_mse":pmse,"skill_vs_prior":1-mse/pmse,
++                "mas_pcc":float(np.nanmedian(rc)),"mac_pcc":float(np.nanmedian(rs)),
++                "sample_win_fraction":float(np.nanmean(sm<sp)),"cpg_win_fraction":float(np.nanmean(cm<cp)),
++                "per_cpg_mse":cm,"per_cpg_prior_mse":cp}
++
++
++def _view_indices(runner: ExperimentRunner, name: str):
++    if name == "train_cpg_x_val_sample":
++        return runner.bundle.sample_indices("validation"), runner.bundle.cpg_indices("train")
++    if name == "val_cpg_x_train_sample":
++        return runner.bundle.sample_indices("train"), runner.bundle.cpg_indices("validation")
++    if name == "val_cpg_x_val_sample":
++        return runner.bundle.sample_indices("validation"), runner.bundle.cpg_indices("validation")
++    raise KeyError(name)
++
++
++@torch.no_grad()
++def evaluate_ours(runner: ExperimentRunner, name: str):
++    sample_idx, cpg_idx = _view_indices(runner, name)
++    stats = DenseChunkStats(len(sample_idx))
++    runner.model.eval()
++    sc = runner.config.evaluation.sample_chunk_size
++    cc = runner.config.evaluation.cpg_chunk_size
++    for c0 in range(0, len(cpg_idx), cc):
++        local_cpg = cpg_idx[c0:c0+cc]
++        loci=torch.from_numpy(runner.bundle.loci.embeddings[local_cpg]).to(runner.device)
++        prior_np=runner.bundle.loci.prior[local_cpg]
++        prior=torch.from_numpy(prior_np).to(runner.device)
++        variability=torch.from_numpy(runner.bundle.loci.variability[local_cpg]).to(runner.device)
++        tgt=np.full((len(sample_idx),len(local_cpg)),np.nan,np.float32)
++        pred=np.full_like(tgt,np.nan)
++        for s0 in range(0,len(sample_idx),sc):
++            local_s=sample_idx[s0:s0+sc]
++            rna=torch.from_numpy(runner.bundle.rna(local_s)).to(runner.device)
++            codes=torch.from_numpy(runner.bundle.cancer_type_codes[local_s]).to(runner.device)
++            with runner._autocast_context():
++                out=runner.model(rna,loci,prior,variability,runner.reference_rna,codes,runner.cancer_centroids)
++            tgt[s0:s0+len(local_s)]=runner.bundle.beta(local_s,local_cpg)
++            pred[s0:s0+len(local_s)]=out["beta"].float().cpu().numpy()
++        stats.add(tgt,pred,prior_np)
++    result=stats.finalize()
++    result["samples"]=len(sample_idx); result["cpgs"]=len(cpg_idx)
++    return result, sample_idx, cpg_idx
++
++
++def evaluate_mp(eval_root: Path, group: int, sample_ids: np.ndarray, cpg_ids: np.ndarray, prior: np.ndarray, expected_rows: int):
++    eval_root = Path(eval_root)
++    if eval_root.is_file():
++        parquet_source = str(eval_root)
++    else:
++        parquet_files = sorted(eval_root.rglob("*.parquet"))
++        if not parquet_files:
++            raise RuntimeError(f"no parquet files found under released MP evaluation: {eval_root}")
++        parquet_source = [str(p) for p in parquet_files]
++    dataset=ds.dataset(parquet_source,format="parquet")
++    cols=["sample_idx","cpg_idx","pred_methyl","gt_methyl"]
++    scanner=dataset.scanner(filter=ds.field("group_idx")==group,columns=cols,batch_size=262144)
++    stats=IndexedStats(sample_ids,cpg_ids,prior)
++    for batch in scanner.to_batches():
++        d=batch.to_pydict()
++        stats.add(d["sample_idx"],d["cpg_idx"],d["gt_methyl"],d["pred_methyl"])
++    result=stats.finalize()
++    if result["rows"] != expected_rows:
++        raise RuntimeError(f"MP group {group}: finite rows {result['rows']} != expected {expected_rows}")
++    return result
++
++
++def _public(metrics):
++    return {k:v for k,v in metrics.items() if not k.startswith("per_cpg_")}
++
++
++def main():
++    p=argparse.ArgumentParser()
++    p.add_argument("--config",required=True)
++    p.add_argument("--checkpoint",required=True)
++    p.add_argument("--output",required=True)
++    p.add_argument("--mp-eval",default=None,help="local released MethylProphet eval parquet directory (optional)")
++    p.add_argument("--mp-label",default="MethylProphet released")
++    args=p.parse_args()
++    cfg=load_config(args.config)
++    runner=ExperimentRunner(cfg)
++    try:
++        ckpt=torch.load(args.checkpoint,map_location=runner.device,weights_only=False)
++        runner.model.load_state_dict(ckpt["model_state"],strict=True)
++        views={}
++        for name in EXPECTED_FINITE:
++            ours,sidx,cidx=evaluate_ours(runner,name)
++            if ours["rows"] != EXPECTED_FINITE[name]:
++                raise RuntimeError(f"{name}: ours rows {ours['rows']} != {EXPECTED_FINITE[name]}")
++            entry={"ours":_public(ours)}
++            if args.mp_eval:
++                sample_ids=runner.bundle.samples.ids[sidx].astype(np.int64)
++                cpg_ids=runner.bundle.loci.ids[cidx].astype(np.int64)
++                mp=evaluate_mp(Path(args.mp_eval),GROUP_IDX[name],sample_ids,cpg_ids,runner.bundle.loci.prior[cidx],EXPECTED_FINITE[name])
++                entry["methylprophet"]=_public(mp)
++                entry["delta_ours_minus_mp"]={
++                    k: float(ours[k]-mp[k]) for k in ("mse","mae","mas_pcc","mac_pcc")
++                }
++                valid=np.isfinite(ours["per_cpg_mse"])&np.isfinite(mp["per_cpg_mse"])
++                entry["paired_cpg_win_fraction_ours"] = float(np.mean(ours["per_cpg_mse"][valid] < mp["per_cpg_mse"][valid])) if valid.any() else float("nan")
++            views[name]=entry
++        report={"checkpoint":args.checkpoint,"checkpoint_epoch":ckpt.get("epoch"),"mp_label":args.mp_label if args.mp_eval else None,"views":views}
++        out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True)
++        out.write_text(json.dumps(json_safe(report),indent=2,sort_keys=True)+"\n")
++        print(json.dumps(json_safe(report),indent=2,sort_keys=True))
++    finally:
++        runner.close()
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/prepare_current_model_mp_benchmark.py b/scripts/prepare_current_model_mp_benchmark.py
+new file mode 100755
+index 0000000..d6cb469
+--- /dev/null
++++ b/scripts/prepare_current_model_mp_benchmark.py
+@@ -0,0 +1,303 @@
++#!/usr/bin/env python3
++"""Prepare an exact MethylProphet-compatible chr1 benchmark for RNA2DNAmModel.
++
++This is an adapter-only preparation step. It does not alter the canonical TCGA
++bundle, the model architecture, or the trainer. It creates small sample/CpG
++manifests that let the existing ExperimentRunner consume the exact released
++Array chr1 protocol with the canonical 25,017-gene RNA matrix.
++"""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import os
++from pathlib import Path
++
++# Match tcga_canonical.__init__: pyarrow must load before h5py on this server.
++import pyarrow as _pyarrow  # noqa: F401
++import h5py
++import numpy as np
++import pandas as pd
++import yaml
++
++EXPECTED_FINITE = {
++    "train_cpg_x_val_sample": 30_574_946,
++    "val_cpg_x_train_sample": 55_155_121,
++    "val_cpg_x_val_sample": 6_129_547,
++}
++
++
++def _decode(x) -> str:
++    return x.decode("utf-8") if isinstance(x, (bytes, np.bytes_)) else str(x)
++
++
++def _sha_ids(values: np.ndarray) -> str:
++    arr = np.sort(np.asarray(values, dtype=np.int64))
++    return hashlib.sha256(("\n".join(map(str, arr.tolist())) + "\n").encode()).hexdigest()
++
++
++def _nested_sample_split(ids: np.ndarray, strata: np.ndarray, frac: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
++    rng = np.random.default_rng(seed)
++    fit: list[np.ndarray] = []
++    dev: list[np.ndarray] = []
++    for label in sorted(np.unique(strata).tolist()):
++        group = np.asarray(ids[strata == label], dtype=np.int64)
++        order = rng.permutation(len(group))
++        if len(group) <= 1:
++            n_dev = 0
++        else:
++            n_dev = max(1, int(round(frac * len(group))))
++            n_dev = min(n_dev, len(group) - 1)
++        dev.append(group[order[:n_dev]])
++        fit.append(group[order[n_dev:]])
++    return np.sort(np.concatenate(fit)), np.sort(np.concatenate(dev) if dev else np.empty(0, np.int64))
++
++
++def _nested_cpg_split(ids: np.ndarray, frac: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
++    ids = np.asarray(ids, dtype=np.int64)
++    rng = np.random.default_rng(seed)
++    order = rng.permutation(len(ids))
++    n_dev = max(1, int(round(frac * len(ids))))
++    n_dev = min(n_dev, len(ids) - 1)
++    return np.sort(ids[order[n_dev:]]), np.sort(ids[order[:n_dev]])
++
++
++def _read_protocol(root: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
++    d = root / "protocols" / "tcga_array_chr1"
++    train_s = np.load(d / "array_train_sample_idx.npy").astype(np.int64)
++    val_s = np.load(d / "array_val_sample_idx.npy").astype(np.int64)
++    train_c = np.load(d / "array_train_cpg_idx.npy").astype(np.int64)
++    val_c = np.load(d / "array_val_cpg_idx.npy").astype(np.int64)
++    assert len(train_s) == 8260 and len(val_s) == 918
++    assert len(train_c) == 33885 and len(val_c) == 6742
++    assert not np.intersect1d(train_s, val_s).size
++    assert not np.intersect1d(train_c, val_c).size
++    return train_s, val_s, train_c, val_c
++
++
++def _rna_strata(root: Path, needed: np.ndarray) -> dict[int, str]:
++    with h5py.File(root / "tcga_rna_official_full.h5", "r") as f:
++        sample_idx = np.asarray(f["sample_idx"][...], dtype=np.int64)
++        if "tissue_name" in f:
++            labels = np.asarray([_decode(x) for x in f["tissue_name"][...]], dtype=object)
++        elif "tissue_idx" in f:
++            labels = np.asarray([f"tissue_{int(x)}" for x in f["tissue_idx"][...]], dtype=object)
++        else:
++            labels = np.full(len(sample_idx), "UNKNOWN", dtype=object)
++    lookup = {int(s): (str(l) if str(l) not in {"", "nan", "None"} else "UNKNOWN") for s, l in zip(sample_idx, labels)}
++    missing = [int(s) for s in needed if int(s) not in lookup]
++    if missing:
++        raise RuntimeError(f"canonical RNA missing {len(missing)} protocol samples; examples={missing[:10]}")
++    return lookup
++
++
++def _feature_audit(cpgs: np.ndarray, embeddings_path: Path, features_path: Path, out_dir: Path) -> dict:
++    with h5py.File(embeddings_path, "r") as f:
++        if "cpg_idx" not in f or "embeddings" not in f:
++            raise RuntimeError(f"{embeddings_path} must contain cpg_idx and embeddings")
++        emb_ids = np.asarray(f["cpg_idx"][...]).astype(str)
++        emb_shape = tuple(f["embeddings"].shape)
++    emb_set = set(emb_ids.tolist())
++    required_str = np.asarray(cpgs).astype(str)
++    missing_emb = np.asarray([int(x) for x in required_str if x not in emb_set], dtype=np.int64)
++
++    required_cols = ["cpg_idx", "pred_ntv3_prior", "pred_log_var_between", "pred_log_var_within"]
++    feat = pd.read_parquet(features_path, columns=required_cols)
++    feat["cpg_idx"] = feat["cpg_idx"].astype(str)
++    if feat["cpg_idx"].duplicated().any():
++        raise RuntimeError("locus_features contains duplicate cpg_idx")
++    feat = feat.set_index("cpg_idx")
++    missing_feat = np.asarray([int(x) for x in required_str if x not in feat.index], dtype=np.int64)
++    present = [x for x in required_str if x in feat.index]
++    values = feat.loc[present, required_cols[1:]].to_numpy(np.float64) if present else np.empty((0, 3))
++    nonfinite_rows = int((~np.isfinite(values)).any(axis=1).sum()) if len(values) else 0
++
++    out_dir.mkdir(parents=True, exist_ok=True)
++    np.save(out_dir / "missing_embedding_cpg_idx.npy", missing_emb)
++    np.save(out_dir / "missing_feature_cpg_idx.npy", missing_feat)
++    audit = {
++        "required_cpgs": int(len(cpgs)),
++        "required_cpg_sha256": _sha_ids(cpgs),
++        "embedding_shape": list(emb_shape),
++        "embedding_missing": int(len(missing_emb)),
++        "feature_missing": int(len(missing_feat)),
++        "feature_nonfinite_rows": nonfinite_rows,
++        "status": "PASS" if len(missing_emb) == 0 and len(missing_feat) == 0 and nonfinite_rows == 0 else "NTV3_FEATURES_REQUIRED",
++    }
++    (out_dir / "feature_audit.json").write_text(json.dumps(audit, indent=2) + "\n")
++    return audit
++
++
++def _write_manifests(root: Path, out: Path, seed: int, dev_fraction: float) -> dict:
++    train_s, val_s, train_c, val_c = _read_protocol(root)
++    label_lookup = _rna_strata(root, np.concatenate([train_s, val_s]))
++    train_labels = np.asarray([label_lookup[int(x)] for x in train_s], dtype=object)
++    fit_s, dev_s = _nested_sample_split(train_s, train_labels, dev_fraction, seed)
++    fit_c, dev_c = _nested_cpg_split(train_c, dev_fraction, seed)
++
++    manifest_dir = out / "manifests"
++    manifest_dir.mkdir(parents=True, exist_ok=True)
++
++    def sample_frame(split_map: list[tuple[np.ndarray, str]]) -> pd.DataFrame:
++        rows = []
++        for ids, split in split_map:
++            rows.extend({"sample_idx": int(x), "cancer_type": label_lookup[int(x)], "split": split} for x in ids)
++        return pd.DataFrame(rows)
++
++    sample_frame([(fit_s, "train"), (dev_s, "dev_heldout"), (val_s, "official_val")]).to_parquet(
++        manifest_dir / "sample_metadata_dev.parquet", index=False
++    )
++    sample_frame([(train_s, "train"), (val_s, "validation")]).to_parquet(
++        manifest_dir / "sample_metadata_final.parquet", index=False
++    )
++
++    pd.DataFrame({
++        "cpg_idx": np.concatenate([fit_c, dev_c, val_c]),
++        "split": np.concatenate([
++            np.full(len(fit_c), "train", dtype=object),
++            np.full(len(dev_c), "dev_heldout", dtype=object),
++            np.full(len(val_c), "official_val", dtype=object),
++        ]),
++    }).to_parquet(manifest_dir / "cpg_splits_dev.parquet", index=False)
++    pd.DataFrame({
++        "cpg_idx": np.concatenate([train_c, val_c]),
++        "split": np.concatenate([
++            np.full(len(train_c), "train", dtype=object),
++            np.full(len(val_c), "validation", dtype=object),
++        ]),
++    }).to_parquet(manifest_dir / "cpg_splits_final.parquet", index=False)
++
++    summary = {
++        "official": {"train_samples": len(train_s), "val_samples": len(val_s), "train_cpgs": len(train_c), "val_cpgs": len(val_c)},
++        "nested_dev": {"fit_samples": len(fit_s), "dev_samples": len(dev_s), "fit_cpgs": len(fit_c), "dev_cpgs": len(dev_c)},
++        "sha256": {
++            "official_train_samples": _sha_ids(train_s), "official_val_samples": _sha_ids(val_s),
++            "official_train_cpgs": _sha_ids(train_c), "official_val_cpgs": _sha_ids(val_c),
++            "dev_fit_samples": _sha_ids(fit_s), "dev_heldout_samples": _sha_ids(dev_s),
++            "dev_fit_cpgs": _sha_ids(fit_c), "dev_heldout_cpgs": _sha_ids(dev_c),
++        },
++    }
++    (manifest_dir / "split_audit.json").write_text(json.dumps(summary, indent=2) + "\n")
++    return summary
++
++
++def _make_dev_config(base_config: Path, canonical_root: Path, out: Path, embeddings: Path, features: Path, seed: int) -> Path:
++    raw = yaml.safe_load(base_config.read_text())
++    m = out / "manifests"
++    raw["run_name"] = f"current-model-mp-array-chr1-dev-seed{seed}"
++    raw["output_dir"] = str(out / "development")
++    raw["data"]["rna"] = {
++        "path": str(canonical_root / "tcga_rna_official_full.h5"), "values_key": "X", "row_ids_key": "sample_idx", "col_ids_key": "gene_ids"
++    }
++    raw["data"]["methylation"] = {
++        "path": str(canonical_root / "methylation/tcga_array_official_full.h5"), "values_key": "beta", "row_ids_key": "sample_idx", "col_ids_key": "cpg_idx"
++    }
++    raw["data"]["locus_embeddings"] = {
++        "path": str(embeddings), "values_key": "embeddings", "row_ids_key": "cpg_idx"
++    }
++    raw["data"]["locus_features"] = {"path": str(features), "id_column": "cpg_idx"}
++    raw["data"]["sample_metadata"] = {"path": str(m / "sample_metadata_dev.parquet"), "id_column": "sample_idx"}
++    raw["data"]["cpg_splits"] = {"path": str(m / "cpg_splits_dev.parquet"), "id_column": "cpg_idx"}
++    raw["data"]["allow_partial_overlap"] = False
++    raw["data"]["rna_control"] = "real"
++    raw["data"]["standardize_rna"] = True
++    raw["data"]["rna_transform"] = "zscore"
++
++    # Architecture and objective remain exactly those in configs/train.yaml.
++    tr = raw["training"]
++    tr["seed"] = seed
++    tr["train_sample_split"] = "train"
++    tr["train_cpg_split"] = "train"
++    tr["validation_sample_split"] = "dev_heldout"
++    tr["validation_cpg_split"] = "dev_heldout"
++    tr["cpg_sampling"] = "full_coverage"
++    tr["validation_max_cpgs"] = 1024
++    tr["checkpoint_selection"] = "best"
++    raw["evaluation"]["panels"] = {}
++
++    # Avoid network stalls during an unattended benchmark; all metrics/checkpoints stay local.
++    raw.setdefault("tracking", {})["backend"] = "none"
++    raw["tracking"]["name"] = raw["run_name"]
++    raw["tracking"]["log_checkpoint"] = False
++
++    path = out / "dev_config.yaml"
++    path.write_text(yaml.safe_dump(raw, sort_keys=False))
++    return path
++
++
++def prepare(args: argparse.Namespace) -> None:
++    root = Path(args.canonical_root).resolve()
++    out = Path(args.output_root).resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    split_summary = _write_manifests(root, out, args.seed, args.dev_fraction)
++    _, _, train_c, val_c = _read_protocol(root)
++    audit = _feature_audit(np.concatenate([train_c, val_c]), Path(args.locus_embeddings), Path(args.locus_features), out / "manifests")
++
++    # Validate the canonical finite counts using the already-tested protocol layer.
++    from methylation_predictor.tcga_canonical import TCGACanonicalBundle, load_protocol
++    with TCGACanonicalBundle.from_root(root) as bundle:
++        protocol = load_protocol("tcga_array_chr1", bundle)
++        finite = protocol.evaluation_finite_counts()
++    if finite != EXPECTED_FINITE:
++        raise RuntimeError(f"official finite-count regression failed: {finite} != {EXPECTED_FINITE}")
++
++    report = {"feature_audit": audit, "split_audit": split_summary, "finite_counts": finite}
++    (out / "manifests" / "preflight.json").write_text(json.dumps(report, indent=2) + "\n")
++    if audit["status"] != "PASS":
++        print(json.dumps(report, indent=2))
++        raise SystemExit(42)
++    dev_config = _make_dev_config(Path(args.base_config), root, out, Path(args.locus_embeddings), Path(args.locus_features), args.seed)
++    print(json.dumps({"status": "PASS", "dev_config": str(dev_config), **report}, indent=2))
++
++
++def render_final(args: argparse.Namespace) -> None:
++    out = Path(args.output_root).resolve()
++    raw = yaml.safe_load(Path(args.dev_config).read_text())
++    raw["run_name"] = f"current-model-mp-array-chr1-final-seed{args.seed}"
++    raw["output_dir"] = str(out / "final_refit")
++    raw["data"]["sample_metadata"]["path"] = str(out / "manifests/sample_metadata_final.parquet")
++    raw["data"]["cpg_splits"]["path"] = str(out / "manifests/cpg_splits_final.parquet")
++    tr = raw["training"]
++    tr["epochs"] = int(args.best_epoch)
++    tr["min_epochs"] = int(args.best_epoch)
++    tr["patience"] = int(args.best_epoch)
++    tr["checkpoint_selection"] = "final"
++    tr["train_sample_split"] = "train"
++    tr["train_cpg_split"] = "train"
++    tr["validation_sample_split"] = "train"
++    tr["validation_cpg_split"] = "train"
++    tr["validation_every"] = 1_000_000
++    raw["evaluation"]["panels"] = {}
++    raw.setdefault("tracking", {})["backend"] = "none"
++    raw["tracking"]["name"] = raw["run_name"]
++    final = out / "final_config.yaml"
++    final.write_text(yaml.safe_dump(raw, sort_keys=False))
++    print(json.dumps({"final_config": str(final), "best_epoch": int(args.best_epoch)}, indent=2))
++
++
++def main() -> None:
++    p = argparse.ArgumentParser()
++    sub = p.add_subparsers(dest="cmd", required=True)
++    a = sub.add_parser("prepare")
++    a.add_argument("--canonical-root", default=os.environ.get("TCGA_CANONICAL_ROOT", "/raid/DATASETS/MethylPredictionData/methylprophet_official/official_training_data"))
++    a.add_argument("--locus-embeddings", default="/raid/DATASETS/MethylPredictionData/locus_embeddings.h5")
++    a.add_argument("--locus-features", default="/raid/DATASETS/MethylPredictionData/locus_features.parquet")
++    a.add_argument("--base-config", default="configs/train.yaml")
++    a.add_argument("--output-root", required=True)
++    a.add_argument("--seed", type=int, default=17)
++    a.add_argument("--dev-fraction", type=float, default=0.10)
++    a.set_defaults(func=prepare)
++
++    r = sub.add_parser("render-final")
++    r.add_argument("--dev-config", required=True)
++    r.add_argument("--output-root", required=True)
++    r.add_argument("--best-epoch", type=int, required=True)
++    r.add_argument("--seed", type=int, default=17)
++    r.set_defaults(func=render_final)
++    args = p.parse_args()
++    args.func(args)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/run_overnight_current_model_vs_mp.sh b/scripts/run_overnight_current_model_vs_mp.sh
+new file mode 100755
+index 0000000..a4d7c02
+--- /dev/null
++++ b/scripts/run_overnight_current_model_vs_mp.sh
+@@ -0,0 +1,143 @@
++#!/usr/bin/env bash
++# One-command unattended benchmark of the CURRENT RNA2DNAmModel architecture
++# on the exact MethylProphet Array-chr1 protocol.
++set -euo pipefail
++
++REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++cd "$REPO_ROOT"
++
++SEED="${SEED:-17}"
++RUN_ROOT="${RUN_ROOT:-artifacts/methylprophet_comparison/current_model_tcga_array_chr1_seed${SEED}}"
++CANONICAL_ROOT="${TCGA_CANONICAL_ROOT:-/raid/DATASETS/MethylPredictionData/methylprophet_official/official_training_data}"
++LOCUS_EMBEDDINGS="${LOCUS_EMBEDDINGS:-/raid/DATASETS/MethylPredictionData/locus_embeddings.h5}"
++LOCUS_FEATURES="${LOCUS_FEATURES:-/raid/DATASETS/MethylPredictionData/locus_features.parquet}"
++BASE_CONFIG="${BASE_CONFIG:-configs/train.yaml}"
++MP_EVAL_DIR="${MP_EVAL_DIR:-}"
++MP_EVAL_REPO="${MP_EVAL_REPO:-MethylProphet/eval-tcga_array_chr1-32xl40s-c2b2}"
++AUTO_DOWNLOAD_MP_EVAL="${AUTO_DOWNLOAD_MP_EVAL:-1}"
++
++mkdir -p "$RUN_ROOT/logs" "$RUN_ROOT/manifests" "$RUN_ROOT/evaluation"
++exec > >(tee -a "$RUN_ROOT/logs/overnight.log") 2>&1
++
++echo "=== current-model vs MethylProphet overnight benchmark ==="
++date -Is
++echo "repo=$(pwd)"
++echo "git_head=$(git rev-parse HEAD)"
++echo "seed=$SEED"
++echo "run_root=$RUN_ROOT"
++echo "canonical_root=$CANONICAL_ROOT"
++echo
++
++# Keep the current checkout importable without changing model code.
++python - <<'PY'
++import methylation_predictor
++print("methylation_predictor import: PASS")
++PY
++
++if [[ "${SKIP_TESTS:-0}" != "1" ]]; then
++  echo "=== 0/6 regression tests ==="
++  pytest -q
++fi
++
++echo "=== 1/6 exact protocol + NTv3 feature coverage preflight ==="
++set +e
++python scripts/prepare_current_model_mp_benchmark.py prepare \
++  --canonical-root "$CANONICAL_ROOT" \
++  --locus-embeddings "$LOCUS_EMBEDDINGS" \
++  --locus-features "$LOCUS_FEATURES" \
++  --base-config "$BASE_CONFIG" \
++  --output-root "$RUN_ROOT" \
++  --seed "$SEED"
++PREP_RC=$?
++set -e
++if [[ "$PREP_RC" -eq 42 ]]; then
++  echo
++  echo "FATAL: the current architecture is missing NTv3-derived CpG features for the exact chr1 protocol."
++  echo "No training was started. See: $RUN_ROOT/manifests/feature_audit.json"
++  echo "Missing IDs are saved as missing_embedding_cpg_idx.npy / missing_feature_cpg_idx.npy."
++  echo "This fail-closed behavior prevents silently changing RNA2DNAmModel or its prior."
++  exit 42
++elif [[ "$PREP_RC" -ne 0 ]]; then
++  exit "$PREP_RC"
++fi
++
++DEV_CONFIG="$RUN_ROOT/dev_config.yaml"
++FINAL_CONFIG="$RUN_ROOT/final_config.yaml"
++DEV_DIR="$RUN_ROOT/development"
++FINAL_DIR="$RUN_ROOT/final_refit"
++
++echo "=== validate canonical adapter ==="
++python -m methylation_predictor validate --config "$DEV_CONFIG" | tee "$RUN_ROOT/manifests/dev_bundle_summary.json"
++
++if [[ ! -f "$DEV_DIR/.done" ]]; then
++  echo "=== 2/6 nested-development training ==="
++  python -m methylation_predictor train --config "$DEV_CONFIG"
++  touch "$DEV_DIR/.done"
++else
++  echo "[skip] development training already complete"
++fi
++
++BEST_EPOCH="$(python - "$DEV_DIR/metrics.json" <<'PY'
++import json,sys
++print(json.load(open(sys.argv[1]))["best_epoch"])
++PY
++)"
++echo "selected best_epoch=$BEST_EPOCH"
++
++echo "=== 3/6 render exact final refit ==="
++python scripts/prepare_current_model_mp_benchmark.py render-final \
++  --dev-config "$DEV_CONFIG" \
++  --output-root "$RUN_ROOT" \
++  --best-epoch "$BEST_EPOCH" \
++  --seed "$SEED"
++python -m methylation_predictor validate --config "$FINAL_CONFIG" | tee "$RUN_ROOT/manifests/final_bundle_summary.json"
++
++if [[ ! -f "$FINAL_DIR/.done" ]]; then
++  echo "=== 4/6 final refit on all official train IDs ==="
++  python -m methylation_predictor train --config "$FINAL_CONFIG"
++  touch "$FINAL_DIR/.done"
++else
++  echo "[skip] final refit already complete"
++fi
++
++# Optional automatic download of the exact Array-only released evaluation.
++# Failure here does NOT invalidate our training/evaluation; it only disables the paired MP scan.
++if [[ -z "$MP_EVAL_DIR" && "$AUTO_DOWNLOAD_MP_EVAL" == "1" ]]; then
++  MP_CACHE="$RUN_ROOT/methylprophet_released_eval"
++  echo "=== 5/6 acquire released MethylProphet evaluation (optional) ==="
++  set +e
++  if command -v hf >/dev/null 2>&1; then
++    hf download "$MP_EVAL_REPO" --repo-type dataset --local-dir "$MP_CACHE"
++    DL_RC=$?
++  elif command -v huggingface-cli >/dev/null 2>&1; then
++    huggingface-cli download "$MP_EVAL_REPO" --repo-type dataset --local-dir "$MP_CACHE"
++    DL_RC=$?
++  else
++    DL_RC=127
++  fi
++  set -e
++  if [[ "$DL_RC" -eq 0 ]]; then
++    MP_EVAL_DIR="$MP_CACHE"
++  else
++    echo "[warning] could not auto-download $MP_EVAL_REPO (rc=$DL_RC)."
++    echo "[warning] continuing with exact OURS evaluation only. Set MP_EVAL_DIR and rerun; training will be skipped."
++  fi
++fi
++
++echo "=== 6/6 full official three-view evaluation ==="
++EVAL_ARGS=(
++  --config "$FINAL_CONFIG"
++  --checkpoint "$FINAL_DIR/best.pt"
++  --output "$RUN_ROOT/evaluation/headline.json"
++)
++if [[ -n "$MP_EVAL_DIR" && -d "$MP_EVAL_DIR" ]]; then
++  EVAL_ARGS+=(--mp-eval "$MP_EVAL_DIR" --mp-label "$MP_EVAL_REPO")
++fi
++python scripts/evaluate_current_model_vs_methylprophet.py "${EVAL_ARGS[@]}"
++
++echo
++echo "=== COMPLETE ==="
++date -Is
++echo "checkpoint: $FINAL_DIR/best.pt"
++echo "headline:   $RUN_ROOT/evaluation/headline.json"
++echo "log:        $RUN_ROOT/logs/overnight.log"
