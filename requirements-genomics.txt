@@ -1,0 +1,6 @@
+# Extra dependencies only for NTv3 feature expansion.  Intentionally does not
+# touch torch: keep the server-compatible CUDA 12.1 PyTorch build already used by E1.
+transformers>=4.48,<5
+huggingface_hub>=0.27
+pyfaidx>=0.8
+safetensors>=0.4
