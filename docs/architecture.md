@@ -11,8 +11,8 @@ any config field not mentioned below as vestigial.
 ## Model
 
 ```text
-RNA_s (21,792 genes)
-  -> LayerNorm -> Linear(21792 -> 64)                         [LinearRNAEncoder]
+RNA_s (25,017 genes in the current canonical TCGA path)
+  -> LayerNorm -> Linear(25017 -> 64)                         [LinearRNAEncoder]
   -> z_s
 
 CpG embedding_i (1536-d, frozen, from an external genomic model)
@@ -28,8 +28,9 @@ delta_si = g_i * (interaction(RNA_s, CpG_i) - interaction(mean_RNA, CpG_i))
 beta_hat_si = sigmoid(logit(prior_i) + delta_si)
 ```
 
-- **Encoder** (`model.encoder.kind = "linear"`, `LinearRNAEncoder`):
-  `LayerNorm(21792) -> Linear(21792 -> 64)`. `z_s` is the sample's 64-d RNA
+- **Encoder** (`model.encoder.kind = "linear"`, `LinearRNAEncoder`): in the
+  current MethylProphet-compatible TCGA path this is
+  `LayerNorm(25017) -> Linear(25017 -> 64)`. `z_s` is the sample's 64-d RNA
   latent.
 - **Gate** (`model.gate.kind = "variability"`, `ResidualGate`): a per-CpG
   sigmoid scalar `g_i in [0,1]`, computed from the CpG's frozen embedding
@@ -53,17 +54,27 @@ beta_hat_si = sigmoid(logit(prior_i) + delta_si)
   `delta_si = 0` at initialization and training starts exactly at the frozen
   prior in logit space.
 
-Parameter count of the trained model: **1,859,078** total
-(1,438,336 encoder + 319,105 interaction + 101,637 gate).
+Parameter count for the current 25,017-gene canonical model: **2,071,928**
+total (1,651,186 encoder + 319,105 interaction + 101,637 gate). The historical
+21,792-gene path has a smaller encoder and is retained only for legacy
+checkpoint reproducibility.
 
 ## The frozen prior and variability features
 
 `prior_i` (`pred_ntv3_prior` in `locus_features.parquet`) and the two
-variability features (`pred_log_var_between`, `pred_log_var_within`) are
-**not** produced by this repo. They are frozen outputs of an upstream
-genomic-embedding pipeline that no longer exists in this repo's working
-tree (removed by the training-only refactor; recoverable from git history at
-commit `253bd56` if ever needed again):
+variability features (`pred_log_var_between`, `pred_log_var_within`) have two
+provenance tiers:
+
+1. **Base 408,399 Array loci.** Their frozen values come from the historical
+   upstream genomic-embedding/probe pipeline. These values remain immutable
+   and are never re-fitted by the current RNA model.
+2. **New EPIC/WGBS loci.** `methylation_predictor.full_suite` can extend the
+   input contract by extracting the same NTv3 representation and distilling
+   the existing frozen Array feature map. The distillation probe is used only
+   for loci absent from the base 408,399-locus store; base values stay
+   bit-identical.
+
+The historical base-feature generation pipeline used:
 
 1. Per-chromosome embeddings extracted from a genomic foundation model
    (NTv3-650M) run over hg38.
@@ -74,5 +85,8 @@ commit `253bd56` if ever needed again):
    leak), values are 5-fold out-of-fold ensemble predictions instead of
    in-sample ones.
 
-This repo only trains the residual head described above on top of those
-frozen values — it never re-fits the prior or the variability model.
+The current RNA-to-DNAm training treats all locus inputs as frozen.
+Feature-extension fitting is a separate preprocessing stage and does not update
+jointly with `RNA2DNAmModel`. See
+[`data/GENOMIC_FEATURE_STORE.md`](data/GENOMIC_FEATURE_STORE.md) and
+[`FULL_E2_E4_SUITE.md`](FULL_E2_E4_SUITE.md).

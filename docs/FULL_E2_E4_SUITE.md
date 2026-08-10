@@ -1,7 +1,7 @@
 # Full E2-E4 experiment suite
 
 This suite extends the **current** `RNA2DNAmModel` without changing its architecture or objective.
-It is additive and does not modify the E1 Array-chr1 launcher.
+It is additive and does not modify the E0 exact Array-chr1 launcher.
 
 ## Experiments
 

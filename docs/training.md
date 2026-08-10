@@ -1,5 +1,13 @@
 # Training technique
 
+> **Legacy workflow notice.** This document describes the older
+> `scripts/train.sh` / `configs/train.yaml` 21,792-gene training path. It is
+> retained for checkpoint reproducibility. The current MethylProphet-compatible
+> Array-chr1 benchmark is orchestrated by
+> `scripts/run_overnight_current_model_vs_mp.sh`; mixed-source E2/E3/E4 runs use
+> `scripts/run_full_e2_e4.sh`. See [`EXPERIMENT_STATUS.md`](EXPERIMENT_STATUS.md)
+> and [`scripts/README.md`](../scripts/README.md).
+
 Two-stage protocol, run end-to-end by `scripts/train.sh`. Canonical config:
 `configs/train.yaml`.
 

@@ -14,7 +14,7 @@ LOCUS_FEATURES="${LOCUS_FEATURES:-/raid/DATASETS/MethylPredictionData/locus_feat
 BASE_CONFIG="${BASE_CONFIG:-configs/train.yaml}"
 MP_EVAL_DIR="${MP_EVAL_DIR:-}"
 MP_EVAL_REPO="${MP_EVAL_REPO:-MethylProphet/eval-tcga_array_chr1-32xl40s-c2b2}"
-AUTO_DOWNLOAD_MP_EVAL="${AUTO_DOWNLOAD_MP_EVAL:-1}"
+AUTO_DOWNLOAD_MP_EVAL="${AUTO_DOWNLOAD_MP_EVAL:-0}"
 
 mkdir -p "$RUN_ROOT/logs" "$RUN_ROOT/manifests" "$RUN_ROOT/evaluation"
 exec > >(tee -a "$RUN_ROOT/logs/overnight.log") 2>&1
@@ -101,7 +101,8 @@ else
 fi
 
 # Optional automatic download of the exact Array-only released evaluation.
-# Failure here does NOT invalidate our training/evaluation; it only disables the paired MP scan.
+# Disabled by default because the repository may be gated. Failure here does
+# NOT invalidate our training/evaluation; it only disables the paired MP scan.
 if [[ -z "$MP_EVAL_DIR" && "$AUTO_DOWNLOAD_MP_EVAL" == "1" ]]; then
   MP_CACHE="$RUN_ROOT/methylprophet_released_eval"
   echo "=== 5/6 acquire released MethylProphet evaluation (optional) ==="

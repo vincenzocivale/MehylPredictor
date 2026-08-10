@@ -4,8 +4,8 @@
 #   E3 = Array+EPIC+WGBS chr1-3, all canonical auxiliary loci
 #   E4 = Array genome-wide (408,399 CpGs; official train/heldout CpG pools)
 #
-# E1 is deliberately NOT touched.  Run this beside an existing E1 process by
-# assigning only free GPUs, e.g. GPUS=1,2 MAX_GPUS=2.
+# E0 (the exact Array-chr1 benchmark) is deliberately NOT touched. Run this
+# beside an existing E0 process by assigning only free GPUs.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,7 +39,7 @@ RUN_E2="${RUN_E2:-1}"
 RUN_E3="${RUN_E3:-1}"
 RUN_E4="${RUN_E4:-1}"
 RUN_STRICT_OOD_ABLATION="${RUN_STRICT_OOD_ABLATION:-0}"
-AUTO_DOWNLOAD_MP_EVAL="${AUTO_DOWNLOAD_MP_EVAL:-1}"
+AUTO_DOWNLOAD_MP_EVAL="${AUTO_DOWNLOAD_MP_EVAL:-0}"
 MP_EVAL_REPO="${MP_EVAL_REPO:-MethylProphet/eval-tcga_array_chr1-32xl40s-c2b2}"
 
 mkdir -p "$RUN_ROOT/logs" "$RUN_ROOT/runs" "$NTV3_STORE" "$PRIOR_STORE" "$CACHE_ROOT"
@@ -169,7 +169,7 @@ CUDA_VISIBLE_DEVICES="$PROBE_GPU" python scripts/full_suite.py infer-expanded-fe
   --output "$EXPANDED_FEATURES" --device cuda
 
 # 6. Build small row-friendly Array/EPIC chr1-3 caches once.  Do this after NTv3
-# so it does not compete for methylation I/O with an E1 that may still be running.
+# so it does not compete for methylation I/O with an E0 that may still be running.
 echo "=== 6/8 compact Array/EPIC training caches ==="
 python scripts/full_suite.py build-compact-cache --canonical-root "$CANONICAL_ROOT" --protocol tcga_mix_chr123 --output "$COMPACT"
 ARRAY_CACHE="$COMPACT/array_tcga_mix_chr123.h5"

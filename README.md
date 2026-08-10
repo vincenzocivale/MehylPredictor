@@ -1,66 +1,103 @@
-# MethylPredictor — RNA-to-DNAm training
+# MethylPredictor
 
-Trains a single canonical model, `RNA2DNAmModel`, that predicts per-CpG DNA
-methylation (beta value) for a TCGA patient from that patient's bulk RNA-seq
-expression profile, as a residual correction on top of a frozen, externally
-computed per-CpG prior. The historical research code (architecture search,
-baselines, ablations, diagnostics, bootstrap analyses, paper reports) has
-been removed; git history is the archive if any of it is needed again.
+RNA-to-DNAm research code for the current `RNA2DNAmModel`: a patient RNA
+representation conditions a residual correction of a frozen per-CpG
+methylation prior. New experiments use the MethylProphet-compatible TCGA
+canonical data layer: all **25,017 RNA genes**, the official global `cpg_idx`
+namespace, and explicit Array/EPIC/WGBS protocols.
 
-Documentation:
-- [`docs/architecture.md`](docs/architecture.md) — the model, its
-  components, and the frozen prior it corrects.
-- [`docs/training.md`](docs/training.md) — the two-stage training protocol,
-  loss/optimizer, sampling strategy, and preflight checks.
-- [`docs/data.md`](docs/data.md) — input files, splits, and how the nested
-  development split is built.
-- [`docs/evaluation.md`](docs/evaluation.md) — how to evaluate a checkpoint
-  on held-out data and what the metrics mean.
-- [`docs/data/TCGA_CANONICAL_DATA.md`](docs/data/TCGA_CANONICAL_DATA.md) and
-  [`docs/data/METHYLPROPHET_PROTOCOLS.md`](docs/data/METHYLPROPHET_PROTOCOLS.md)
-  — a separate, newer data/protocol layer
-  (`methylation_predictor.tcga_canonical`) for training models comparable to
-  published MethylProphet TCGA checkpoints (all 25,017 genes, official
-  Array/EPIC/WGBS splits). Data/protocol layer only, no model wired to it
-  yet; the pipeline described below and the checkpoint under Performance
-  are unaffected.
+The repository intentionally keeps one current model architecture. Historical
+training/data paths are retained only for reproducibility and are labelled as
+legacy; they must not be mixed silently with the current canonical benchmark.
 
-## Performance
+## Current model
 
-Current final-refit checkpoint (`artifacts/train/seed17/final_refit/best.pt`,
-epoch 45), evaluated on the **official test set** — 414 test samples ×
-40,689 test CpGs, both axes held out from all training/dev data (see
-[`docs/data.md`](docs/data.md#splits)):
+The canonical model uses:
 
-| metric | model | frozen prior | skill |
-|---|---|---|---|
-| MSE | 0.02241 | 0.02823 | **+20.6%** |
-| Pearson (dynamic, per-cell) | 0.545 | — | — |
-| Pearson (within cancer type) | 0.456 | — | +20.6% skill |
-| fraction of samples beating the prior | 98.1% | — | — |
+- standardized bulk RNA (`25,017` genes) -> `LayerNorm -> Linear(..., 64)`;
+- frozen 1536-D NTv3 locus embeddings;
+- frozen per-locus prior plus two variability features;
+- a locus-specific variability gate;
+- concat/product RNA-CpG interaction;
+- mean-RNA anchoring and a zero-initialized residual head.
 
-Full breakdown (per cancer type, per CpG-variability tertile):
-`artifacts/train/seed17/final_refit/test_metrics.json`. See
-[`docs/evaluation.md`](docs/evaluation.md) for what each metric means and
-[`docs/data.md`](docs/data.md#splits) for exactly which data this was
-trained on vs. tested on.
+See [`docs/architecture.md`](docs/architecture.md) for the exact computation.
 
-## Running
+## Current benchmark status
+
+The exact Array-chr1 benchmark (seed 17) is complete for OURS using the
+official MethylProphet split: 8,260/918 train/validation patients and
+33,885/6,742 train/held-out CpGs.
+
+| view | MSE | MAE | MAS-PCC | MAC-PCC | skill vs prior |
+|---|---:|---:|---:|---:|---:|
+| train-CpG x val-sample | 0.022541 | 0.096200 | 0.530027 | 0.918942 | 0.277282 |
+| val-CpG x train-sample | 0.020289 | 0.086770 | 0.513238 | 0.928712 | 0.235500 |
+| val-CpG x val-sample | 0.020968 | 0.088142 | 0.493754 | 0.926788 | 0.223360 |
+
+The paired MethylProphet prediction-level comparison is currently optional and
+may be unavailable when Hugging Face access to the released evaluation dataset
+is gated. Do not interpret `cpg_win_fraction`/`sample_win_fraction` from an
+OURS-only report as wins against MethylProphet: those fields compare OURS to
+the frozen prior.
+
+See [`docs/EXPERIMENT_STATUS.md`](docs/EXPERIMENT_STATUS.md) for the current
+experiment ledger and artifact locations.
+
+## Supported workflows
+
+### Exact Array-chr1 benchmark (current E0)
+
+```bash
+bash scripts/run_overnight_current_model_vs_mp.sh
+```
+
+This workflow prepares the exact canonical adapter, performs nested-development
+selection, final refit on all official train IDs, and evaluates the three
+official Array views. Released MethylProphet predictions are used only when
+`MP_EVAL_DIR` is explicitly available (or auto-download is explicitly enabled).
+
+### Full canonical suite (E2/E3/E4)
+
+```bash
+HG38_FASTA=/path/to/hg38.fa \
+  bash scripts/run_full_e2_e4.sh
+```
+
+This is the current Array/EPIC/WGBS feature-expansion and training workflow.
+See [`docs/FULL_E2_E4_SUITE.md`](docs/FULL_E2_E4_SUITE.md).
+
+Feature preparation can be run without starting E2/E3/E4 by setting:
+
+```bash
+RUN_E2=0 RUN_E3=0 RUN_E4=0 \
+  HG38_FASTA=/path/to/hg38.fa \
+  bash scripts/run_full_e2_e4.sh
+```
+
+### Legacy training path
+
+`scripts/train.sh`, `configs/train.yaml`, `docs/data.md`, `docs/training.md`,
+and `docs/evaluation.md` describe the older 21,792-gene research path. They are
+retained for checkpoint reproducibility, not as the default path for new
+MethylProphet-compatible experiments.
+
+## Repository map
+
+- [`docs/architecture.md`](docs/architecture.md) — current model architecture.
+- [`docs/EXPERIMENT_STATUS.md`](docs/EXPERIMENT_STATUS.md) — current experiment state.
+- [`docs/data/TCGA_CANONICAL_DATA.md`](docs/data/TCGA_CANONICAL_DATA.md) — canonical data bundle.
+- [`docs/data/METHYLPROPHET_PROTOCOLS.md`](docs/data/METHYLPROPHET_PROTOCOLS.md) — exact/matched protocol semantics.
+- [`docs/data/GENOMIC_FEATURE_STORE.md`](docs/data/GENOMIC_FEATURE_STORE.md) — reusable NTv3 feature store.
+- [`scripts/README.md`](scripts/README.md) — script/entrypoint map.
+
+## Installation
 
 ```bash
 python -m pip install -r requirements.txt
+python -m pip install -r requirements-genomics.txt
 python -m pip install -e .
-
-bash scripts/train.sh          # preflight -> dev split -> dev training -> final refit
-
-python -m methylation_predictor train --config configs/train.yaml     # single stage, direct CLI
-python -m methylation_predictor validate --config configs/train.yaml  # summarize aligned inputs, no training
-
-python scripts/evaluate_official_test.py \
-  --config artifacts/train/seed17/final_config.yaml \
-  --checkpoint artifacts/train/seed17/final_refit/best.pt \
-  --output artifacts/train/seed17/final_refit/test_metrics.json
 ```
 
-Generated checkpoints and runtime artifacts belong under `artifacts/`, which
-must remain untracked.
+Generated checkpoints, caches, logs and large genomic features remain outside
+git. Canonical source data is treated as read-only.

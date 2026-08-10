@@ -357,6 +357,6 @@ def infer_expanded_features(
     }
     del prior, variability
     progress_path.unlink(missing_ok=True)
+    (out / "feature_extension_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     done.write_text("ok\n")
-    (ex / "feature_extension_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary

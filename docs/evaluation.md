@@ -1,5 +1,13 @@
 # Evaluation
 
+> **Legacy workflow notice.** This document describes evaluation for the older
+> `scripts/train.sh` path. The current exact MethylProphet-compatible Array-chr1
+> benchmark uses `scripts/evaluate_current_model_vs_methylprophet.py`, which
+> evaluates the three official views and optionally scans released
+> MethylProphet predictions when they are available. See
+> [`EXPERIMENT_STATUS.md`](EXPERIMENT_STATUS.md) and
+> [`data/METHYLPROPHET_PROTOCOLS.md`](data/METHYLPROPHET_PROTOCOLS.md).
+
 `scripts/train.sh` / `configs/train.yaml` deliberately do **not** evaluate on
 test data — `configs/train.yaml`'s `evaluation.panels` is empty on purpose,
 so a training run can never accidentally touch held-out data. Evaluation is
