@@ -68,6 +68,21 @@ class ConcatInteraction(nn.Module):
         nn.init.zeros_(self.network[-1].bias)
 
 
+class NoResidualGate(nn.Module):
+    """Identity residual gate used only by explicit architecture ablations.
+
+    The module intentionally has no parameters. ``forward`` keeps the same
+    two-argument interface as ``ResidualGate`` so the rest of the training and
+    evaluation stack does not need an ablation-specific code path.
+    """
+
+    kind = "none"
+
+    def forward(self, loci: torch.Tensor, variability: torch.Tensor) -> torch.Tensor:
+        del variability
+        return torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
+
+
 class ResidualGate(nn.Module):
     """Canonical locus-specific gate using embedding + two variability features."""
 
@@ -126,9 +141,10 @@ class RNA2DNAmModel(nn.Module):
             raise ValueError(
                 f"only model.interaction.kind='concat' is supported; got {config.interaction.kind!r}"
             )
-        if config.gate.kind != "variability":
+        if config.gate.kind not in {"variability", "none"}:
             raise ValueError(
-                f"only model.gate.kind='variability' is supported; got {config.gate.kind!r}"
+                "model.gate.kind must be 'variability' or the explicit ablation "
+                f"'none'; got {config.gate.kind!r}"
             )
 
         self.config = config
@@ -144,11 +160,14 @@ class RNA2DNAmModel(nn.Module):
             hidden_dim=config.interaction.hidden_dim,
             dropout=config.interaction.dropout,
         )
-        self.gate = ResidualGate(
-            locus_dim=locus_dim,
-            hidden_dim=config.gate.hidden_dim,
-            dropout=config.gate.dropout,
-        )
+        if config.gate.kind == "variability":
+            self.gate = ResidualGate(
+                locus_dim=locus_dim,
+                hidden_dim=config.gate.hidden_dim,
+                dropout=config.gate.dropout,
+            )
+        else:
+            self.gate = NoResidualGate()
 
         if config.zero_init_residual:
             self.interaction.zero_output()
@@ -185,7 +204,10 @@ class RNA2DNAmModel(nn.Module):
             raw = raw - reference_raw.expand_as(raw)
 
         gate = self.gate(loci, variability)
-        delta_logit = raw * gate.unsqueeze(0)
+        # In the explicit no-gate ablation the residual is used directly.
+        # Avoid multiplying by an all-ones tensor so AMP dtype/rounding is not
+        # changed by a type-promotion side effect.
+        delta_logit = raw if self.config.gate.kind == "none" else raw * gate.unsqueeze(0)
 
         prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
         prior_logit = torch.logit(prior)
