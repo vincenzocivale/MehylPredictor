@@ -39,6 +39,7 @@ KNOWN_PROTOCOLS = (
     "tcga_array_wgbs_chr1",
     "tcga_mix_chr1",
     "tcga_mix_chr123",
+    "array_genomewide",
 )
 
 

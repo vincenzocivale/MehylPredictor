@@ -9,4 +9,4 @@
 # Every artifact under this root is read-only: it must never be written to,
 # regenerated, or have loci/rows dropped to match historical counts. See
 # docs/data/TCGA_CANONICAL_DATA.md.
-root: /raid/DATASETS/MethylPredictionData/methylprophet_official/official_training_data
+root: /raid/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1

@@ -32,7 +32,7 @@ SOURCE_FILES = {
     "epic": "methylation/epic_full.h5",
     "wgbs": "methylation/wgbs_full.h5",
 }
-RNA_FILE = "tcga_rna_official_full.h5"
+RNA_FILE = "rna/tcga_rna_official_full.h5"
 
 EXPECTED_SHAPES = {
     "rna": (10916, 25017),
