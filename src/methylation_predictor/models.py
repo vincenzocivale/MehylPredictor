@@ -35,14 +35,22 @@ class ConcatInteraction(nn.Module):
     """RNA-CpG interaction: concatenation of RNA, CpG embedding and projected
     element-wise product, fed through an MLP residual head."""
 
-    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
+    def __init__(
+        self,
+        rna_dim: int,
+        locus_dim: int,
+        hidden_dim: int,
+        dropout: float,
+        include_product: bool = True,
+    ):
         super().__init__()
+        self.include_product = bool(include_product)
         product_dim = min(rna_dim, locus_dim)
-        joint_dim = rna_dim + locus_dim + product_dim
+        joint_dim = rna_dim + locus_dim + (product_dim if self.include_product else 0)
 
         # Keep these names stable for checkpoint compatibility.
-        self.rna_product = nn.Linear(rna_dim, product_dim)
-        self.locus_product = nn.Linear(locus_dim, product_dim)
+        self.rna_product = nn.Linear(rna_dim, product_dim) if self.include_product else None
+        self.locus_product = nn.Linear(locus_dim, product_dim) if self.include_product else None
         self.network = nn.Sequential(
             nn.LayerNorm(joint_dim),
             nn.Linear(joint_dim, hidden_dim),
@@ -56,11 +64,15 @@ class ConcatInteraction(nn.Module):
         n_loci = loci.shape[0]
         rna_expanded = rna.global_vector[:, None, :].expand(batch, n_loci, -1)
         loci_expanded = loci[None, :, :].expand(batch, n_loci, -1)
-        product = (
-            self.rna_product(rna.global_vector)[:, None, :]
-            * self.locus_product(loci)[None, :, :]
-        )
-        joint = torch.cat([rna_expanded, loci_expanded, product], dim=-1)
+        pieces = [rna_expanded, loci_expanded]
+        if self.include_product:
+            assert self.rna_product is not None and self.locus_product is not None
+            product = (
+                self.rna_product(rna.global_vector)[:, None, :]
+                * self.locus_product(loci)[None, :, :]
+            )
+            pieces.append(product)
+        joint = torch.cat(pieces, dim=-1)
         return self.network(joint).squeeze(-1)
 
     def zero_output(self) -> None:
@@ -146,6 +158,17 @@ class RNA2DNAmModel(nn.Module):
                 "model.gate.kind must be 'variability' or the explicit ablation "
                 f"'none'; got {config.gate.kind!r}"
             )
+        if config.prediction_mode not in {"residual_prior", "direct"}:
+            raise ValueError(
+                "model.prediction_mode must be 'residual_prior' or 'direct'; "
+                f"got {config.prediction_mode!r}"
+            )
+        if config.prediction_mode == "direct" and config.anchor_to_mean_rna:
+            raise ValueError(
+                "direct prediction cannot use mean-RNA anchoring: without the prior, "
+                "anchoring would force the reference RNA profile to beta=0.5. Set "
+                "model.anchor_to_mean_rna=false for the direct-prediction ablation."
+            )
 
         self.config = config
         self.epsilon = float(epsilon)
@@ -159,6 +182,7 @@ class RNA2DNAmModel(nn.Module):
             locus_dim=locus_dim,
             hidden_dim=config.interaction.hidden_dim,
             dropout=config.interaction.dropout,
+            include_product=config.interaction.include_product,
         )
         if config.gate.kind == "variability":
             self.gate = ResidualGate(
@@ -207,16 +231,28 @@ class RNA2DNAmModel(nn.Module):
         # In the explicit no-gate ablation the residual is used directly.
         # Avoid multiplying by an all-ones tensor so AMP dtype/rounding is not
         # changed by a type-promotion side effect.
-        delta_logit = raw if self.config.gate.kind == "none" else raw * gate.unsqueeze(0)
-
+        model_logit = raw if self.config.gate.kind == "none" else raw * gate.unsqueeze(0)
         prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
         prior_logit = torch.logit(prior)
-        beta = torch.sigmoid(prior_logit.unsqueeze(0) + delta_logit)
+
+        if self.config.prediction_mode == "residual_prior":
+            delta_logit = model_logit
+            prediction_logit = prior_logit.unsqueeze(0) + delta_logit
+        else:
+            # Direct ablation: the interaction branch learns the complete
+            # methylation logit. delta_logit is still exposed relative to the
+            # prior for diagnostics and residual-Huber bookkeeping; the prior
+            # cancels algebraically from that Huber target.
+            prediction_logit = model_logit
+            delta_logit = prediction_logit - prior_logit.unsqueeze(0)
+
+        beta = torch.sigmoid(prediction_logit)
 
         return {
             "beta": beta,
             "delta_logit": delta_logit,
             "raw_delta_logit": raw,
+            "prediction_logit": prediction_logit,
             "gate": gate,
             "prior_logit": prior_logit,
         }

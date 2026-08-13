@@ -13,6 +13,7 @@ def _canonical_config() -> ModelConfig:
     cfg.interaction.kind = "concat"
     cfg.interaction.hidden_dim = 128
     cfg.interaction.dropout = 0.1
+    cfg.interaction.include_product = True
 
     cfg.gate.kind = "variability"
     cfg.gate.hidden_dim = 64
@@ -20,6 +21,7 @@ def _canonical_config() -> ModelConfig:
 
     cfg.anchor_to_mean_rna = True
     cfg.zero_init_residual = True
+    cfg.prediction_mode = "residual_prior"
     return cfg
 
 
@@ -127,3 +129,63 @@ def test_unsupported_gate_kind_still_fails_closed():
         assert "model.gate.kind must be 'variability'" in str(exc)
     else:
         raise AssertionError("unsupported gate kind should be rejected")
+
+
+def test_no_product_ablation_removes_product_projection_parameters():
+    cfg = _canonical_config()
+    cfg.interaction.include_product = False
+    cfg.zero_init_residual = False
+    model = RNA2DNAmModel(input_dim=13, locus_dim=7, config=cfg)
+
+    assert model.interaction.rna_product is None
+    assert model.interaction.locus_product is None
+
+    out = model(
+        torch.randn(3, 13),
+        torch.randn(4, 7),
+        torch.rand(4).clamp(0.05, 0.95),
+        torch.randn(4, 2),
+    )
+    assert out["beta"].shape == (3, 4)
+
+
+def test_direct_prediction_does_not_add_prior_to_prediction_logit():
+    torch.manual_seed(5)
+    cfg = _canonical_config()
+    cfg.prediction_mode = "direct"
+    cfg.anchor_to_mean_rna = False
+    cfg.zero_init_residual = False
+    model = RNA2DNAmModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    variability = torch.randn(4, 2)
+    prior_a = torch.full((4,), 0.1)
+    prior_b = torch.full((4,), 0.9)
+
+    out_a = model(rna, loci, prior_a, variability)
+    out_b = model(rna, loci, prior_b, variability)
+
+    assert torch.allclose(out_a["beta"], out_b["beta"], atol=1e-6)
+    assert torch.allclose(out_a["prediction_logit"], out_b["prediction_logit"], atol=1e-6)
+    assert not torch.allclose(out_a["delta_logit"], out_b["delta_logit"])
+
+
+def test_direct_prediction_rejects_mean_rna_anchor():
+    cfg = _canonical_config()
+    cfg.prediction_mode = "direct"
+    cfg.anchor_to_mean_rna = True
+    try:
+        RNA2DNAmModel(input_dim=5, locus_dim=3, config=cfg)
+    except ValueError as exc:
+        assert "direct prediction cannot use mean-RNA anchoring" in str(exc)
+    else:
+        raise AssertionError("direct prediction with mean-RNA anchoring should fail closed")
+
+
+def test_larger_linear_rna_latent_is_supported():
+    cfg = _canonical_config()
+    cfg.encoder.latent_dim = 256
+    model = RNA2DNAmModel(input_dim=17, locus_dim=11, config=cfg)
+    assert model.rna_encoder.projection.out_features == 256

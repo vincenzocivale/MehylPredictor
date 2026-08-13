@@ -116,6 +116,9 @@ class EncoderConfig:
 class InteractionConfig:
     kind: str = "bilinear"
     # Only "concat" is accepted by the canonical model (models.py raises otherwise).
+    # Explicit architecture ablation: remove only the projected RNA x CpG
+    # element-wise product while retaining the RNA/CpG concatenation branches.
+    include_product: bool = True
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
@@ -154,6 +157,10 @@ class ModelConfig:
     gate: GateConfig = field(default_factory=GateConfig)
     anchor_to_mean_rna: bool = True
     zero_init_residual: bool = True
+    # residual_prior is the canonical model. direct predicts methylation logits
+    # without adding the frozen CpG prior; it is reserved for the explicit
+    # prior-vs-direct architecture ablation.
+    prediction_mode: str = "residual_prior"  # residual_prior|direct
 
 
 @dataclass(slots=True)
@@ -372,6 +379,7 @@ def load_config(path: str | Path) -> RunConfig:
         gate=GateConfig(**model_raw.get("gate", {})),
         anchor_to_mean_rna=model_raw.get("anchor_to_mean_rna", True),
         zero_init_residual=model_raw.get("zero_init_residual", True),
+        prediction_mode=model_raw.get("prediction_mode", "residual_prior"),
     )
 
     return RunConfig(

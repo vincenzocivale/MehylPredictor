@@ -105,10 +105,36 @@ class MatrixStore:
         return values[inverse_unique]
 
     def rows(self, row_indices: Sequence[int], col_indices: Sequence[int] | None = None) -> np.ndarray:
-        values = self._read_rows_native(np.asarray(row_indices, dtype=np.int64))
-        if col_indices is not None:
-            values = values[:, np.asarray(col_indices, dtype=np.int64)]
-        return np.asarray(values, dtype=np.float32)
+        if col_indices is None:
+            values = self._read_rows_native(np.asarray(row_indices, dtype=np.int64))
+            return np.asarray(values, dtype=np.float32)
+        return self._read_block_native(
+            np.asarray(row_indices, dtype=np.int64), np.asarray(col_indices, dtype=np.int64)
+        )
+
+    def _read_block_native(self, row_indices: np.ndarray, col_indices: np.ndarray) -> np.ndarray:
+        """Read exactly the (row, col) sub-block instead of full rows + slice.
+
+        HDF5 fancy indexing does not support two simultaneous fancy (unsorted,
+        possibly-duplicate) index arrays, and reading `ds[rows, :]` in full
+        before column-slicing pulls every column across the wire even when a
+        tiny fraction is needed (observed ~200x overread for CpG-batched
+        methylation reads: ~100MB fetched per training step vs ~0.5MB used).
+        For HDF5, read column-selective per unique row instead. mmap-backed
+        .npy/.npz arrays are cheap to combine-index directly since unused
+        pages are never faulted in.
+        """
+        if not len(row_indices) or not len(col_indices):
+            return np.empty((len(row_indices), len(col_indices)), dtype=np.float32)
+        unique_rows, row_inverse = np.unique(row_indices, return_inverse=True)
+        unique_cols, col_inverse = np.unique(col_indices, return_inverse=True)
+        if self._h5 is not None:
+            block = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
+            for i, row in enumerate(unique_rows.tolist()):
+                block[i] = self._array[row, unique_cols]
+        else:
+            block = np.asarray(self._array[unique_rows][:, unique_cols])
+        return np.asarray(block[row_inverse][:, col_inverse], dtype=np.float32)
 
     def block(self, row_indices: Sequence[int], col_indices: Sequence[int]) -> np.ndarray:
         return self.rows(row_indices, col_indices)
