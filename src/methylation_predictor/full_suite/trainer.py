@@ -109,7 +109,7 @@ def _load_suite_protocol(
 
 
 def _rna_labels(root: Path, ids: np.ndarray) -> np.ndarray:
-    with h5py.File(root / "tcga_rna_official_full.h5", "r") as h:
+    with h5py.File(root / "rna" / "tcga_rna_official_full.h5", "r") as h:
         all_ids = np.asarray(h["sample_idx"][...], np.int64)
         values = h["tissue_name"][...] if "tissue_name" in h else np.full(len(all_ids), b"UNKNOWN")
     labels = np.asarray([v.decode() if isinstance(v, bytes) else str(v) for v in values], dtype=object)

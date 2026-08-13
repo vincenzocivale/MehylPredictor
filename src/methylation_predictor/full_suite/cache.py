@@ -30,7 +30,7 @@ def prepare_rna_cache(
         x = np.load(values_path, mmap_mode="r")
         return {"status": "cached", "shape": list(x.shape)}
 
-    path = root / "tcga_rna_official_full.h5"
+    path = root / "rna" / "tcga_rna_official_full.h5"
     with h5py.File(path, "r") as h:
         X = h["X"]
         ids = np.asarray(h["sample_idx"][...], dtype=np.int64)

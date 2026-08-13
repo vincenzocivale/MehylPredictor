@@ -116,7 +116,7 @@ def cmd_write_eval_adapter(a):
     protocol = _load_suite_protocol(root, "tcga_mix_chr1")
     out = Path(a.output); out.mkdir(parents=True, exist_ok=True)
     manifests = out / "manifests"; manifests.mkdir(exist_ok=True)
-    with h5py.File(root / "tcga_rna_official_full.h5", "r") as h:
+    with h5py.File(root / "rna" / "tcga_rna_official_full.h5", "r") as h:
         ids = np.asarray(h["sample_idx"][...], np.int64)
         labels_raw = h["tissue_name"][...] if "tissue_name" in h else np.full(len(ids), b"UNKNOWN")
     labels = np.asarray([x.decode() if isinstance(x, bytes) else str(x) for x in labels_raw], dtype=object)
@@ -134,7 +134,7 @@ def cmd_write_eval_adapter(a):
     raw = yaml.safe_load(Path(a.base_config).read_text())
     raw["output_dir"] = str(out / "runner")
     raw["run_name"] = "mixed-e2-chr1-eval-adapter"
-    raw["data"]["rna"] = {"path": str(root / "tcga_rna_official_full.h5"), "values_key": "X", "row_ids_key": "sample_idx", "col_ids_key": "gene_ids"}
+    raw["data"]["rna"] = {"path": str(root / "rna" / "tcga_rna_official_full.h5"), "values_key": "X", "row_ids_key": "sample_idx", "col_ids_key": "gene_ids"}
     raw["data"]["methylation"] = {"path": str(root / "methylation/tcga_array_official_full.h5"), "values_key": "beta", "row_ids_key": "sample_idx", "col_ids_key": "cpg_idx"}
     raw["data"]["locus_embeddings"] = {"path": a.embeddings, "values_key": "embeddings", "row_ids_key": "cpg_idx"}
     raw["data"]["locus_features"] = {"path": a.features, "id_column": "cpg_idx"}
