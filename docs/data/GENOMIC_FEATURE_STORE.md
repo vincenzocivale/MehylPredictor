@@ -1,43 +1,64 @@
-## Shared genomic feature store
+# Genomic feature store
 
-Frozen NTv3 locus embeddings used by the RNA-to-DNAm experiments are
-precomputed once and stored independently of individual training runs.
+The production pipeline treats genomic representations as immutable inputs.
+No final-model training job invokes NTv3.
 
-Default location:
+## Consolidated NTv3 atlas
 
-/raid/DATASETS/MethylPredictionData/genomic_features/
-  ntv3_650m_post/
-    hg38_L32768_forward_cpg_center/
+Canonical location:
 
-Embedding protocol:
+```text
+/raid/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1/
+  cpg/ntv3/ntv3_cpg_atlas_v1.h5
+```
 
-- model: InstaDeepAI/NTv3_650M_post
-- genome: hg38
-- sequence length: 32,768 bp
-- orientation: forward
-- locus representation: mean of the central C/G bins
-- inference dtype: bfloat16
-- storage dtype: float16
-- extraction: sharded, resumable and optionally multi-GPU
+The atlas contains 5,723,092 CpGs with 1536-D float16 embeddings and covers the
+408,399 genome-wide Array loci plus the additional chr1-3 loci required by the
+canonical EPIC/WGBS protocols.
 
-The production extractor uses a character-level A/C/G/T/N lookup table
-instead of invoking the Hugging Face tokenizer for every batch. The lookup
-table is verified against the loaded tokenizer before extraction. A
-validation benchmark showed bit-identical central-CpG embeddings
-(max absolute difference 0) and approximately 1.33x higher throughput.
+Embedding protocol is frozen to:
 
-The NTv3 embedding store is independent of RNA model architecture,
-training seed and loss configuration and is therefore reused by E2, E3,
-E4 and subsequent experiments.
+- `InstaDeepAI/NTv3_650M_post`;
+- hg38;
+- 32,768-bp forward window;
+- mean of the central C/G representation;
+- BF16 inference, FP16 storage.
 
-Predicted methylation prior and variability features are stored separately
-under:
+## `genomic_prior_v2`
 
-/raid/DATASETS/MethylPredictionData/genomic_features/methylation_prior/
+Canonical derived location:
 
-because these features additionally depend on the methylation training
-protocol used to fit the genomic probes.
+```text
+/raid/DATASETS/MethylPredictionData/derived/genomic_prior_v2/array_genomewide/
+```
 
-Experiment-specific checkpoints, metrics and logs are stored under:
+The Array feature table contains 408,399 rows. Prior targets use official Array
+training samples only. Official train CpGs are five-fold OOF; official held-out
+CpGs are predicted by a probe fit only on all train CpGs.
 
-/raid/DATASETS/MethylPredictionData/experiments/
+The rebuild persists both `locus_features.parquet` and every probe checkpoint,
+including:
+
+```text
+probes/full_fit/probe.pt
+```
+
+The selected final RNA model consumes only `pred_ntv3_prior` from this table;
+the between-/within-cancer variability predictions are retained for provenance
+and historical analyses but are no longer model inputs.
+
+## Auxiliary EPIC/WGBS prior
+
+`scripts/prepare_final_tcga_mix_chr1.py` extracts the required embeddings from
+the consolidated atlas and applies the saved `genomic_prior_v2` full-fit probe
+to loci absent from the Array store. It does **not** rerun NTv3 and does **not**
+fit another genomic probe.
+
+The final protocol-specific cache is derived, disposable and outside git:
+
+```text
+/raid/DATASETS/MethylPredictionData/derived/final_tcga_mix_chr1/
+```
+
+The immutable canonical bundle and `genomic_prior_v2` remain the sources of
+truth; experiment checkpoints/logs live separately under `experiments/`.

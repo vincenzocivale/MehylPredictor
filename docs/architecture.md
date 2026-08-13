@@ -1,92 +1,94 @@
-# Architecture
+# Final architecture
 
-`src/methylation_predictor/models.py` implements exactly one architecture,
-`RNA2DNAmModel`, and hard-rejects every other `model.*.kind` value in the
-config at construction time (`ValueError`). `config.py`'s dataclasses still
-carry extra fields for encoder/interaction/gate variants — perceiver, MoE,
-gene-token, bilinear, region-aware, etc. — inherited from the pre-refactor
-research code; none of them are wired into `RNA2DNAmModel` any more. Treat
-any config field not mentioned below as vestigial.
+`RNA2DNAmModel` now exposes one production architecture only. Architecture
+selection was performed on the exact MethylProphet Array-chr1 split with all
+variants sharing the same data, seed, optimizer, full-coverage schedule and
+checkpoint metric.
 
-## Model
+## Selection evidence
+
+Primary metric: double-heldout MAS-PCC.
+
+| variant | MAS-PCC | MSE | skill vs prior |
+|---|---:|---:|---:|
+| **RNA256 + no gate + no anchor (confirm)** | **0.5163** | **0.02058** | **+23.7%** |
+| RNA256 | 0.5117 | 0.02073 | +23.1% |
+| no gate | 0.5001 | 0.02089 | +22.6% |
+| baseline | 0.4960 | 0.02093 | +22.4% |
+| no anchor | 0.4951 | 0.02097 | +22.3% |
+| direct prediction | 0.4922 | 0.02187 | +18.9% |
+| no product | 0.4493 | 0.02197 | +18.6% |
+
+The confirmation establishes three production decisions:
+
+1. enlarge the linear RNA latent from 64 to **256**;
+2. remove the variability gate and mean-RNA anchor;
+3. retain both the frozen residual prior and the projected RNA×CpG product.
+
+The old ablation switches are intentionally not executable after this point.
+
+## Computation
+
+For sample `s` and CpG `i`:
 
 ```text
-RNA_s (25,017 genes in the current canonical TCGA path)
-  -> LayerNorm -> Linear(25017 -> 64)                         [LinearRNAEncoder]
+RNA_s (25,017 genes)
+  -> LayerNorm -> Linear(25,017 -> 256)
   -> z_s
 
-CpG embedding_i (1536-d, frozen, from an external genomic model)
-  + [pred_log_var_between_i, pred_log_var_within_i]
-  -> LayerNorm -> Linear -> GELU -> Dropout -> Linear -> sigmoid  [ResidualGate]
-  -> gate g_i
+CpG_i
+  -> frozen NTv3-650M-post embedding e_i (1536-D)
 
-[z_s, e_i, proj(z_s) * proj(e_i)]
-  -> LayerNorm -> Linear(-> 128) -> GELU -> Dropout(0.1) -> Linear(-> 1)  [ConcatInteraction]
-  -> interaction(RNA_s, CpG_i)   (zero-initialized output head)
+q_si = W_r z_s * W_c e_i
 
-delta_si = g_i * (interaction(RNA_s, CpG_i) - interaction(mean_RNA, CpG_i))
+[z_s, e_i, q_si]
+  -> LayerNorm
+  -> Linear(128)
+  -> GELU
+  -> Dropout(0.1)
+  -> Linear(1)
+  -> delta_si
+
 beta_hat_si = sigmoid(logit(prior_i) + delta_si)
 ```
 
-- **Encoder** (`model.encoder.kind = "linear"`, `LinearRNAEncoder`): in the
-  current MethylProphet-compatible TCGA path this is
-  `LayerNorm(25017) -> Linear(25017 -> 64)`. `z_s` is the sample's 64-d RNA
-  latent.
-- **Gate** (`model.gate.kind = "variability"`, `ResidualGate`): a per-CpG
-  sigmoid scalar `g_i in [0,1]`, computed from the CpG's frozen embedding
-  plus its two variability features (`pred_log_var_between`,
-  `pred_log_var_within`). Controls how much the residual branch is allowed
-  to move a given CpG away from its prior — CpGs the upstream variability
-  model considers static get gated toward zero, high-variability CpGs get
-  more room.
-- **Interaction** (`model.interaction.kind = "concat"`, `ConcatInteraction`):
-  concatenates `z_s`, the CpG embedding, and their projected element-wise
-  product, then an MLP (`LayerNorm -> Linear(128) -> GELU -> Dropout(0.1) ->
-  Linear(1)`) with a zero-initialized output layer.
-- **Mean-RNA anchoring** (`model.anchor_to_mean_rna = true`): the residual is
-  the *difference* between `interaction(RNA_s, CpG_i)` and
-  `interaction(mean_RNA, CpG_i)`, not the raw interaction output. This
-  centers the residual branch so that a "typical" patient reproduces the
-  prior almost exactly, and only RNA that deviates from the population mean
-  moves the prediction.
-- **Zero-initialized residual** (`model.zero_init_residual = true`): the
-  interaction head's final linear layer starts at all-zero weights/bias, so
-  `delta_si = 0` at initialization and training starts exactly at the frozen
-  prior in logit space.
+The last residual linear layer is zero-initialized. Therefore
+`delta_si = 0` at initialization and the model starts exactly from the frozen
+per-CpG prior.
 
-Parameter count for the current 25,017-gene canonical model: **2,071,928**
-total (1,651,186 encoder + 319,105 interaction + 101,637 gate). The historical
-21,792-gene path has a smaller encoder and is retained only for legacy
-checkpoint reproducibility.
+There is **no** learned gate, no subtraction of an interaction evaluated at a
+mean-RNA profile, and no direct complete-logit prediction mode.
 
-## The frozen prior and variability features
+## Frozen genomic inputs
 
-`prior_i` (`pred_ntv3_prior` in `locus_features.parquet`) and the two
-variability features (`pred_log_var_between`, `pred_log_var_within`) have two
-provenance tiers:
+The model consumes two genomic quantities:
 
-1. **Base 408,399 Array loci.** Their frozen values come from the historical
-   upstream genomic-embedding/probe pipeline. These values remain immutable
-   and are never re-fitted by the current RNA model.
-2. **New EPIC/WGBS loci.** `methylation_predictor.full_suite` can extend the
-   input contract by extracting the same NTv3 representation and distilling
-   the existing frozen Array feature map. The distillation probe is used only
-   for loci absent from the base 408,399-locus store; base values stay
-   bit-identical.
+- the 1536-D NTv3 embedding;
+- a frozen scalar methylation prior.
 
-The historical base-feature generation pipeline used:
+`genomic_prior_v2` is the canonical Array prior. Its targets use only official
+Array training samples; official train CpGs receive five-fold OOF predictions,
+while held-out Array CpGs are predicted by a full-fit probe trained only on
+train CpGs.
 
-1. Per-chromosome embeddings extracted from a genomic foundation model
-   (NTv3-650M) run over hg38.
-2. A Ridge(alpha=10) + 3-seed MLP ensemble (`LayerNorm -> 256 -> 64 -> 1`)
-   fitted on those embeddings to predict the prior methylation level and its
-   between-/within-cancer-type variance components.
-3. For CpGs in the official `train` split (where in-sample predictions would
-   leak), values are 5-fold out-of-fold ensemble predictions instead of
-   in-sample ones.
+For auxiliary EPIC/WGBS loci in `tcga_mix_chr1`, the production preparer applies
+that already-saved full-fit NTv3→prior probe. It does not fit a new probe and it
+does not rerun NTv3. The previous between-/within-cancer variability features
+remain in `genomic_prior_v2` for provenance and historical metrics, but they are
+not model inputs anymore.
 
-The current RNA-to-DNAm training treats all locus inputs as frozen.
-Feature-extension fitting is a separate preprocessing stage and does not update
-jointly with `RNA2DNAmModel`. See
-[`data/GENOMIC_FEATURE_STORE.md`](data/GENOMIC_FEATURE_STORE.md) and
-[`FULL_E2_E4_SUITE.md`](FULL_E2_E4_SUITE.md).
+## Final training policy
+
+The paper-final model is trained in one stage on all official `tcga_mix_chr1`
+training data. Each epoch consumes a deterministic full-coverage schedule for
+Array, EPIC and WGBS. Source coverage and source objective weight are separated:
+with equal-source training, each source contributes one third of the integrated
+per-epoch loss even though WGBS requires more batches to cover its CpG pool.
+
+The epoch budget is frozen before training. By default the launcher converts the
+completed architecture-confirm best epoch into the nearest mixed-source epoch
+count that preserves the optimizer-update budget. `FINAL_EPOCHS` can override
+this explicitly. No held-out Array target is inspected during training.
+
+After the fixed final epoch, the exact Array views are evaluated and the released
+MethylProphet predictions can be scored on those same cells.

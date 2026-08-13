@@ -1,95 +1,92 @@
 # MethylPredictor
 
-RNA-to-DNAm research code for the current `RNA2DNAmModel`: a patient RNA
-representation conditions a residual correction of a frozen per-CpG
-methylation prior. New experiments use the MethylProphet-compatible TCGA
-canonical data layer: all **25,017 RNA genes**, the official global `cpg_idx`
-namespace, and explicit Array/EPIC/WGBS protocols.
+RNA-to-DNAm reconstruction with a frozen genomic prior and patient-specific bulk
+RNA conditioning. The production path uses the canonical TCGA bundle and the
+MethylProphet-compatible Array/EPIC/WGBS protocols.
 
-The repository intentionally keeps one current model architecture. Historical
-training/data paths are retained only for reproducibility and are labelled as
-legacy; they must not be mixed silently with the current canonical benchmark.
+## Production architecture
 
-## Current model
+Architecture search is closed. The selected model is:
 
-The canonical model uses:
+```text
+RNA (25,017 genes)
+  -> LayerNorm -> Linear(25,017 -> 256)
+  -> z
 
-- standardized bulk RNA (`25,017` genes) -> `LayerNorm -> Linear(..., 64)`;
-- frozen 1536-D NTv3 locus embeddings;
-- frozen per-locus prior plus two variability features;
-- a locus-specific variability gate;
-- concat/product RNA-CpG interaction;
-- mean-RNA anchoring and a zero-initialized residual head.
+CpG -> frozen NTv3 embedding e (1536-D)
 
-See [`docs/architecture.md`](docs/architecture.md) for the exact computation.
+[z, e, proj(z) * proj(e)]
+  -> LayerNorm -> Linear(128) -> GELU -> Dropout(0.1) -> Linear(1)
+  -> delta_logit
 
-## Current benchmark status
-
-The exact Array-chr1 benchmark (seed 17) is complete for OURS using the
-official MethylProphet split: 8,260/918 train/validation patients and
-33,885/6,742 train/held-out CpGs.
-
-| view | MSE | MAE | MAS-PCC | MAC-PCC | skill vs prior |
-|---|---:|---:|---:|---:|---:|
-| train-CpG x val-sample | 0.022541 | 0.096200 | 0.530027 | 0.918942 | 0.277282 |
-| val-CpG x train-sample | 0.020289 | 0.086770 | 0.513238 | 0.928712 | 0.235500 |
-| val-CpG x val-sample | 0.020968 | 0.088142 | 0.493754 | 0.926788 | 0.223360 |
-
-The paired MethylProphet prediction-level comparison is currently optional and
-may be unavailable when Hugging Face access to the released evaluation dataset
-is gated. Do not interpret `cpg_win_fraction`/`sample_win_fraction` from an
-OURS-only report as wins against MethylProphet: those fields compare OURS to
-the frozen prior.
-
-See [`docs/EXPERIMENT_STATUS.md`](docs/EXPERIMENT_STATUS.md) for the current
-experiment ledger and artifact locations.
-
-## Supported workflows
-
-### Exact Array-chr1 benchmark (current E0)
-
-```bash
-bash scripts/run_overnight_current_model_vs_mp.sh
+beta_hat = sigmoid(logit(frozen_prior) + delta_logit)
 ```
 
-This workflow prepares the exact canonical adapter, performs nested-development
-selection, final refit on all official train IDs, and evaluates the three
-official Array views. Released MethylProphet predictions are used only when
-`MP_EVAL_DIR` is explicitly available (or auto-download is explicitly enabled).
+The residual output head is zero-initialized, so optimization starts exactly at
+the frozen CpG prior. The previous variability gate, mean-RNA anchor and direct
+prediction branch were removed after controlled ablations. See
+[`docs/architecture.md`](docs/architecture.md).
 
-### Full canonical suite (E2/E3/E4)
+The confirming exact Array-chr1 run (`seed=17`) reached **MAS-PCC 0.5163**,
+**MSE 0.02058**, and **+23.7% skill vs prior**, improving over RNA256 with the
+old gate/anchor retained.
+
+## Paper-final MethylProphet Table-5 benchmark
+
+The TCGA results reported in MethylProphet Table 5 are a **chromosome-1**
+Array+EPIC+WGBS experiment. The paper-final path therefore uses a dedicated
+`methylprophet_table5_tcga_chr1` protocol rather than the older generic chr1
+manifest. Preparation fails closed on this repo's reproducible data
+contract: 8,260/918 Array train/validation samples, 33,885/6,742 Array
+train/validation CpGs, 71,748 EPIC CpGs, 1,999,446 WGBS CpGs and exactly
+454,931,749 finite training pairs. (The paper reports 8,258/920 samples and
+454,857,221 pairs after excluding Array/WGBS patient overlap; this bundle
+carries no such crosswalk, so preparation reconstructs 8,260/918 instead --
+see [`docs/METHYLPROPHET_TABLE5.md`](docs/METHYLPROPHET_TABLE5.md).)
+
+The preparer also reproduces MethylProphet's MDS-specific 1,000-bp hg38
+`no-N` filter and builds a Table-5-only OOF genomic prior from the exact Array
+training universe. The consolidated NTv3 atlas is reused; NTv3 inference is
+never rerun.
+
+Always run the exact-data preflight first:
 
 ```bash
-HG38_FASTA=/path/to/hg38.fa \
-  bash scripts/run_full_e2_e4.sh
+HG38_FASTA=/path/to/hg38.fa GPU=0 PREPARE_ONLY=1 \
+  bash scripts/run_final_tcga_mix_chr1.sh
 ```
 
-This is the current Array/EPIC/WGBS feature-expansion and training workflow.
-See [`docs/FULL_E2_E4_SUITE.md`](docs/FULL_E2_E4_SUITE.md).
+When the released MethylProphet evaluation artifact is available, set
+`MP_EVAL_DIR` so the Array IDs are verified directly against its prediction
+rows. The launcher stops on any release-vs-paper discrepancy.
 
-Feature preparation can be run without starting E2/E3/E4 by setting:
+After `Table-5 exact protocol preflight: PASS`, run the one-stage training:
 
 ```bash
-RUN_E2=0 RUN_E3=0 RUN_E4=0 \
-  HG38_FASTA=/path/to/hg38.fa \
-  bash scripts/run_full_e2_e4.sh
+HG38_FASTA=/path/to/hg38.fa GPU=0 \
+nohup bash scripts/run_final_tcga_mix_chr1.sh \
+  > table5_train.log 2>&1 &
 ```
 
-### Legacy training path
-
-`scripts/train.sh`, `configs/train.yaml`, `docs/data.md`, `docs/training.md`,
-and `docs/evaluation.md` describe the older 21,792-gene research path. They are
-retained for checkpoint reproducibility, not as the default path for new
-MethylProphet-compatible experiments.
+Every final epoch visits the complete source-local CpG x sample block grids and
+asserts the exact reproducible finite-pair counts above. This matches the Table-5 data
+universe and pair exposure; it does not claim to reproduce MethylProphet's
+optimizer or batching. Training scalars are logged to W&B project
+**`MethylPredictor`**. See [`docs/METHYLPROPHET_TABLE5.md`](docs/METHYLPROPHET_TABLE5.md).
 
 ## Repository map
 
-- [`docs/architecture.md`](docs/architecture.md) — current model architecture.
-- [`docs/EXPERIMENT_STATUS.md`](docs/EXPERIMENT_STATUS.md) — current experiment state.
-- [`docs/data/TCGA_CANONICAL_DATA.md`](docs/data/TCGA_CANONICAL_DATA.md) — canonical data bundle.
-- [`docs/data/METHYLPROPHET_PROTOCOLS.md`](docs/data/METHYLPROPHET_PROTOCOLS.md) — exact/matched protocol semantics.
-- [`docs/data/GENOMIC_FEATURE_STORE.md`](docs/data/GENOMIC_FEATURE_STORE.md) — reusable NTv3 feature store.
-- [`scripts/README.md`](scripts/README.md) — script/entrypoint map.
+- `src/methylation_predictor/models.py` — single production architecture.
+- `src/methylation_predictor/final_training.py` — one-stage mixed-source trainer.
+- `scripts/prepare_final_tcga_mix_chr1.py` — derived cache/preflight builder.
+- `scripts/run_final_tcga_mix_chr1.sh` — paper-final entrypoint.
+- `scripts/evaluate_current_model_vs_methylprophet.py` — independent exact-view evaluator.
+- `scripts/rebuild_genomic_prior_v2.py` — generic genomic-prior builder (not used for Table 5).
+- `docs/METHYLPROPHET_TABLE5.md` — exact paper benchmark contract and launch protocol.
+- `docs/architecture.md` — architecture-selection evidence and final computation.
+- `docs/data/TCGA_CANONICAL_DATA.md` — canonical data bundle.
+- `docs/data/METHYLPROPHET_PROTOCOLS.md` — exact evaluation vs matched-source semantics.
+- `docs/data/GENOMIC_FEATURE_STORE.md` — NTv3/prior feature provenance.
 
 ## Installation
 
@@ -99,5 +96,4 @@ python -m pip install -r requirements-genomics.txt
 python -m pip install -e .
 ```
 
-Generated checkpoints, caches, logs and large genomic features remain outside
-git. Canonical source data is treated as read-only.
+Canonical source data is treated as read-only.

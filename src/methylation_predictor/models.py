@@ -1,8 +1,20 @@
-"""Canonical RNA-to-DNAm model.
+"""Canonical RNA-to-DNAm model selected by the architecture study.
 
-This module intentionally exposes one architecture only:
-Linear RNA encoder -> concat/product RNA-CpG interaction -> variability gate ->
-residual correction of the frozen CpG prior in logit space.
+The production architecture is deliberately singular:
+
+    RNA (25,017 genes)
+      -> LayerNorm -> Linear(..., 256)
+      -> RNA latent z
+
+    [z, frozen NTv3 CpG embedding, proj(z) * proj(CpG)]
+      -> MLP -> delta_logit
+
+    beta_hat = sigmoid(logit(frozen_prior) + delta_logit)
+
+The variability gate, mean-RNA anchor, direct-prediction branch and no-product
+variants were research ablations.  They are intentionally not executable in
+the production model after the confirming Array-chr1 experiment selected the
+simpler RNA256 residual architecture.
 """
 from __future__ import annotations
 
@@ -20,7 +32,7 @@ class RNARepresentation:
 
 
 class LinearRNAEncoder(nn.Module):
-    """LayerNorm followed by the canonical 64-D linear RNA projection."""
+    """LayerNorm followed by the canonical 256-D linear RNA projection."""
 
     def __init__(self, input_dim: int, latent_dim: int, layer_norm: bool = True):
         super().__init__()
@@ -31,9 +43,8 @@ class LinearRNAEncoder(nn.Module):
         return RNARepresentation(self.projection(self.norm(x)))
 
 
-class ConcatInteraction(nn.Module):
-    """RNA-CpG interaction: concatenation of RNA, CpG embedding and projected
-    element-wise product, fed through an MLP residual head."""
+class ProductInteraction(nn.Module):
+    """Canonical RNA-CpG interaction with an explicit multiplicative term."""
 
     def __init__(
         self,
@@ -41,16 +52,12 @@ class ConcatInteraction(nn.Module):
         locus_dim: int,
         hidden_dim: int,
         dropout: float,
-        include_product: bool = True,
     ):
         super().__init__()
-        self.include_product = bool(include_product)
         product_dim = min(rna_dim, locus_dim)
-        joint_dim = rna_dim + locus_dim + (product_dim if self.include_product else 0)
-
-        # Keep these names stable for checkpoint compatibility.
-        self.rna_product = nn.Linear(rna_dim, product_dim) if self.include_product else None
-        self.locus_product = nn.Linear(locus_dim, product_dim) if self.include_product else None
+        self.rna_product = nn.Linear(rna_dim, product_dim)
+        self.locus_product = nn.Linear(locus_dim, product_dim)
+        joint_dim = rna_dim + locus_dim + product_dim
         self.network = nn.Sequential(
             nn.LayerNorm(joint_dim),
             nn.Linear(joint_dim, hidden_dim),
@@ -64,15 +71,11 @@ class ConcatInteraction(nn.Module):
         n_loci = loci.shape[0]
         rna_expanded = rna.global_vector[:, None, :].expand(batch, n_loci, -1)
         loci_expanded = loci[None, :, :].expand(batch, n_loci, -1)
-        pieces = [rna_expanded, loci_expanded]
-        if self.include_product:
-            assert self.rna_product is not None and self.locus_product is not None
-            product = (
-                self.rna_product(rna.global_vector)[:, None, :]
-                * self.locus_product(loci)[None, :, :]
-            )
-            pieces.append(product)
-        joint = torch.cat(pieces, dim=-1)
+        product = (
+            self.rna_product(rna.global_vector)[:, None, :]
+            * self.locus_product(loci)[None, :, :]
+        )
+        joint = torch.cat([rna_expanded, loci_expanded, product], dim=-1)
         return self.network(joint).squeeze(-1)
 
     def zero_output(self) -> None:
@@ -80,54 +83,13 @@ class ConcatInteraction(nn.Module):
         nn.init.zeros_(self.network[-1].bias)
 
 
-class NoResidualGate(nn.Module):
-    """Identity residual gate used only by explicit architecture ablations.
-
-    The module intentionally has no parameters. ``forward`` keeps the same
-    two-argument interface as ``ResidualGate`` so the rest of the training and
-    evaluation stack does not need an ablation-specific code path.
-    """
-
-    kind = "none"
-
-    def forward(self, loci: torch.Tensor, variability: torch.Tensor) -> torch.Tensor:
-        del variability
-        return torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
-
-
-class ResidualGate(nn.Module):
-    """Canonical locus-specific gate using embedding + two variability features."""
-
-    def __init__(self, locus_dim: int, hidden_dim: int, dropout: float):
-        super().__init__()
-        self.kind = "variability"
-        self.network = nn.Sequential(
-            nn.LayerNorm(locus_dim + 2),
-            nn.Linear(locus_dim + 2, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
-
-    def forward(self, loci: torch.Tensor, variability: torch.Tensor) -> torch.Tensor:
-        if variability.ndim != 2 or variability.shape[-1] != 2:
-            raise ValueError(
-                "canonical variability gate expects exactly two variability features "
-                f"per locus; received shape={tuple(variability.shape)}"
-            )
-        features = torch.cat([loci, variability], dim=-1)
-        return torch.sigmoid(self.network(features)).squeeze(-1)
-
-
 class RNA2DNAmModel(nn.Module):
-    """Canonical frozen-prior RNA-to-DNAm model.
+    """Final frozen-prior RNA-to-DNAm architecture.
 
-    logit(beta_hat[s,i]) =
-        logit(prior[i]) +
-        gate[i] * (
-            interaction(RNA[s], CpG[i])
-            - interaction(mean_RNA, CpG[i])
-        )
+    ``variability``/``reference_rna``/cancer arguments remain optional only to
+    keep the existing evaluation stack source-compatible.  They are ignored:
+    the selected production architecture has neither a variability gate nor a
+    mean-RNA anchor.
     """
 
     def __init__(
@@ -140,65 +102,43 @@ class RNA2DNAmModel(nn.Module):
         raw_rna_dim: int | None = None,
     ):
         super().__init__()
-
         if gene_embeddings is not None or raw_rna_dim is not None:
             raise ValueError(
-                "pretrained/gene-token RNA inputs were removed by the training-only refactor"
+                "pretrained/gene-token RNA inputs are not part of the canonical model"
             )
         if config.encoder.kind != "linear":
             raise ValueError(
-                f"only model.encoder.kind='linear' is supported; got {config.encoder.kind!r}"
+                f"canonical model requires model.encoder.kind='linear'; got {config.encoder.kind!r}"
+            )
+        if config.encoder.latent_dim != 256:
+            raise ValueError(
+                "canonical model requires a 256-D RNA latent; "
+                f"got {config.encoder.latent_dim}"
             )
         if config.interaction.kind != "concat":
             raise ValueError(
-                f"only model.interaction.kind='concat' is supported; got {config.interaction.kind!r}"
+                f"canonical model requires model.interaction.kind='concat'; got {config.interaction.kind!r}"
             )
-        if config.gate.kind not in {"variability", "none"}:
-            raise ValueError(
-                "model.gate.kind must be 'variability' or the explicit ablation "
-                f"'none'; got {config.gate.kind!r}"
-            )
-        if config.prediction_mode not in {"residual_prior", "direct"}:
-            raise ValueError(
-                "model.prediction_mode must be 'residual_prior' or 'direct'; "
-                f"got {config.prediction_mode!r}"
-            )
-        if config.prediction_mode == "direct" and config.anchor_to_mean_rna:
-            raise ValueError(
-                "direct prediction cannot use mean-RNA anchoring: without the prior, "
-                "anchoring would force the reference RNA profile to beta=0.5. Set "
-                "model.anchor_to_mean_rna=false for the direct-prediction ablation."
-            )
+        if not config.zero_init_residual:
+            raise ValueError("canonical model requires zero_init_residual=true")
 
         self.config = config
         self.epsilon = float(epsilon)
         self.rna_encoder = LinearRNAEncoder(
             input_dim=input_dim,
-            latent_dim=config.encoder.latent_dim,
+            latent_dim=256,
             layer_norm=config.encoder.layer_norm,
         )
-        self.interaction = ConcatInteraction(
-            rna_dim=config.encoder.latent_dim,
+        self.interaction = ProductInteraction(
+            rna_dim=256,
             locus_dim=locus_dim,
             hidden_dim=config.interaction.hidden_dim,
             dropout=config.interaction.dropout,
-            include_product=config.interaction.include_product,
         )
-        if config.gate.kind == "variability":
-            self.gate = ResidualGate(
-                locus_dim=locus_dim,
-                hidden_dim=config.gate.hidden_dim,
-                dropout=config.gate.dropout,
-            )
-        else:
-            self.gate = NoResidualGate()
-
-        if config.zero_init_residual:
-            self.interaction.zero_output()
+        self.interaction.zero_output()
 
     @property
     def supports_factorized_inference(self) -> bool:
-        # Factorized inference belonged to the removed bilinear branch.
         return False
 
     def forward(
@@ -206,52 +146,28 @@ class RNA2DNAmModel(nn.Module):
         rna: torch.Tensor,
         loci: torch.Tensor,
         prior: torch.Tensor,
-        variability: torch.Tensor,
+        variability: torch.Tensor | None = None,
         reference_rna: torch.Tensor | None = None,
         cancer_codes: torch.Tensor | None = None,
         cancer_centroids: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        del cancer_codes, cancer_centroids
+        del variability, reference_rna, cancer_codes, cancer_centroids
 
         representation = self.rna_encoder(rna)
-        raw = self.interaction(representation, loci)
-
-        if self.config.anchor_to_mean_rna:
-            if reference_rna is None:
-                reference_rna = torch.zeros(
-                    (1, rna.shape[1]), dtype=rna.dtype, device=rna.device
-                )
-            if reference_rna.shape[0] != 1:
-                raise ValueError("reference_rna must contain exactly one reference profile")
-            reference = self.rna_encoder(reference_rna)
-            reference_raw = self.interaction(reference, loci)
-            raw = raw - reference_raw.expand_as(raw)
-
-        gate = self.gate(loci, variability)
-        # In the explicit no-gate ablation the residual is used directly.
-        # Avoid multiplying by an all-ones tensor so AMP dtype/rounding is not
-        # changed by a type-promotion side effect.
-        model_logit = raw if self.config.gate.kind == "none" else raw * gate.unsqueeze(0)
+        delta_logit = self.interaction(representation, loci)
         prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
         prior_logit = torch.logit(prior)
-
-        if self.config.prediction_mode == "residual_prior":
-            delta_logit = model_logit
-            prediction_logit = prior_logit.unsqueeze(0) + delta_logit
-        else:
-            # Direct ablation: the interaction branch learns the complete
-            # methylation logit. delta_logit is still exposed relative to the
-            # prior for diagnostics and residual-Huber bookkeeping; the prior
-            # cancels algebraically from that Huber target.
-            prediction_logit = model_logit
-            delta_logit = prediction_logit - prior_logit.unsqueeze(0)
-
+        prediction_logit = prior_logit.unsqueeze(0) + delta_logit
         beta = torch.sigmoid(prediction_logit)
 
+        # ``gate`` is a diagnostic compatibility field, not a model component.
+        # Returning ones lets historical metric/evaluation code consume the
+        # canonical output dictionary without carrying a gate implementation.
+        gate = torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
         return {
             "beta": beta,
             "delta_logit": delta_logit,
-            "raw_delta_logit": raw,
+            "raw_delta_logit": delta_logit,
             "prediction_logit": prediction_logit,
             "gate": gate,
             "prior_logit": prior_logit,

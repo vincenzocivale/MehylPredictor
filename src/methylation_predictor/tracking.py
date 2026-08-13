@@ -58,6 +58,15 @@ class WandbTracker(Tracker):
         if tracking.watch_model:
             wandb.watch(model, log="gradients", log_freq=max(1, tracking.log_every_steps))
 
+        # Bind each metric namespace to its own x-axis instead of the shared
+        # internal row counter, so step-level and epoch-level charts both
+        # read as clean monotonic curves in the W&B UI.
+        wandb.define_metric("global_step")
+        wandb.define_metric("epoch")
+        wandb.define_metric("train/*", step_metric="global_step")
+        wandb.define_metric("epoch/*", step_metric="epoch")
+        wandb.define_metric("validation/*", step_metric="epoch")
+
     def log(self, values: dict[str, Any], step: int | None = None) -> None:
         self._wandb.log(json_safe(values), step=step)
 
