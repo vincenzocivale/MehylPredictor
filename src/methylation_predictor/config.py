@@ -145,6 +145,11 @@ class ModelConfig:
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     interaction: InteractionConfig = field(default_factory=InteractionConfig)
     zero_init_residual: bool = True
+    # V1 research experiment (see docs/METHYLPROPHET_TABLE5.md): selects
+    # VarianceNormalizedResidualModel instead of the frozen production
+    # RNA2DNAmModel. False everywhere except the V1 experiment config, so
+    # every existing run/config is unaffected.
+    variance_normalized_residual: bool = False
 
 
 @dataclass(slots=True)
@@ -156,6 +161,19 @@ class LossConfig:
     residual_huber_delta: float = 1.0
     shrinkage_weight: float = 1e-4
     beta_macro_weight: float = 0.0
+    # V1 research experiment: standardized-residual counterparts of
+    # residual_huber_weight/shrinkage_weight above, operating on the model's
+    # raw (pre-sigma-scale) output against (true_delta_logit / sigma) instead
+    # of the flat delta_logit. Only meaningful when
+    # model.variance_normalized_residual=true; a no-op (zero weight) and
+    # unused (sigma=None) otherwise, so every existing config is unaffected.
+    standardized_residual_huber_weight: float = 0.0
+    standardized_residual_huber_delta: float = 1.0
+    standardized_shrinkage_weight: float = 0.0
+    # Floor applied to sigma_i when constructing the standardized residual
+    # target r = true_delta_logit / max(sigma_i, sigma_min) -- prevents
+    # near-constant loci (sigma_i -> 0) from producing an unbounded target.
+    sigma_min: float = 0.05
     # MAS-PCC-oriented objectives. Correlations are computed across samples for
     # every CpG in the Cartesian minibatch. Disabled by default so all existing
     # experiments remain numerically unchanged.

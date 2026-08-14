@@ -661,7 +661,8 @@ def build_table5_prior(
     """Build leakage-safe Table-5-only NTv3 prior; no genome-wide methylation labels."""
     output.mkdir(parents=True, exist_ok=True); done = output / ".done"
     locus_path = output / "locus_features.parquet"; checkpoint = output / "full_fit_prior_probe.pt"
-    if done.is_file() and locus_path.is_file() and checkpoint.is_file():
+    sigma_checkpoint = output / "full_fit_sigma_probe.pt"
+    if done.is_file() and locus_path.is_file() and checkpoint.is_file() and sigma_checkpoint.is_file():
         return json.loads((output / "manifest.json").read_text())
 
     array_ids = np.concatenate([protocol.array_train_cpg_idx, protocol.array_val_cpg_idx]).astype(np.int64)
@@ -671,13 +672,30 @@ def build_table5_prior(
         train_beta = h["beta"]
         n_s = len(protocol.array_train_sample_idx); n_c = len(protocol.array_train_cpg_idx)
         sums = np.zeros(n_c, np.float64); counts = np.zeros(n_c, np.int64)
+        # Second moment accumulated in logit space (not beta space) since the
+        # model's residual is added in logit space -- sigma_i must be the
+        # inter-sample std of logit(beta), the natural scale of that residual.
+        logit_sums = np.zeros(n_c, np.float64); logit_sumsq = np.zeros(n_c, np.float64)
         for start in range(0, n_s, 128):
             block = np.asarray(train_beta[start:min(start + 128, n_s), :n_c], np.float32)
             finite = np.isfinite(block); sums += np.where(finite, block, 0.0).sum(0, dtype=np.float64); counts += finite.sum(0)
+            clipped = np.clip(block, 1e-4, 1 - 1e-4)
+            logit_block = np.log(clipped / (1 - clipped))
+            logit_block = np.where(finite, logit_block, 0.0)
+            logit_sums += logit_block.sum(0, dtype=np.float64)
+            logit_sumsq += (logit_block * logit_block).sum(0, dtype=np.float64)
     if np.any(counts == 0):
         raise RuntimeError("Table-5 train CpG with no finite training methylation")
     target_prior = np.clip(sums / counts, 1e-4, 1 - 1e-4).astype(np.float32)
     target_logit = np.log(target_prior / (1 - target_prior)).astype(np.float32)
+    logit_mean = logit_sums / counts
+    logit_var = np.maximum(logit_sumsq / counts - logit_mean ** 2, 0.0)
+    # 1e-3 is a numerical floor only (avoid log(0) for the handful of exactly-
+    # constant train CpGs); it is not the sigma_min used at training time to
+    # standardize residual targets -- that is a separate, loss-side knob
+    # (config.sigma_min) applied when consuming this cache.
+    target_sigma = np.sqrt(logit_var).astype(np.float32)
+    target_log_sigma = np.log(np.maximum(target_sigma, 1e-3)).astype(np.float32)
 
     n_train = len(protocol.array_train_cpg_idx); n_val = len(protocol.array_val_cpg_idx)
     fold_id = np.empty(n_train, np.int8)
@@ -707,10 +725,59 @@ def build_table5_prior(
     if not np.isfinite(pred_logit).all():
         raise RuntimeError("Table-5 prior predictions incomplete")
     torch.save(state, checkpoint)
-    prior = np.clip(1.0 / (1.0 + np.exp(-np.clip(pred_logit, -35, 35))), 1e-4, 1 - 1e-4).astype(np.float32)
+
+    # V1 experiment: sigma_i, the per-CpG inter-sample std of logit(beta), fit
+    # with the exact same leakage-safe OOF/full-fit probe machinery as mu_i
+    # above (same 5-fold split, same embeddings) -- just against
+    # target_log_sigma instead of target_logit.
+    pred_log_sigma = np.full(n_train + n_val, np.nan, np.float32)
+    sigma_fold_metrics = {}
+    for fold in range(5):
+        predict = np.flatnonzero(fold_id == fold).astype(np.int64)
+        fit = np.flatnonzero(fold_id != fold).astype(np.int64)
+        pred, _, metrics = _fit_prior_probe(
+            embeddings[:n_train], target_log_sigma, fit, predict,
+            device=device, scope_seed=20260814 + fold,
+        )
+        pred_log_sigma[predict] = pred; sigma_fold_metrics[f"fold_{fold}"] = metrics
+        print(f"[table5-sigma] OOF fold {fold} complete", flush=True)
+    target_log_sigma_extended = np.concatenate([target_log_sigma, np.zeros(n_val, np.float32)])
+    pred, sigma_state, sigma_full_metrics = _fit_prior_probe(
+        embeddings, target_log_sigma_extended, np.arange(n_train, dtype=np.int64), full_predict,
+        device=device, scope_seed=20260914,
+    )
+    pred_log_sigma[full_predict] = pred
+    if not np.isfinite(pred_log_sigma).all():
+        raise RuntimeError("Table-5 sigma predictions incomplete")
+    sigma_state["target"] = "log_sigma"
+    torch.save(sigma_state, sigma_checkpoint)
+    oof_sigma_mse = float(np.mean(np.square(
+        pred_log_sigma[:n_train].astype(np.float64) - target_log_sigma.astype(np.float64)
+    )))
+    # Served sigma: exact empirical std for train CpGs (same leakage-safe
+    # reasoning as the mu fix above); NTv3-probe prediction for held-out Array
+    # CpGs (and, downstream in build_feature_cache, EPIC/WGBS-only CpGs).
+    oof_sigma = np.exp(np.clip(pred_log_sigma, -20, 20)).astype(np.float32)
+    sigma = oof_sigma.copy()
+    sigma[:n_train] = target_sigma
+
+    # Served prior: for the n_train Array train CpGs, the *exact* leakage-safe
+    # empirical mean (target_prior, computed above from train samples only) is
+    # available and strictly more accurate than routing it through the NTv3
+    # probe -- the OOF prediction is still fit and scored (oof_mse below) as a
+    # diagnostic of probe quality, but no longer served as the prior itself.
+    # For the n_val held-out Array CpGs (and, downstream in build_feature_cache,
+    # any EPIC/WGBS-only CpG), no true value exists at train time, so the
+    # NTv3-probe prediction remains the only leakage-safe option.
+    oof_prior = np.clip(1.0 / (1.0 + np.exp(-np.clip(pred_logit, -35, 35))), 1e-4, 1 - 1e-4).astype(np.float32)
+    prior = oof_prior.copy()
+    prior[:n_train] = target_prior
     pd.DataFrame({
         "cpg_idx": array_ids,
         "pred_ntv3_prior": prior,
+        "pred_ntv3_prior_probe_only": oof_prior,  # diagnostic: what the NTv3 probe alone would have served
+        "served_sigma": sigma,  # V1 experiment: per-CpG inter-sample std of logit(beta)
+        "served_sigma_probe_only": oof_sigma,  # diagnostic: what the NTv3 probe alone would have served
         # Compatibility only: the final model ignores variability after the gate removal.
         "pred_log_var_between": np.zeros(len(array_ids), np.float32),
         "pred_log_var_within": np.zeros(len(array_ids), np.float32),
@@ -723,6 +790,15 @@ def build_table5_prior(
         "train_samples": n_s,
         "train_cpgs": n_train,
         "heldout_cpgs": n_val,
+        "served_train_cpg_prior": "exact leakage-safe empirical mean over Array train samples",
+        "served_val_cpg_prior": "full-fit NTv3-to-prior probe (OOD leg, no true value available)",
+        "served_train_cpg_sigma": "exact leakage-safe empirical std (logit space) over Array train samples",
+        "served_val_cpg_sigma": "full-fit NTv3-to-log-sigma probe (OOD leg, no true value available)",
+        "oof_sigma_folds": 5,
+        "oof_sigma_train_mse_log_sigma": oof_sigma_mse,
+        "sigma_full_fit": sigma_full_metrics,
+        "sigma_folds": sigma_fold_metrics,
+        "sigma_probe": str(sigma_checkpoint),
         "oof_folds": 5,
         "oof_train_mse_prior_logit": oof_mse,
         "full_fit": full_metrics,
@@ -755,30 +831,62 @@ def _infer_fullfit_prior(state: dict, embeddings: np.ndarray, rows: np.ndarray, 
     return result
 
 
+def _infer_fullfit_sigma(state: dict, embeddings: np.ndarray, rows: np.ndarray, device: str, batch: int = 8192) -> np.ndarray:
+    """Same probe-inference machinery as _infer_fullfit_prior, but the target
+    is log_sigma, not a logit-mean, so the output is exponentiated rather than
+    passed through a sigmoid."""
+    model = PriorEnsemble(tuple(state["seeds"]), dim=int(state["dim"]), dropout=float(state["dropout"]))
+    model.load_state_dict(state["model_state"], strict=True); model.to(device).eval()
+    xm = torch.from_numpy(np.asarray(state["x_mean"], np.float32)).to(device)
+    xs = torch.from_numpy(np.asarray(state["x_std"], np.float32)).to(device)
+    ym = float(state["y_mean"]); ys = float(state["y_std"]); amp = str(device).startswith("cuda")
+    result = np.empty(len(rows), np.float32)
+    with torch.inference_mode():
+        for start in range(0, len(rows), batch):
+            stop = min(start + batch, len(rows)); local = rows[start:stop]
+            x = torch.from_numpy(np.asarray(embeddings[local], np.float32)).to(device)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp):
+                z = model((x - xm) / xs)
+            log_sigma = z.float().cpu().numpy() * ys + ym
+            result[start:stop] = np.exp(np.clip(log_sigma, -20, 20))
+    return result
+
+
 def build_feature_cache(protocol: Table5Protocol, atlas: Path, prior_root: Path, output: Path, *, device: str) -> dict[str, object]:
     output.mkdir(parents=True, exist_ok=True); done = output / ".done"
     ids_path = output / "cpg_idx.npy"; emb_path = output / "embeddings.f16.npy"; prior_path = output / "prior.npy"
-    if done.is_file() and all(x.is_file() for x in (ids_path, emb_path, prior_path)):
+    sigma_path = output / "sigma.npy"
+    if done.is_file() and all(x.is_file() for x in (ids_path, emb_path, prior_path, sigma_path)):
         return json.loads((output / "manifest.json").read_text())
     required = protocol.unique_required_cpgs(); np.save(ids_path, required)
     embeddings = _atlas_embeddings(atlas, required, emb_path)
-    array_features = pd.read_parquet(prior_root / "locus_features.parquet", columns=["cpg_idx", "pred_ntv3_prior"])
-    base_ids = array_features.cpg_idx.to_numpy(np.int64); base_prior = array_features.pred_ntv3_prior.to_numpy(np.float32)
-    p = np.argsort(base_ids); base_ids = base_ids[p]; base_prior = base_prior[p]
+    array_features = pd.read_parquet(
+        prior_root / "locus_features.parquet", columns=["cpg_idx", "pred_ntv3_prior", "served_sigma"]
+    )
+    base_ids = array_features.cpg_idx.to_numpy(np.int64)
+    base_prior = array_features.pred_ntv3_prior.to_numpy(np.float32)
+    base_sigma = array_features.served_sigma.to_numpy(np.float32)
+    p = np.argsort(base_ids); base_ids = base_ids[p]; base_prior = base_prior[p]; base_sigma = base_sigma[p]
     search = np.searchsorted(base_ids, required); clipped = np.minimum(search, len(base_ids) - 1)
     in_base = (search < len(base_ids)) & (base_ids[clipped] == required)
     prior = np.lib.format.open_memmap(prior_path, mode="w+", dtype=np.float32, shape=(len(required),))
+    sigma = np.lib.format.open_memmap(sigma_path, mode="w+", dtype=np.float32, shape=(len(required),))
     prior[in_base] = base_prior[search[in_base]]
+    sigma[in_base] = base_sigma[search[in_base]]
     missing = np.flatnonzero(~in_base).astype(np.int64)
     state = torch.load(prior_root / "full_fit_prior_probe.pt", map_location="cpu", weights_only=False)
+    sigma_state = torch.load(prior_root / "full_fit_sigma_probe.pt", map_location="cpu", weights_only=False)
     if len(missing):
         prior[missing] = _infer_fullfit_prior(state, embeddings, missing, device)
+        sigma[missing] = _infer_fullfit_sigma(sigma_state, embeddings, missing, device)
     prior.flush(); del prior
+    sigma.flush(); del sigma
     manifest = {
         "status": "built", "protocol": TABLE5_PROTOCOL_NAME,
         "rows": int(len(required)), "array_prior_rows_oof_or_heldout_fullfit": int(in_base.sum()),
         "auxiliary_prior_rows_fullfit_probe": int(len(missing)),
         "atlas": str(atlas), "table5_prior": str(prior_root), "no_ntv3_inference": True,
+        "sigma_cache": str(sigma_path),
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n"); done.write_text("ok\n")
     return manifest

@@ -6,6 +6,7 @@ epoch 1 and the held-out Array views are opened only after the final epoch.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass
 import json
@@ -23,7 +24,7 @@ from .config import load_config
 from .full_suite.cache import RNACache
 from .full_suite.feature_store import SortedIndex
 from .losses import residual_loss
-from .models import RNA2DNAmModel
+from .models import RNA2DNAmModel, VarianceNormalizedResidualModel
 from .table5_protocol import (
     ARRAY_VIEW_EXPECTED_OBSERVED,
     SOURCE_EXPECTED_OBSERVED,
@@ -130,17 +131,32 @@ class FinalFeatureCache:
         self.ids = np.load(root / "cpg_idx.npy", mmap_mode="r")
         self.embeddings = np.load(root / "embeddings.f16.npy", mmap_mode="r")
         self.prior = np.load(root / "prior.npy", mmap_mode="r")
+        sigma_path = root / "sigma.npy"
+        # sigma.npy only exists once scripts/prepare_final_tcga_mix_chr1.py has
+        # built the V1 (variance-normalized-residual) prior cache; fall back to
+        # all-ones so callers that never read the third element of .get() (any
+        # model that doesn't take sigma) are unaffected.
+        self.sigma = np.load(sigma_path, mmap_mode="r") if sigma_path.is_file() else np.ones_like(self.prior)
         if self.embeddings.shape != (len(self.ids), 1536):
             raise RuntimeError(f"unexpected final embedding cache shape: {self.embeddings.shape}")
         if self.prior.shape != (len(self.ids),):
             raise RuntimeError("final prior cache does not align with cpg_idx")
+        if self.sigma.shape != (len(self.ids),):
+            raise RuntimeError("final sigma cache does not align with cpg_idx")
         self.index = SortedIndex(self.ids, "final Table-5 feature cache")
 
-    def get(self, cpg_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def get(
+        self, cpg_idx: np.ndarray, embedding_dtype: np.dtype = np.float32
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        # embedding_dtype defaults to float32 (backward compatible). The
+        # stored cache is already float16; hot training loops that upload
+        # straight to GPU can pass embedding_dtype=np.float16 to skip the
+        # CPU-side upcast and do it on-GPU instead (near-free there).
         rows = self.index.positions_of(np.asarray(cpg_idx, dtype=np.int64))
         return (
-            np.asarray(self.embeddings[rows], dtype=np.float32),
+            np.asarray(self.embeddings[rows], dtype=embedding_dtype),
             np.asarray(self.prior[rows], dtype=np.float32),
+            np.asarray(self.sigma[rows], dtype=np.float32),
         )
 
 
@@ -245,6 +261,21 @@ class ArrayMomentMetrics:
             "cpg_win_fraction": float(np.nanmean(cm < cp)),
         }
 
+    def finalize_per_cpg(self) -> dict[str, np.ndarray]:
+        """Per-CpG breakdown of the same streaming moments ``finalize()``
+        reduces to medians -- used for stratified analyses (genomic context,
+        inter-sample variability) rather than the headline scalar report."""
+        rc = self._corr(self.cn, self.ct, self.cp, self.ctt, self.cpp, self.ctp)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cm = self.csse / self.cn; cp_ = self.cpse / self.cn
+            true_mean = self.ct / self.cn
+            true_var = self.ctt / self.cn - true_mean ** 2
+        return {
+            "n": self.cn, "pearson": rc, "mse": cm, "prior_mse": cp_,
+            "skill_vs_prior": 1.0 - cm / cp_,
+            "true_mean": true_mean, "true_var": true_var,
+        }
+
 
 class FinalTCGAMixTrainer:
     """Single-stage deterministic full-coverage trainer for the paper model."""
@@ -293,7 +324,21 @@ class FinalTCGAMixTrainer:
         torch.set_float32_matmul_precision(self.cfg.training.matmul_precision)
         torch.backends.cuda.matmul.allow_tf32 = self.cfg.training.allow_tf32
         torch.backends.cudnn.allow_tf32 = self.cfg.training.allow_tf32
-        self.model = RNA2DNAmModel(25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon).to(self.device)
+        self.variance_normalized = bool(self.cfg.model.variance_normalized_residual)
+        # Distinct label so a variance-normalized (V1) run can never silently
+        # resume from -- or be resumed into -- a frozen-architecture checkpoint.
+        self.architecture_label = (
+            FINAL_ARCHITECTURE + "_v1_variance_normalized_residual"
+            if self.variance_normalized else FINAL_ARCHITECTURE
+        )
+        if self.variance_normalized:
+            self.model = VarianceNormalizedResidualModel(
+                25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon
+            ).to(self.device)
+        else:
+            self.model = RNA2DNAmModel(
+                25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon
+            ).to(self.device)
         self.pools = self._build_pools()
         self.tracker = None
 
@@ -357,6 +402,29 @@ class FinalTCGAMixTrainer:
             return self.compact[pool.name].block(rows, cpg)
         return self.bundle.sources[pool.name].block(rows, cpg)
 
+    def _prepare_step(self, schedules, source_index: int, local_step: int):
+        """CPU-side data prep for one training step: HDF5 block read + RNA/
+        embedding lookup.  Runs on a background thread so it overlaps with the
+        GPU work of the *previous* step instead of blocking it -- this is the
+        dominant cost (the GPU sits idle ~35-50% of the time in the fully
+        synchronous version, per profiling; the actual per-step compute is
+        small relative to Python/HDF5/numpy overhead for this model size).
+        Embeddings/RNA are read at their native float16 storage dtype; the
+        float32 upcast happens on-GPU after transfer (near-free there)
+        instead of costing a CPU-side numpy pass on every step.
+        """
+        pool = self.pools[source_index]
+        row_slots, cpg_slots = schedules[source_index][local_step]
+        sample_ids = pool.sample_idx[row_slots]
+        cpg_ids = pool.cpg_idx[cpg_slots]
+        beta_np = self._block(pool, row_slots, cpg_slots)
+        has_signal = bool(np.isfinite(beta_np).any())
+        rna_np = emb_np = prior_np = sigma_np = None
+        if has_signal:
+            rna_np = self.rna.rows(sample_ids, dtype=np.float16)
+            emb_np, prior_np, sigma_np = self.features.get(cpg_ids, embedding_dtype=np.float16)
+        return pool, beta_np, has_signal, rna_np, emb_np, prior_np, sigma_np
+
     def _schedules(self, epoch: int):
         schedules = [
             CartesianSourceSchedule(
@@ -407,7 +475,7 @@ class FinalTCGAMixTrainer:
             "scaler_state": scaler.state_dict() if scaler is not None else None,
             "epoch": int(epoch),
             "epochs_planned": self.epochs,
-            "architecture": FINAL_ARCHITECTURE,
+            "architecture": self.architecture_label,
             "protocol": TABLE5_PROTOCOL_NAME,
             "seed": self.seed,
             "history": history,
@@ -442,7 +510,7 @@ class FinalTCGAMixTrainer:
         latest = self.output / "latest.pt"
         if latest.is_file():
             state = torch.load(latest, map_location=self.device, weights_only=False)
-            if state.get("architecture") != FINAL_ARCHITECTURE:
+            if state.get("architecture") != self.architecture_label:
                 raise RuntimeError("latest.pt belongs to a different architecture")
             if int(state.get("epochs_planned", self.epochs)) != self.epochs:
                 raise RuntimeError("cannot resume with a different fixed epoch budget")
@@ -458,7 +526,7 @@ class FinalTCGAMixTrainer:
         self._init_tracker()
         schedule_info = self.schedule_summary()
         manifest = {
-            "architecture": FINAL_ARCHITECTURE,
+            "architecture": self.architecture_label,
             "architecture_selection": {
                 "confirm_mas_pcc": 0.5163, "confirm_mse": 0.02058,
                 "confirm_skill_vs_prior": 0.237,
@@ -475,108 +543,125 @@ class FinalTCGAMixTrainer:
             int(x.get("optimizer_steps", sum(x["source_steps"].values())))
             for x in history
         ) if history else 0
-        for epoch in range(start_epoch, self.epochs + 1):
-            self.model.train(); torch.cuda.reset_peak_memory_stats(self.device)
-            started = time.time(); schedules, plan, counts = self._schedules(epoch)
-            source_steps = {p.name: 0 for p in self.pools}
-            source_raw_loss = {p.name: [] for p in self.pools}
-            source_observed = {p.name: 0 for p in self.pools}
-            weighted_losses = []; grad_norms = []; optimizer_steps = 0
+        # Single background worker that prepares step i+1's CPU-side data
+        # (HDF5 block read + RNA/embedding lookup) while the main thread runs
+        # the GPU forward/backward for step i.  See _prepare_step for why.
+        prefetch = ThreadPoolExecutor(max_workers=1)
+        try:
+            for epoch in range(start_epoch, self.epochs + 1):
+                self.model.train(); torch.cuda.reset_peak_memory_stats(self.device)
+                started = time.time(); schedules, plan, counts = self._schedules(epoch)
+                source_steps = {p.name: 0 for p in self.pools}
+                source_raw_loss = {p.name: [] for p in self.pools}
+                source_locus_pearson_loss = {p.name: [] for p in self.pools}
+                source_observed = {p.name: 0 for p in self.pools}
+                weighted_losses = []; grad_norms = []; optimizer_steps = 0
 
-            for source_index, local_step in plan:
-                pool = self.pools[source_index]
-                row_slots, cpg_slots = schedules[source_index][local_step]
-                sample_ids = pool.sample_idx[row_slots]; cpg_ids = pool.cpg_idx[cpg_slots]
-                beta_np = self._block(pool, row_slots, cpg_slots)
-                # Source schedule coverage counts physical Cartesian blocks, not
-                # optimizer updates.  Count the block even if it contains no
-                # observed methylation values; the finite-pair audit below is
-                # the authoritative data-exposure invariant.
-                source_steps[pool.name] += 1
-                if not np.isfinite(beta_np).any():
-                    continue
-                rna = torch.from_numpy(self.rna.rows(sample_ids)).to(self.device)
-                emb_np, prior_np = self.features.get(cpg_ids)
-                emb = torch.from_numpy(emb_np).to(self.device)
-                prior = torch.from_numpy(prior_np).to(self.device)
-                beta = torch.from_numpy(beta_np).to(self.device)
-                optimizer.zero_grad(set_to_none=True)
-                with self._autocast():
-                    outputs = self.model(rna, emb, prior)
-                    raw_loss, pieces = residual_loss(
-                        outputs, beta, prior, self.cfg.loss,
-                        epsilon=self.cfg.data.clip_beta_epsilon,
+                pending = prefetch.submit(self._prepare_step, schedules, *plan[0])
+                for step_idx in range(len(plan)):
+                    pool, beta_np, has_signal, rna_np, emb_np, prior_np, sigma_np = pending.result()
+                    if step_idx + 1 < len(plan):
+                        pending = prefetch.submit(self._prepare_step, schedules, *plan[step_idx + 1])
+                    # Source schedule coverage counts physical Cartesian blocks, not
+                    # optimizer updates.  Count the block even if it contains no
+                    # observed methylation values; the finite-pair audit below is
+                    # the authoritative data-exposure invariant.
+                    source_steps[pool.name] += 1
+                    if not has_signal:
+                        continue
+                    rna = torch.from_numpy(rna_np).to(self.device).float()
+                    emb = torch.from_numpy(emb_np).to(self.device).float()
+                    prior = torch.from_numpy(prior_np).to(self.device)
+                    beta = torch.from_numpy(beta_np).to(self.device)
+                    optimizer.zero_grad(set_to_none=True)
+                    with self._autocast():
+                        if self.variance_normalized:
+                            sigma = torch.from_numpy(sigma_np).to(self.device)
+                            outputs = self.model(rna, emb, prior, sigma=sigma)
+                        else:
+                            sigma = None
+                            outputs = self.model(rna, emb, prior)
+                        raw_loss, pieces = residual_loss(
+                            outputs, beta, prior, self.cfg.loss,
+                            epsilon=self.cfg.data.clip_beta_epsilon,
+                            sigma=sigma,
+                        )
+                        scale = pair_weight_scale(
+                            int(pieces["observed"]),
+                            TABLE5_EXPECTED["total_train_observed"],
+                            len(plan),
+                        )
+                        loss = raw_loss * scale
+                    if not torch.isfinite(loss):
+                        raise FloatingPointError(f"non-finite final training loss: {pieces}")
+                    if scaler.is_enabled():
+                        scaler.scale(loss).backward(); scaler.unscale_(optimizer)
+                        grad = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.training.gradient_clip_norm)
+                        scaler.step(optimizer); scaler.update()
+                    else:
+                        loss.backward()
+                        grad = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.training.gradient_clip_norm)
+                        optimizer.step()
+
+                    global_step += 1; optimizer_steps += 1
+                    source_raw_loss[pool.name].append(float(raw_loss.detach().cpu()))
+                    source_locus_pearson_loss[pool.name].append(float(pieces["locus_pearson_loss"]))
+                    source_observed[pool.name] += int(pieces["observed"])
+                    weighted_losses.append(float(loss.detach().cpu())); grad_norms.append(float(grad.detach().cpu()))
+                    if getattr(self.tracker, "enabled", False) and global_step % self.cfg.tracking.log_every_steps == 0:
+                        # Namespaced per-source so each source gets its own clean
+                        # curve instead of one line jumping between array/epic/wgbs
+                        # loss scales every few steps.  Pure bookkeeping values
+                        # (pair_weight_scale, observed_pairs) stay in history.json
+                        # / stdout rather than the live dashboard.
+                        self.tracker.log({
+                            "global_step": global_step,
+                            "train/epoch": epoch,
+                            f"train/{pool.name}/loss_raw": float(raw_loss.detach().cpu()),
+                            f"train/{pool.name}/loss_weighted": float(loss.detach().cpu()),
+                            f"train/{pool.name}/locus_pearson_loss": float(pieces["locus_pearson_loss"]),
+                            f"train/{pool.name}/grad_norm": float(grad.detach().cpu()),
+                            "train/lr": optimizer.param_groups[0]["lr"],
+                        }, step=global_step)
+
+                # Fail closed: every source-local full-coverage schedule must be consumed.
+                if source_steps != counts:
+                    raise RuntimeError(f"incomplete Cartesian Table-5 epoch: actual={source_steps}, expected={counts}")
+                if source_observed != SOURCE_EXPECTED_OBSERVED:
+                    raise RuntimeError(
+                        f"Table-5 pair coverage mismatch: actual={source_observed}, expected={SOURCE_EXPECTED_OBSERVED}"
                     )
-                    scale = pair_weight_scale(
-                        int(pieces["observed"]),
-                        TABLE5_EXPECTED["total_train_observed"],
-                        len(plan),
-                    )
-                    loss = raw_loss * scale
-                if not torch.isfinite(loss):
-                    raise FloatingPointError(f"non-finite final training loss: {pieces}")
-                if scaler.is_enabled():
-                    scaler.scale(loss).backward(); scaler.unscale_(optimizer)
-                    grad = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.training.gradient_clip_norm)
-                    scaler.step(optimizer); scaler.update()
-                else:
-                    loss.backward()
-                    grad = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.training.gradient_clip_norm)
-                    optimizer.step()
-
-                global_step += 1; optimizer_steps += 1
-                source_raw_loss[pool.name].append(float(raw_loss.detach().cpu()))
-                source_observed[pool.name] += int(pieces["observed"])
-                weighted_losses.append(float(loss.detach().cpu())); grad_norms.append(float(grad.detach().cpu()))
-                if getattr(self.tracker, "enabled", False) and global_step % self.cfg.tracking.log_every_steps == 0:
-                    # Namespaced per-source so each source gets its own clean
-                    # curve instead of one line jumping between array/epic/wgbs
-                    # loss scales every few steps.  Pure bookkeeping values
-                    # (pair_weight_scale, observed_pairs) stay in history.json
-                    # / stdout rather than the live dashboard.
-                    self.tracker.log({
-                        "global_step": global_step,
-                        "train/epoch": epoch,
-                        f"train/{pool.name}/loss_raw": float(raw_loss.detach().cpu()),
-                        f"train/{pool.name}/loss_weighted": float(loss.detach().cpu()),
-                        f"train/{pool.name}/grad_norm": float(grad.detach().cpu()),
-                        "train/lr": optimizer.param_groups[0]["lr"],
-                    }, step=global_step)
-
-            # Fail closed: every source-local full-coverage schedule must be consumed.
-            if source_steps != counts:
-                raise RuntimeError(f"incomplete Cartesian Table-5 epoch: actual={source_steps}, expected={counts}")
-            if source_observed != SOURCE_EXPECTED_OBSERVED:
-                raise RuntimeError(
-                    f"Table-5 pair coverage mismatch: actual={source_observed}, expected={SOURCE_EXPECTED_OBSERVED}"
-                )
-            if sum(source_observed.values()) != TABLE5_EXPECTED["total_train_observed"]:
-                raise RuntimeError("Table-5 total training pair coverage mismatch")
-            row = {
-                "epoch": epoch, "seconds": time.time() - started,
-                "steps": len(plan), "optimizer_steps": optimizer_steps, "source_steps": source_steps,
-                "source_loss_raw": {k: float(np.mean(v)) for k, v in source_raw_loss.items()},
-                "source_observed": source_observed,
-                "loss_weighted": float(np.mean(weighted_losses)),
-                "grad_norm_mean": float(np.mean(grad_norms)),
-                "gpu_max_memory_gb": float(torch.cuda.max_memory_allocated(self.device) / 2**30),
-            }
-            history.append(row)
-            (self.output / "history.json").write_text(json.dumps(history, indent=2) + "\n")
-            self._save(latest, optimizer, epoch, history, scaler)
-            print(f"[final:{epoch}/{self.epochs}] {row}", flush=True)
-            if getattr(self.tracker, "enabled", False):
-                flat = {
-                    "epoch": epoch,
-                    "epoch/loss_weighted": row["loss_weighted"],
-                    "epoch/seconds": row["seconds"],
-                    "epoch/gpu_max_memory_gb": row["gpu_max_memory_gb"],
-                    "epoch/grad_norm_mean": row["grad_norm_mean"],
+                if sum(source_observed.values()) != TABLE5_EXPECTED["total_train_observed"]:
+                    raise RuntimeError("Table-5 total training pair coverage mismatch")
+                row = {
+                    "epoch": epoch, "seconds": time.time() - started,
+                    "steps": len(plan), "optimizer_steps": optimizer_steps, "source_steps": source_steps,
+                    "source_loss_raw": {k: float(np.mean(v)) for k, v in source_raw_loss.items()},
+                    "source_locus_pearson_loss": {k: float(np.mean(v)) for k, v in source_locus_pearson_loss.items()},
+                    "source_observed": source_observed,
+                    "loss_weighted": float(np.mean(weighted_losses)),
+                    "grad_norm_mean": float(np.mean(grad_norms)),
+                    "gpu_max_memory_gb": float(torch.cuda.max_memory_allocated(self.device) / 2**30),
                 }
-                for name in source_steps:
-                    flat[f"epoch/{name}/loss_raw"] = row["source_loss_raw"][name]
-                    flat[f"epoch/{name}/steps"] = source_steps[name]
-                self.tracker.log(flat, step=global_step)
+                history.append(row)
+                (self.output / "history.json").write_text(json.dumps(history, indent=2) + "\n")
+                self._save(latest, optimizer, epoch, history, scaler)
+                print(f"[final:{epoch}/{self.epochs}] {row}", flush=True)
+                if getattr(self.tracker, "enabled", False):
+                    flat = {
+                        "epoch": epoch,
+                        "epoch/loss_weighted": row["loss_weighted"],
+                        "epoch/seconds": row["seconds"],
+                        "epoch/gpu_max_memory_gb": row["gpu_max_memory_gb"],
+                        "epoch/grad_norm_mean": row["grad_norm_mean"],
+                    }
+                    for name in source_steps:
+                        flat[f"epoch/{name}/loss_raw"] = row["source_loss_raw"][name]
+                        flat[f"epoch/{name}/locus_pearson_loss"] = row["source_locus_pearson_loss"][name]
+                        flat[f"epoch/{name}/steps"] = source_steps[name]
+                    self.tracker.log(flat, step=global_step)
+        finally:
+            prefetch.shutdown(wait=False)
 
         self._save(final_path, optimizer, self.epochs, history, scaler)
         done.write_text("ok\n")
@@ -593,10 +678,14 @@ class FinalTCGAMixTrainer:
             rna = torch.from_numpy(self.rna.rows(local_ids)).to(self.device)
             for c0 in range(0, len(cpg_ids), cc):
                 c1 = min(c0 + cc, len(cpg_ids)); local_c = cpg_ids[c0:c1]
-                emb_np, prior_np = self.features.get(local_c)
+                emb_np, prior_np, sigma_np = self.features.get(local_c)
                 emb = torch.from_numpy(emb_np).to(self.device); prior = torch.from_numpy(prior_np).to(self.device)
                 with self._autocast():
-                    pred = self.model(rna, emb, prior)["beta"]
+                    if self.variance_normalized:
+                        sigma = torch.from_numpy(sigma_np).to(self.device)
+                        pred = self.model(rna, emb, prior, sigma=sigma)["beta"]
+                    else:
+                        pred = self.model(rna, emb, prior)["beta"]
                 target = compact.block(local_rows, local_c)
                 metrics.add(s0, c0, target, pred.float().cpu().numpy(), prior_np)
         result = metrics.finalize(); result["samples"] = int(len(sample_ids)); result["cpgs"] = int(len(cpg_ids))
@@ -613,7 +702,7 @@ class FinalTCGAMixTrainer:
                     f"Table-5 evaluation {name} has {metrics['rows']:,} finite pairs, expected {expected_rows:,}"
                 )
         result = {
-            "architecture": FINAL_ARCHITECTURE,
+            "architecture": self.architecture_label,
             "protocol": TABLE5_PROTOCOL_NAME,
             "ours": ours,
             "methylprophet_table5_published": TABLE5_PUBLISHED_METHYLPROPHET,

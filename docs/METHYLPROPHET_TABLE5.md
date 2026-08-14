@@ -99,10 +99,16 @@ universe.
 Instead preparation builds `table5_genomic_prior`:
 
 1. prior target = mean beta over the exact 8,260 Array train samples;
-2. genomic probe fit scope = the exact 33,885 Array train CpGs on chr1;
-3. train CpGs receive five-fold OOF NTv3-to-prior predictions;
-4. the 6,742 held-out Array CpGs and auxiliary EPIC/WGBS loci receive predictions
-   from the full-fit probe trained only on the 33,885 Array train CpGs;
+2. the 33,885 Array **train** CpGs are served this exact empirical mean directly
+   (leakage-safe: it only touches train samples) rather than an NTv3-probe
+   approximation of it -- the probe is still fit and 5-fold OOF-scored on this
+   same target for auditing (`pred_ntv3_prior_probe_only` in
+   `locus_features.parquet`), but the served `pred_ntv3_prior` column uses the
+   exact value, not the probe's approximation of it;
+3. genomic probe fit scope = the exact 33,885 Array train CpGs on chr1;
+4. the 6,742 held-out Array CpGs and auxiliary EPIC/WGBS loci -- where no true
+   value is available at train time -- receive predictions from the full-fit
+   probe trained only on the 33,885 Array train CpGs;
 5. all NTv3 embeddings are copied from `ntv3_cpg_atlas_v1.h5`.
 
 Thus no held-out Array methylation and no off-chr1 TCGA methylation labels enter

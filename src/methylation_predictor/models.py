@@ -172,3 +172,81 @@ class RNA2DNAmModel(nn.Module):
             "gate": gate,
             "prior_logit": prior_logit,
         }
+
+
+class VarianceNormalizedResidualModel(nn.Module):
+    """V1 research variant of RNA2DNAmModel: the residual is parametrized as
+    ``sigma_i * raw_delta`` instead of a flat ``delta_logit``, so the network's
+    raw output lives in a locus-variance-standardized space rather than
+    directly in logit space.  ``sigma_i`` is the per-CpG inter-sample std of
+    logit(beta) (exact for train CpGs, NTv3-probe-predicted for held-out/
+    auxiliary CpGs -- see scripts/prepare_final_tcga_mix_chr1.py).
+
+    Motivation (see docs/METHYLPROPHET_TABLE5.md V1 experiment note): under
+    plain beta-MSE, a fixed absolute error contributes far more gradient on a
+    high-variance locus than on a near-constant one, while the headline
+    MAS-PCC metric weighs every locus equally regardless of its variance.
+    Standardizing the residual target removes that scale mismatch.
+
+    This is an opt-in *research* variant, not the frozen production
+    architecture -- RNA2DNAmModel is unchanged and remains the single
+    production model.  Reuses the same LinearRNAEncoder/ProductInteraction
+    building blocks so results stay comparable to the frozen architecture.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        locus_dim: int,
+        config: ModelConfig,
+        epsilon: float = 1e-4,
+    ):
+        super().__init__()
+        if config.encoder.kind != "linear" or config.encoder.latent_dim != 256:
+            raise ValueError("V1 variant requires the same linear 256-D RNA encoder as the production model")
+        if config.interaction.kind != "concat":
+            raise ValueError("V1 variant requires model.interaction.kind='concat'")
+        if not config.zero_init_residual:
+            raise ValueError("V1 variant requires zero_init_residual=true (starts exactly at the prior)")
+
+        self.config = config
+        self.epsilon = float(epsilon)
+        self.rna_encoder = LinearRNAEncoder(
+            input_dim=input_dim, latent_dim=256, layer_norm=config.encoder.layer_norm,
+        )
+        self.interaction = ProductInteraction(
+            rna_dim=256, locus_dim=locus_dim,
+            hidden_dim=config.interaction.hidden_dim, dropout=config.interaction.dropout,
+        )
+        self.interaction.zero_output()  # raw_delta = 0 at init => beta_hat = prior, same safe start as RNA2DNAmModel
+
+    @property
+    def supports_factorized_inference(self) -> bool:
+        return False
+
+    def forward(
+        self,
+        rna: torch.Tensor,
+        loci: torch.Tensor,
+        prior: torch.Tensor,
+        sigma: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        representation = self.rna_encoder(rna)
+        raw_delta = self.interaction(representation, loci)  # standardized-residual space
+        sigma_safe = sigma.clamp_min(1e-6)  # numerical safety only, not the loss-side sigma_min floor
+        delta_logit = sigma_safe.unsqueeze(0) * raw_delta
+        prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
+        prior_logit = torch.logit(prior)
+        prediction_logit = prior_logit.unsqueeze(0) + delta_logit
+        beta = torch.sigmoid(prediction_logit)
+
+        gate = torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
+        return {
+            "beta": beta,
+            "delta_logit": delta_logit,
+            "raw_delta": raw_delta,
+            "raw_delta_logit": delta_logit,
+            "prediction_logit": prediction_logit,
+            "gate": gate,
+            "prior_logit": prior_logit,
+        }
