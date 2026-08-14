@@ -115,7 +115,7 @@ class Table5Protocol:
         if not protocol_json.is_file():
             raise FileNotFoundError(
                 f"missing exact Table-5 protocol: {protocol_json}. "
-                "Run scripts/prepare_final_tcga_mix_chr1.py first."
+                "Run scripts/tcga_chr1/prepare.py first."
             )
         values = {}
         for field, filename in _MANIFEST_FILES.items():

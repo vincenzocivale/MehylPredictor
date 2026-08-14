@@ -1,0 +1,9 @@
+experiment_id: tail_aware_pcc
+base_config: ../reference.yaml
+description: Keep total correlation weight at 0.15 but allocate one third to the lower 60% of valid per-CpG correlations, excluding near-constant loci.
+structured_loss_sources: [array, epic, wgbs]
+loss_overrides:
+  locus_pearson_weight: 0.10
+  locus_lower_tail_weight: 0.05
+  locus_lower_tail_fraction: 0.60
+  locus_pearson_min_target_std: 0.02

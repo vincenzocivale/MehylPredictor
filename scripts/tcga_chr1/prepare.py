@@ -38,7 +38,7 @@ import yaml
 
 from methylation_predictor.full_suite.cache import prepare_rna_cache
 from methylation_predictor.full_suite.probe import ScalarProbeNet
-from methylation_predictor.table5_protocol import (
+from methylation_predictor.benchmark.table5.protocol import (
     ARRAY_VIEW_EXPECTED_OBSERVED,
     SOURCE_EXPECTED_OBSERVED,
     TABLE5_EXPECTED,

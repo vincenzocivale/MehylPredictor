@@ -11,8 +11,8 @@ import pyarrow  # noqa: F401 -- target-host import ordering
 import pandas as pd
 import yaml
 
-from methylation_predictor.final_training import resolve_final_epochs
-from methylation_predictor.table5_protocol import Table5Protocol
+from methylation_predictor.benchmark.table5.trainer import resolve_final_epochs
+from methylation_predictor.benchmark.table5.protocol import Table5Protocol
 
 
 def main():

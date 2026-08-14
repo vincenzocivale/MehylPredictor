@@ -65,7 +65,7 @@ what this reconstruction fails closed on; see above.)
 
 The release preprocessing uses a 90/10 split stratified by `tissue_idx`, with
 `numpy.random.default_rng(42)`, after excluding the Array samples that overlap
-the WGBS source.  `scripts/prepare_final_tcga_mix_chr1.py` reimplements that
+the WGBS source.  `scripts/tcga_chr1/prepare.py` reimplements that
 split on the immutable 9,178-row canonical Array source, stratifying by
 `tissue_idx` when present or by factorized `tissue_name` otherwise (see
 divergence note above for why the result differs from the paper).
@@ -154,7 +154,7 @@ Do **not** launch the expensive training first.  Prepare and audit the protocol:
 HG38_FASTA=/path/to/hg38.fa \
 GPU=0 \
 PREPARE_ONLY=1 \
-nohup bash scripts/run_final_tcga_mix_chr1.sh \
+nohup bash scripts/tcga_chr1/run.sh \
   > table5_prepare.log 2>&1 &
 ```
 
@@ -164,7 +164,7 @@ Recommended when the released evaluation artifact is available:
 HG38_FASTA=/path/to/hg38.fa \
 MP_EVAL_DIR=/path/to/eval-tcga_mix_chr1-bs_512-c2b2 \
 GPU=0 PREPARE_ONLY=1 \
-bash scripts/run_final_tcga_mix_chr1.sh
+bash scripts/tcga_chr1/run.sh
 ```
 
 Training is allowed only after the launcher prints:
@@ -178,6 +178,6 @@ Then launch the one-stage run:
 ```bash
 HG38_FASTA=/path/to/hg38.fa \
 GPU=0 \
-nohup bash scripts/run_final_tcga_mix_chr1.sh \
+nohup bash scripts/tcga_chr1/run.sh \
   > table5_train.log 2>&1 &
 ```

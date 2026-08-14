@@ -175,12 +175,12 @@ class RNA2DNAmModel(nn.Module):
 
 
 class VarianceNormalizedResidualModel(nn.Module):
-    """V1 research variant of RNA2DNAmModel: the residual is parametrized as
+    """canonical variance-normalized residual formulation: the residual is parametrized as
     ``sigma_i * raw_delta`` instead of a flat ``delta_logit``, so the network's
     raw output lives in a locus-variance-standardized space rather than
     directly in logit space.  ``sigma_i`` is the per-CpG inter-sample std of
     logit(beta) (exact for train CpGs, NTv3-probe-predicted for held-out/
-    auxiliary CpGs -- see scripts/prepare_final_tcga_mix_chr1.py).
+    auxiliary CpGs -- see scripts/tcga_chr1/prepare.py).
 
     Motivation (see docs/METHYLPROPHET_TABLE5.md V1 experiment note): under
     plain beta-MSE, a fixed absolute error contributes far more gradient on a
@@ -188,9 +188,8 @@ class VarianceNormalizedResidualModel(nn.Module):
     MAS-PCC metric weighs every locus equally regardless of its variance.
     Standardizing the residual target removes that scale mismatch.
 
-    This is an opt-in *research* variant, not the frozen production
-    architecture -- RNA2DNAmModel is unchanged and remains the single
-    production model.  Reuses the same LinearRNAEncoder/ProductInteraction
+    This is the current reference formulation. RNA2DNAmModel is retained
+    only as a flat-residual ablation/control.  Reuses the same LinearRNAEncoder/ProductInteraction
     building blocks so results stay comparable to the frozen architecture.
     """
 

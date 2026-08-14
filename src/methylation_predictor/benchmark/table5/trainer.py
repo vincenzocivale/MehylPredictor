@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -20,12 +20,12 @@ import h5py
 import numpy as np
 import torch
 
-from .config import load_config
-from .full_suite.cache import RNACache
-from .full_suite.feature_store import SortedIndex
-from .losses import residual_loss
-from .models import RNA2DNAmModel, VarianceNormalizedResidualModel
-from .table5_protocol import (
+from ...config import load_config
+from ...full_suite.cache import RNACache
+from ...full_suite.feature_store import SortedIndex
+from ...losses import residual_loss
+from ...models import RNA2DNAmModel, VarianceNormalizedResidualModel
+from .protocol import (
     ARRAY_VIEW_EXPECTED_OBSERVED,
     SOURCE_EXPECTED_OBSERVED,
     TABLE5_EXPECTED,
@@ -34,10 +34,36 @@ from .table5_protocol import (
     Table5Protocol,
     published_delta,
 )
-from .tcga_canonical import TCGACanonicalBundle
+from ...tcga_canonical import TCGACanonicalBundle
 
 
 FINAL_ARCHITECTURE = "rna256_residual_prior_product_no_gate_no_anchor"
+
+
+_STRUCTURED_LOSS_FIELDS = (
+    "locus_pearson_weight",
+    "locus_lower_tail_weight",
+    "pairwise_difference_weight",
+    "global_prior_ratio_weight",
+    "locus_skill_weight",
+    "locus_ccc_weight",
+    "within_cancer_dynamic_weight",
+    "centered_mse_weight",
+    "amplitude_weight",
+)
+
+
+def loss_config_for_source(config, source_name: str, structured_loss_sources: set[str]):
+    """Keep pointwise/residual objectives on every source, but optionally
+    disable sample-structure objectives for sources with too few independent
+    patients to estimate them reliably (e.g. WGBS in TCGA chr1).
+
+    Returning ``config`` unchanged on enabled sources preserves the reference
+    V1 loss exactly.
+    """
+    if source_name in structured_loss_sources:
+        return config
+    return replace(config, **{name: 0.0 for name in _STRUCTURED_LOSS_FIELDS})
 
 
 @dataclass
@@ -132,7 +158,7 @@ class FinalFeatureCache:
         self.embeddings = np.load(root / "embeddings.f16.npy", mmap_mode="r")
         self.prior = np.load(root / "prior.npy", mmap_mode="r")
         sigma_path = root / "sigma.npy"
-        # sigma.npy only exists once scripts/prepare_final_tcga_mix_chr1.py has
+        # sigma.npy only exists once scripts/tcga_chr1/prepare.py has
         # built the V1 (variance-normalized-residual) prior cache; fall back to
         # all-ones so callers that never read the third element of .get() (any
         # model that doesn't take sigma) are unaffected.
@@ -185,7 +211,7 @@ class ExactCompactSource:
         if len(rows) and len(cols) and row_contiguous and col_contiguous:
             return np.asarray(self.beta[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1], np.float32)
         # Fallback is used only for unusual external calls; paper training/eval
-        # uses the contiguous protocol layout prepared by prepare_final_tcga_mix_chr1.py.
+        # uses the contiguous protocol layout prepared by scripts/tcga_chr1/prepare.py.
         block = np.empty((len(rows), len(cols)), np.float32)
         col_order = np.argsort(cols, kind="mergesort")
         sorted_cols = cols[col_order]
@@ -277,7 +303,7 @@ class ArrayMomentMetrics:
         }
 
 
-class FinalTCGAMixTrainer:
+class Table5Trainer:
     """Single-stage deterministic full-coverage trainer for the paper model."""
 
     def __init__(
@@ -295,21 +321,31 @@ class FinalTCGAMixTrainer:
         seed: int = 17,
         block_rows: dict[str, int] | None = None,
         block_cpgs: dict[str, int] | None = None,
+        structured_loss_sources: set[str] | None = None,
     ):
         if epochs < 1:
             raise ValueError("epochs must be positive")
         self.root = Path(canonical_root)
         self.cfg = load_config(config_path)
         self.output = Path(output_dir); self.output.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_dir = self.output / "checkpoints"
+        self.metrics_dir = self.output / "metrics"
+        self.analysis_dir = self.output / "analysis"
+        for d in (self.checkpoint_dir, self.metrics_dir, self.analysis_dir):
+            d.mkdir(parents=True, exist_ok=True)
         self.epochs = int(epochs); self.seed = int(seed)
         self.block_rows = block_rows or {"array": 128, "epic": 128, "wgbs": 32}
         self.block_cpgs = block_cpgs or {"array": 2048, "epic": 4096, "wgbs": 16384}
+        self.structured_loss_sources = set(structured_loss_sources or {"array", "epic", "wgbs"})
+        unknown = self.structured_loss_sources - {"array", "epic", "wgbs"}
+        if unknown:
+            raise ValueError(f"unknown structured-loss sources: {sorted(unknown)}")
         self.bundle = TCGACanonicalBundle.from_root(self.root)
         self.protocol = Table5Protocol.load(protocol_root)
         if self.protocol.provenance.get("status") != "exact_table5_ready":
             raise RuntimeError(
                 "Table-5 protocol has not passed the exact finite-pair preflight; "
-                "run scripts/prepare_final_tcga_mix_chr1.py first"
+                "run scripts/tcga_chr1/prepare.py first"
             )
         self.features = FinalFeatureCache(feature_cache)
         self.rna = RNACache(rna_cache)
@@ -453,16 +489,13 @@ class FinalTCGAMixTrainer:
         }
 
     def _init_tracker(self):
-        from .tracking import create_tracker
+        from ...tracking import create_tracker
         resume_id = None
         run_id_path = self.output / "wandb_run_id.txt"
         if run_id_path.is_file():
             resume_id = run_id_path.read_text().strip() or None
-        # Distinguish epoch-budget variants of the same configured run name in
-        # the W&B UI (e.g. a 4-epoch smoke run vs. a 25-epoch full run) without
-        # requiring a per-run config edit.
-        if self.cfg.tracking.name:
-            self.cfg.tracking.name = f"{self.cfg.tracking.name}-e{self.epochs}"
+        # Experiment identity comes from the experiment spec. Seed and epoch
+        # budget remain reproducibility metadata, not the run name.
         self.cfg.tracking.tags = [*self.cfg.tracking.tags, f"epochs-{self.epochs}"]
         self.tracker = create_tracker(self.cfg, self.model, self.output, resume_id=resume_id)
         if getattr(self.tracker, "enabled", False) and hasattr(self.tracker, "run"):
@@ -488,7 +521,7 @@ class FinalTCGAMixTrainer:
 
     def train(self) -> Path:
         done = self.output / ".train_done"
-        final_path = self.output / "final.pt"
+        final_path = self.checkpoint_dir / "final.pt"
         if done.is_file() and final_path.is_file():
             state = torch.load(final_path, map_location=self.device, weights_only=False)
             self.model.load_state_dict(state["model_state"], strict=True)
@@ -507,7 +540,7 @@ class FinalTCGAMixTrainer:
         )
         scaler = torch.cuda.amp.GradScaler(enabled=use_fp16_scaler)
         start_epoch = 1; history: list[dict] = []
-        latest = self.output / "latest.pt"
+        latest = self.checkpoint_dir / "latest.pt"
         if latest.is_file():
             state = torch.load(latest, map_location=self.device, weights_only=False)
             if state.get("architecture") != self.architecture_label:
@@ -535,6 +568,7 @@ class FinalTCGAMixTrainer:
             "training": "single_stage_fixed_budget_complete_table5_pair_coverage_no_heldout_selection",
             "protocol": TABLE5_PROTOCOL_NAME,
             "seed": self.seed, "epochs": self.epochs,
+            "structured_loss_sources": sorted(self.structured_loss_sources),
             "schedule": schedule_info,
         }
         (self.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -581,8 +615,11 @@ class FinalTCGAMixTrainer:
                         else:
                             sigma = None
                             outputs = self.model(rna, emb, prior)
+                        loss_cfg = loss_config_for_source(
+                            self.cfg.loss, pool.name, self.structured_loss_sources
+                        )
                         raw_loss, pieces = residual_loss(
-                            outputs, beta, prior, self.cfg.loss,
+                            outputs, beta, prior, loss_cfg,
                             epsilon=self.cfg.data.clip_beta_epsilon,
                             sigma=sigma,
                         )
@@ -644,7 +681,7 @@ class FinalTCGAMixTrainer:
                     "gpu_max_memory_gb": float(torch.cuda.max_memory_allocated(self.device) / 2**30),
                 }
                 history.append(row)
-                (self.output / "history.json").write_text(json.dumps(history, indent=2) + "\n")
+                (self.metrics_dir / "history.json").write_text(json.dumps(history, indent=2) + "\n")
                 self._save(latest, optimizer, epoch, history, scaler)
                 print(f"[final:{epoch}/{self.epochs}] {row}", flush=True)
                 if getattr(self.tracker, "enabled", False):

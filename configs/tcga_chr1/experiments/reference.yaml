@@ -1,0 +1,5 @@
+experiment_id: reference
+base_config: ../reference.yaml
+description: Current best TCGA chr1 reference model (V1, variance-normalized residual).
+structured_loss_sources: [array, epic, wgbs]
+loss_overrides: {}

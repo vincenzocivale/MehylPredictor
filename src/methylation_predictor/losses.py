@@ -164,6 +164,7 @@ def masked_locus_pearson(
     *,
     min_observed_samples: int,
     epsilon: float,
+    min_target_std: float = 0.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Pearson correlation across samples, independently for every CpG.
 
@@ -175,11 +176,13 @@ def masked_locus_pearson(
     if min_observed_samples < 2:
         raise ValueError("min_observed_samples must be >= 2")
 
-    pred_centred, truth_centred, _, _, pred_ss, truth_ss, has_min_samples = _locus_centred_stats(
+    pred_centred, truth_centred, counts, denominator, pred_ss, truth_ss, has_min_samples = _locus_centred_stats(
         prediction, target, mask, min_observed_samples
     )
     covariance = (pred_centred * truth_centred).sum(dim=0)
-    valid = has_min_samples & (pred_ss > epsilon) & (truth_ss > epsilon)
+    target_std = torch.sqrt(truth_ss / denominator)
+    valid = (has_min_samples & (pred_ss > epsilon) & (truth_ss > epsilon)
+             & (target_std >= min_target_std))
     scale = torch.sqrt((pred_ss * truth_ss).clamp_min(epsilon))
     correlations = covariance / scale
     correlations = correlations.clamp(-1.0, 1.0)
@@ -261,6 +264,7 @@ def locus_correlation_losses(
         mask,
         min_observed_samples=config.locus_min_observed_samples,
         epsilon=config.locus_pearson_epsilon,
+        min_target_std=config.locus_pearson_min_target_std,
     )
     valid_values = correlations[valid]
     if valid_values.numel() == 0:

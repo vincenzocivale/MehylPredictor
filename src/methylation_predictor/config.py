@@ -182,6 +182,8 @@ class LossConfig:
     locus_lower_tail_fraction: float = 0.60
     locus_min_observed_samples: int = 8
     locus_pearson_epsilon: float = 1e-8
+    # Optional target-std eligibility floor for Pearson-family objectives.
+    locus_pearson_min_target_std: float = 0.0
     # Pairwise sample differences remove the locus-static prior exactly and force
     # the dynamic branch to preserve inter-patient direction and amplitude.
     pairwise_difference_weight: float = 0.0
