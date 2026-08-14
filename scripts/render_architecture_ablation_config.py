@@ -15,6 +15,11 @@ VARIANTS = (
     "no_product",
     "rna256",
     "direct_prediction",
+    # Single confirmation run stacking the three modifications that matched
+    # or beat baseline in the individual sweep (rna256, no_gate, no_anchor).
+    # Not part of the sweep itself -- used only to confirm the winning single
+    # change (rna256) isn't left worse off by also dropping the gate/anchor.
+    "confirm_rna256_no_gate_no_anchor",
 )
 
 
@@ -59,6 +64,10 @@ def render(base: dict, variant: str, *, run_name: str, output_dir: str, checkpoi
         # direct predictor toward the frozen prior. residual_huber stays valid:
         # prior terms cancel between direct_logit-prior_logit and target_delta.
         cfg.setdefault("loss", {})["shrinkage_weight"] = 0.0
+    elif variant == "confirm_rna256_no_gate_no_anchor":
+        cfg["model"]["encoder"]["latent_dim"] = 256
+        cfg["model"]["gate"]["kind"] = "none"
+        cfg["model"]["anchor_to_mean_rna"] = False
     else:
         raise ValueError(f"unknown variant {variant!r}; expected one of {VARIANTS}")
 

@@ -2,11 +2,13 @@
 # Pin versions in the project environment lock file after the first successful cluster run.
 numpy>=1.26
 pandas>=2.1
+tabulate>=0.9  # pandas.DataFrame.to_markdown backend, used by scripts/report_table5.py
 pyarrow>=14
 h5py>=3.10
 PyYAML>=6.0
 scikit-learn>=1.4
 torch>=2.2
 pytest>=8.0
+tabulate>=0.9  # pandas DataFrame.to_markdown() backend (scripts/report_table5.py)
 
 wandb>=0.17

@@ -131,9 +131,14 @@ class RNACache:
         self.ids = np.load(root / "rna_sample_idx.npy", mmap_mode="r")
         self.index = SortedIndex(self.ids, "RNA cache")
 
-    def rows(self, sample_idx: np.ndarray) -> np.ndarray:
+    def rows(self, sample_idx: np.ndarray, dtype: np.dtype = np.float32) -> np.ndarray:
         p = self.index.positions_of(np.asarray(sample_idx, dtype=np.int64))
-        return np.asarray(self.values[p], dtype=np.float32)
+        # dtype defaults to float32 (backward compatible with every existing
+        # caller). Hot training loops that immediately upload to GPU can pass
+        # dtype=np.float16 to skip this CPU-side cast entirely -- the stored
+        # cache is already float16, so that call is a pure memory copy, and
+        # the eventual float32 upcast is done on-GPU (near-free) instead.
+        return np.asarray(self.values[p], dtype=dtype)
 
 
 class CompactSource:

@@ -1,11 +1,10 @@
-"""Full E2-E4 MethylProphet-comparable experiment suite.
+"""Reusable preprocessing utilities retained by the production pipeline.
 
-This package is intentionally additive: it does not alter the legacy trainer used
-by the already-running E1 benchmark.  It provides the missing mixed-source data
-path and frozen NTv3 feature expansion required by E2/E3, plus a genome-wide
-Array E4 path.
+The historical E2/E3/E4 and architecture-ablation trainers were removed after
+architecture selection.  This package now only hosts stable cache/index/probe
+utilities needed by genomic_prior_v2 and final tcga_mix_chr1 preprocessing.
 """
 
-from .feature_store import CompositeFeatureStore, SortedIndex
+from .feature_store import SortedIndex
 
-__all__ = ["CompositeFeatureStore", "SortedIndex"]
+__all__ = ["SortedIndex"]

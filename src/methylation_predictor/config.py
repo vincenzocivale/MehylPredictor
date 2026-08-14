@@ -78,8 +78,8 @@ class DataConfig:
 
 @dataclass(slots=True)
 class EncoderConfig:
-    kind: str = "mlp"  # linear|mlp|...|gene_token_perceiver|global_experts|module_tokens|gene_tokens
-    latent_dim: int = 64
+    kind: str = "linear"  # linear|mlp|...|gene_token_perceiver|global_experts|module_tokens|gene_tokens
+    latent_dim: int = 256
     hidden_dims: list[int] = field(default_factory=lambda: [1024, 256])
     dropout: float = 0.1
     input_dropout: float = 0.0
@@ -114,11 +114,7 @@ class EncoderConfig:
 
 @dataclass(slots=True)
 class InteractionConfig:
-    kind: str = "bilinear"
-    # Only "concat" is accepted by the canonical model (models.py raises otherwise).
-    # Explicit architecture ablation: remove only the projected RNA x CpG
-    # element-wise product while retaining the RNA/CpG concatenation branches.
-    include_product: bool = True
+    kind: str = "concat"
     hidden_dim: int = 128
     dropout: float = 0.1
     num_heads: int = 8
@@ -143,24 +139,17 @@ class InteractionConfig:
 
 
 @dataclass(slots=True)
-class GateConfig:
-    kind: str = "variability"  # none|global|locus|variability
-    hidden_dim: int = 64
-    dropout: float = 0.0
-    initial_global_scale: float = 1.0
-
-
-@dataclass(slots=True)
 class ModelConfig:
+    """The single production architecture selected by the Array-chr1 study."""
+
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     interaction: InteractionConfig = field(default_factory=InteractionConfig)
-    gate: GateConfig = field(default_factory=GateConfig)
-    anchor_to_mean_rna: bool = True
     zero_init_residual: bool = True
-    # residual_prior is the canonical model. direct predicts methylation logits
-    # without adding the frozen CpG prior; it is reserved for the explicit
-    # prior-vs-direct architecture ablation.
-    prediction_mode: str = "residual_prior"  # residual_prior|direct
+    # V1 research experiment (see docs/METHYLPROPHET_TABLE5.md): selects
+    # VarianceNormalizedResidualModel instead of the frozen production
+    # RNA2DNAmModel. False everywhere except the V1 experiment config, so
+    # every existing run/config is unaffected.
+    variance_normalized_residual: bool = False
 
 
 @dataclass(slots=True)
@@ -172,6 +161,19 @@ class LossConfig:
     residual_huber_delta: float = 1.0
     shrinkage_weight: float = 1e-4
     beta_macro_weight: float = 0.0
+    # V1 research experiment: standardized-residual counterparts of
+    # residual_huber_weight/shrinkage_weight above, operating on the model's
+    # raw (pre-sigma-scale) output against (true_delta_logit / sigma) instead
+    # of the flat delta_logit. Only meaningful when
+    # model.variance_normalized_residual=true; a no-op (zero weight) and
+    # unused (sigma=None) otherwise, so every existing config is unaffected.
+    standardized_residual_huber_weight: float = 0.0
+    standardized_residual_huber_delta: float = 1.0
+    standardized_shrinkage_weight: float = 0.0
+    # Floor applied to sigma_i when constructing the standardized residual
+    # target r = true_delta_logit / max(sigma_i, sigma_min) -- prevents
+    # near-constant loci (sigma_i -> 0) from producing an unbounded target.
+    sigma_min: float = 0.05
     # MAS-PCC-oriented objectives. Correlations are computed across samples for
     # every CpG in the Cartesian minibatch. Disabled by default so all existing
     # experiments remain numerically unchanged.
@@ -318,7 +320,7 @@ class EvaluationConfig:
 @dataclass(slots=True)
 class TrackingConfig:
     backend: str = "none"  # none|wandb
-    project: str = "MethylationPredictor"
+    project: str = "MethylPredictor"
     entity: str | None = None
     group: str | None = None
     name: str | None = None
@@ -373,13 +375,19 @@ def load_config(path: str | Path) -> RunConfig:
     data = DataConfig(**data_raw)
 
     model_raw = dict(raw.get("model", {}))
+    retired = sorted(set(model_raw) & {"gate", "anchor_to_mean_rna", "prediction_mode"})
+    interaction_raw = dict(model_raw.get("interaction", {}))
+    if "include_product" in interaction_raw:
+        retired.append("interaction.include_product")
+    if retired:
+        raise ValueError(
+            "retired architecture-ablation fields are not accepted by the canonical model: "
+            + ", ".join(retired)
+        )
     model = ModelConfig(
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
-        interaction=InteractionConfig(**model_raw.get("interaction", {})),
-        gate=GateConfig(**model_raw.get("gate", {})),
-        anchor_to_mean_rna=model_raw.get("anchor_to_mean_rna", True),
+        interaction=InteractionConfig(**interaction_raw),
         zero_init_residual=model_raw.get("zero_init_residual", True),
-        prediction_mode=model_raw.get("prediction_mode", "residual_prior"),
     )
 
     return RunConfig(

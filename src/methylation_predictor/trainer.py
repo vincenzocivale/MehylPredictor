@@ -941,9 +941,12 @@ class ExperimentRunner:
                         row[f"validation_{key}"] = float(value) if value is not None else float("nan")
                     tracker.log(
                         {
-                            f"validation/{key}": value
-                            for key, value in validation.metrics.items()
-                            if isinstance(value, (int, float, np.number, bool))
+                            **{
+                                f"validation/{key}": value
+                                for key, value in validation.metrics.items()
+                                if isinstance(value, (int, float, np.number, bool))
+                            },
+                            "epoch": epoch,
                         },
                         step=global_step,
                     )
