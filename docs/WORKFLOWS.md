@@ -59,7 +59,7 @@ For exact reproduction of the validated chr1 E1 run, use:
 ```bash
 python scripts/train.py \
   --model rna_methylation --scope chr1 --engine matched_chr1 \
-  --prepared-root /path/to/prepared/tcga_chr1 \
+  --prepared-root /path/to/prepared/benchmark_methylprophet \
   --canonical-root /path/to/canonical \
   --feature-cache /path/to/features \
   --rna-cache /path/to/rna \

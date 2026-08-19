@@ -124,7 +124,7 @@ assert a["status"] == "exact_match", a
 # This repo's canonical bundle carries no Array<->WGBS patient crosswalk, so
 # the reconstructed seed=42 split is 8,260/918 (not the paper's 8,258/920);
 # these are the resulting reproducible observed-pair counts -- see
-# src/methylation_predictor/benchmark/methylprophet/protocol.py and docs/BENCHMARK_TABLE5.md.
+# src/methylation_predictor/benchmark/methylprophet/protocol.py and docs/BENCHMARK_METHYLPROPHET.md.
 assert a["training_total_observed"] == 454_931_749, a
 assert a["training_observed"] == {"array":275_093_377,"epic":115_856_100,"wgbs":63_982_272}, a
 assert a["evaluation_observed"] == {

@@ -49,7 +49,7 @@ and historical analyses but are no longer model inputs.
 
 ## Auxiliary EPIC/WGBS prior
 
-`scripts/tcga_chr1/prepare.py` extracts the required embeddings from
+`scripts/benchmark_methylprophet/prepare.py` extracts the required embeddings from
 the consolidated atlas and applies the saved `genomic_prior_v2` full-fit probe
 to loci absent from the Array store. It does **not** rerun NTv3 and does **not**
 fit another genomic probe.

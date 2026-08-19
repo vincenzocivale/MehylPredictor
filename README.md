@@ -108,6 +108,9 @@ searches/<model>/<scope>/<search-id>/
   runs/
 ```
 
-See `docs/WORKFLOWS.md` and `docs/CPG_STATISTICS.md` for protocol details. Legacy
-Table-5/cache names may remain inside prepared-data provenance paths, but they
-are not public experiment identities.
+See `docs/WORKFLOWS.md` for protocol details, `docs/RNA_METHYLATION.md` and
+`docs/CPG_STATISTICS.md` for the two model architectures, `docs/BENCHMARKS.md`
+for the full reference-result tables, and `docs/BENCHMARK_METHYLPROPHET.md`
+for the frozen, exact MethylProphet chr1 reproduction path. Legacy Table-5/
+cache names may remain inside prepared-data provenance paths, but they are
+not public experiment identities.
