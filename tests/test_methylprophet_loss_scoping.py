@@ -32,10 +32,6 @@ def test_source_scoping_disables_only_structured_losses():
         standardized_residual_huber_weight=0.1,
         standardized_shrinkage_weight=1e-4,
         locus_pearson_weight=0.15,
-        locus_lower_tail_weight=0.05,
-        pairwise_difference_weight=0.02,
-        centered_mse_weight=0.03,
-        amplitude_weight=0.04,
     )
 
     array_cfg = loss_config_for_source(cfg, "array", {"array"})
@@ -46,7 +42,3 @@ def test_source_scoping_disables_only_structured_losses():
     assert wgbs_cfg.standardized_residual_huber_weight == 0.1
     assert wgbs_cfg.standardized_shrinkage_weight == 1e-4
     assert wgbs_cfg.locus_pearson_weight == 0.0
-    assert wgbs_cfg.locus_lower_tail_weight == 0.0
-    assert wgbs_cfg.pairwise_difference_weight == 0.0
-    assert wgbs_cfg.centered_mse_weight == 0.0
-    assert wgbs_cfg.amplitude_weight == 0.0

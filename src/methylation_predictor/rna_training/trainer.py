@@ -31,11 +31,7 @@ from .metrics import ArrayMomentMetrics
 from .schedule import SourceSchedule, interleave
 from .splits import blocked_cpg_split, stratified_sample_split
 
-_STRUCTURED_LOSS_FIELDS = (
-    "locus_pearson_weight", "locus_lower_tail_weight", "pairwise_difference_weight",
-    "global_prior_ratio_weight", "locus_skill_weight", "locus_ccc_weight",
-    "within_cancer_dynamic_weight", "centered_mse_weight", "amplitude_weight",
-)
+_STRUCTURED_LOSS_FIELDS = ("locus_pearson_weight",)
 
 
 def loss_config_for_source(config, source_name: str, enabled: set[str]):

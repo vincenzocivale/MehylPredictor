@@ -92,13 +92,6 @@ training:
   validation_every: 0
   validation_max_cpgs: null
 
-evaluation:
-  sample_chunk_size: 128
-  cpg_chunk_size: 2048
-  max_cpgs_per_panel: null
-  save_predictions: false
-  panels: {}
-
 tracking:
   backend: wandb
   project: MethylPredictor

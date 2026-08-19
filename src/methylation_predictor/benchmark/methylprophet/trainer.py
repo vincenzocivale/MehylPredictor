@@ -20,7 +20,7 @@ import h5py
 import numpy as np
 import torch
 
-from ...config import load_config
+from .config import load_config
 from .cache import RNACache
 from .feature_store import SortedIndex
 from ...optim import build_lr_scheduler
@@ -41,17 +41,7 @@ from ...tcga_canonical import TCGACanonicalBundle
 FINAL_ARCHITECTURE = "rna256_residual_prior_product_no_gate_no_anchor"
 
 
-_STRUCTURED_LOSS_FIELDS = (
-    "locus_pearson_weight",
-    "locus_lower_tail_weight",
-    "pairwise_difference_weight",
-    "global_prior_ratio_weight",
-    "locus_skill_weight",
-    "locus_ccc_weight",
-    "within_cancer_dynamic_weight",
-    "centered_mse_weight",
-    "amplitude_weight",
-)
+_STRUCTURED_LOSS_FIELDS = ("locus_pearson_weight",)
 
 
 def loss_config_for_source(config, source_name: str, structured_loss_sources: set[str]):
@@ -490,7 +480,7 @@ class MethylProphetTrainer:
         }
 
     def _init_tracker(self):
-        from ...tracking import create_tracker
+        from .tracking import create_tracker
         resume_id = None
         run_id_path = self.output / "wandb_run_id.txt"
         if run_id_path.is_file():

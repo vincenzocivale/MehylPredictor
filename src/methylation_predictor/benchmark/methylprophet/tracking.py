@@ -4,10 +4,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from torch import nn
 
 from .config import RunConfig
-from .utils import json_safe
+
+
+def json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
 
 
 class Tracker:
