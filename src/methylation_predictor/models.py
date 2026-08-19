@@ -1,20 +1,20 @@
-"""Canonical RNA-to-DNAm model selected by the architecture study.
+"""RNA-conditioned methylation models.
 
-The production architecture is deliberately singular:
+The canonical architecture is the variance-normalized residual model:
 
     RNA (25,017 genes)
       -> LayerNorm -> Linear(..., 256)
       -> RNA latent z
 
     [z, frozen NTv3 CpG embedding, proj(z) * proj(CpG)]
-      -> MLP -> delta_logit
+      -> MLP -> raw_delta
 
-    beta_hat = sigmoid(logit(frozen_prior) + delta_logit)
+    beta_hat = sigmoid(logit(mu_i) + sigma_i * raw_delta)
 
 The variability gate, mean-RNA anchor, direct-prediction branch and no-product
 variants were research ablations.  They are intentionally not executable in
-the production model after the confirming Array-chr1 experiment selected the
-simpler RNA256 residual architecture.
+the canonical model. ``RNA2DNAmModel`` remains only as the historical flat-
+residual compatibility baseline.
 """
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ class ProductInteraction(nn.Module):
 
 
 class RNA2DNAmModel(nn.Module):
-    """Final frozen-prior RNA-to-DNAm architecture.
+    """Historical flat-residual compatibility baseline.
 
     ``variability``/``reference_rna``/cancer arguments remain optional only to
     keep the existing evaluation stack source-compatible.  They are ignored:
@@ -249,3 +249,14 @@ class VarianceNormalizedResidualModel(nn.Module):
             "gate": gate,
             "prior_logit": prior_logit,
         }
+
+
+class RNAMethylationPredictor(VarianceNormalizedResidualModel):
+    """Canonical public name for the frozen variance-normalized architecture.
+
+    This subclass deliberately adds no parameters or buffers, so historical
+    ``VarianceNormalizedResidualModel`` checkpoints load with identical state-
+    dict keys.  The old class name remains a compatibility alias at call sites;
+    new code should use ``RNAMethylationPredictor``.
+    """
+    pass

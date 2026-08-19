@@ -1,0 +1,9 @@
+status: historical_mean_baseline_reference
+model: cpg_statistics
+training_scope: genomewide
+note: Mean-only validated result; joint mu/sigma multi-technology model must be retrained before replacing this reference.
+mean_prediction:
+  heldout_beta_mse: 0.00790
+  heldout_pcc: 0.9671
+  heldout_r2: 0.9347
+  per_chromosome_mse_range: [0.0056, 0.0096]

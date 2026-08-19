@@ -1,5 +1,7 @@
 # Generated and downloaded training material
 artifacts/
+runs/
+searches/
 *.pt
 *.h5
 *.hdf5

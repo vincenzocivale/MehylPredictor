@@ -1,0 +1,5 @@
+status: pending
+model: rna_methylation
+training_scope: chr123
+benchmark_role: matched MethylProphet chromosome-1/2/3 comparison
+note: No frozen reference result is recorded yet; do not fabricate one from chr1 or genome-wide runs.

@@ -140,15 +140,13 @@ class InteractionConfig:
 
 @dataclass(slots=True)
 class ModelConfig:
-    """The single production architecture selected by the Array-chr1 study."""
+    """RNA methylation architecture configuration."""
 
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     interaction: InteractionConfig = field(default_factory=InteractionConfig)
     zero_init_residual: bool = True
-    # V1 research experiment (see docs/METHYLPROPHET_TABLE5.md): selects
-    # VarianceNormalizedResidualModel instead of the frozen production
-    # RNA2DNAmModel. False everywhere except the V1 experiment config, so
-    # every existing run/config is unaffected.
+    # Canonical model: logit(beta_hat) = logit(mu_i) + sigma_i * raw_delta.
+    # False retains only the historical flat-residual compatibility baseline.
     variance_normalized_residual: bool = False
 
 
@@ -253,6 +251,10 @@ class TrainingConfig:
     cpg_batch_size: int = 256
     learning_rate: float = 2e-4
     weight_decay: float = 1e-4
+    scheduler: str = "constant"  # constant|cosine|cosine_warmup
+    scheduler_horizon_epochs: int | None = None
+    warmup_epochs: float = 0.0
+    min_lr_ratio: float = 0.1
     gradient_clip_norm: float = 1.0
     amp: bool = True
     amp_dtype: str = "bfloat16"  # float16|bfloat16
@@ -390,6 +392,9 @@ def load_config(path: str | Path) -> RunConfig:
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
         interaction=InteractionConfig(**interaction_raw),
         zero_init_residual=model_raw.get("zero_init_residual", True),
+        variance_normalized_residual=model_raw.get(
+            "variance_normalized_residual", False
+        ),
     )
 
     return RunConfig(

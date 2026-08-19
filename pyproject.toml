@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "methylation-predictor"
-version = "0.2.0"
-description = "Training-only RNA-to-DNAm residual methylation predictor"
+version = "0.3.0"
+description = "Scope-general CpG-statistics and RNA-conditioned DNA methylation prediction"
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]

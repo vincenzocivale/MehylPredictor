@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -23,6 +23,7 @@ import torch
 from ...config import load_config
 from ...full_suite.cache import RNACache
 from ...full_suite.feature_store import SortedIndex
+from ...optim import build_lr_scheduler
 from ...losses import residual_loss
 from ...models import RNA2DNAmModel, VarianceNormalizedResidualModel
 from .protocol import (
@@ -334,8 +335,8 @@ class Table5Trainer:
         for d in (self.checkpoint_dir, self.metrics_dir, self.analysis_dir):
             d.mkdir(parents=True, exist_ok=True)
         self.epochs = int(epochs); self.seed = int(seed)
-        self.block_rows = block_rows or {"array": 128, "epic": 128, "wgbs": 32}
-        self.block_cpgs = block_cpgs or {"array": 2048, "epic": 4096, "wgbs": 16384}
+        self.block_rows = block_rows or {"array": 512, "epic": 128, "wgbs": 32}
+        self.block_cpgs = block_cpgs or {"array": 512, "epic": 4096, "wgbs": 16384}
         self.structured_loss_sources = set(structured_loss_sources or {"array", "epic", "wgbs"})
         unknown = self.structured_loss_sources - {"array", "epic", "wgbs"}
         if unknown:
@@ -501,16 +502,22 @@ class Table5Trainer:
         if getattr(self.tracker, "enabled", False) and hasattr(self.tracker, "run"):
             run_id_path.write_text(str(self.tracker.run.id) + "\n")
 
-    def _save(self, path: Path, optimizer, epoch: int, history: list[dict], scaler) -> None:
+    def _save(self, path: Path, optimizer, scheduler, epoch: int, history: list[dict], scaler) -> None:
         payload = {
             "model_state": self.model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict(),
             "scaler_state": scaler.state_dict() if scaler is not None else None,
             "epoch": int(epoch),
             "epochs_planned": self.epochs,
             "architecture": self.architecture_label,
+            "model": "rna_methylation",
+            "scope": "chr1",
             "protocol": TABLE5_PROTOCOL_NAME,
             "seed": self.seed,
+            "model_config": asdict(self.cfg.model),
+            "loss_config": asdict(self.cfg.loss),
+            "training": asdict(self.cfg.training),
             "history": history,
             "rng_state": {
                 "python": random.getstate(), "numpy": np.random.get_state(),
@@ -535,6 +542,17 @@ class Table5Trainer:
         except (TypeError, RuntimeError):
             opt_kwargs.pop("fused", None); optimizer = torch.optim.AdamW(self.model.parameters(), **opt_kwargs)
 
+        _, initial_plan, _ = self._schedules(1)
+        steps_per_epoch = len(initial_plan)
+        horizon_epochs = int(self.cfg.training.scheduler_horizon_epochs or self.epochs)
+        scheduler = build_lr_scheduler(
+            optimizer,
+            name=self.cfg.training.scheduler,
+            total_steps=max(1, horizon_epochs * steps_per_epoch),
+            warmup_steps=int(round(self.cfg.training.warmup_epochs * steps_per_epoch)),
+            min_lr_ratio=self.cfg.training.min_lr_ratio,
+        )
+
         use_fp16_scaler = self.cfg.training.amp and (
             self.cfg.training.amp_dtype.lower() == "float16" or not torch.cuda.is_bf16_supported()
         )
@@ -549,6 +567,9 @@ class Table5Trainer:
                 raise RuntimeError("cannot resume with a different fixed epoch budget")
             self.model.load_state_dict(state["model_state"], strict=True)
             optimizer.load_state_dict(state["optimizer_state"])
+            if state.get("scheduler_state") is None:
+                raise RuntimeError("latest.pt predates scheduler-state persistence; start a new scheduled run")
+            scheduler.load_state_dict(state["scheduler_state"])
             if state.get("scaler_state") is not None:
                 scaler.load_state_dict(state["scaler_state"])
             start_epoch = int(state["epoch"]) + 1; history = list(state.get("history", []))
@@ -632,13 +653,18 @@ class Table5Trainer:
                     if not torch.isfinite(loss):
                         raise FloatingPointError(f"non-finite final training loss: {pieces}")
                     if scaler.is_enabled():
+                        old_scale = scaler.get_scale()
                         scaler.scale(loss).backward(); scaler.unscale_(optimizer)
                         grad = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.training.gradient_clip_norm)
                         scaler.step(optimizer); scaler.update()
+                        optimizer_stepped = scaler.get_scale() >= old_scale
                     else:
                         loss.backward()
                         grad = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.training.gradient_clip_norm)
                         optimizer.step()
+                        optimizer_stepped = True
+                    if optimizer_stepped:
+                        scheduler.step()
 
                     global_step += 1; optimizer_steps += 1
                     source_raw_loss[pool.name].append(float(raw_loss.detach().cpu()))
@@ -682,7 +708,7 @@ class Table5Trainer:
                 }
                 history.append(row)
                 (self.metrics_dir / "history.json").write_text(json.dumps(history, indent=2) + "\n")
-                self._save(latest, optimizer, epoch, history, scaler)
+                self._save(latest, optimizer, scheduler, epoch, history, scaler)
                 print(f"[final:{epoch}/{self.epochs}] {row}", flush=True)
                 if getattr(self.tracker, "enabled", False):
                     flat = {
@@ -700,7 +726,7 @@ class Table5Trainer:
         finally:
             prefetch.shutdown(wait=False)
 
-        self._save(final_path, optimizer, self.epochs, history, scaler)
+        self._save(final_path, optimizer, scheduler, self.epochs, history, scaler)
         done.write_text("ok\n")
         return final_path
 

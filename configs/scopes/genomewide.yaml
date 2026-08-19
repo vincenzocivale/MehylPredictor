@@ -1,0 +1,7 @@
+name: genomewide
+chromosomes: all
+training_protocol: derived_tcga_mix_genomewide
+matched_methylprophet: false
+recommended_rna_engine: generic
+recommended_schedule_policy: axis_full_coverage
+evaluation_scopes: [chr1, chr123, genomewide]

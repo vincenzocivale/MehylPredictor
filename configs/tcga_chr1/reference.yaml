@@ -71,17 +71,21 @@ loss:
 training:
   seed: 17
   device: auto
-  epochs: 1  # operational placeholder; launcher supplies the frozen budget
-  learning_rate: 2.0e-5
+  epochs: 80
+  learning_rate: 5.0e-5
   weight_decay: 1.0e-4
+  scheduler: constant
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 0.0
+  min_lr_ratio: 0.1
   gradient_clip_norm: 1.0
   amp: true
   amp_dtype: bfloat16
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
-  sample_batch_size: 64
-  cpg_batch_size: 2048
+  sample_batch_size: 512
+  cpg_batch_size: 512
   steps_per_epoch: 1
   patience: 0
   checkpoint_metric: mas_pcc
@@ -98,10 +102,10 @@ evaluation:
 tracking:
   backend: wandb
   project: MethylPredictor
-  group: tcga-chr1-development
-  name: tcga-chr1-reference
+  group: tcga-chr1-reference
+  name: tcga-chr1-rna-methylation
   job_type: train
-  tags: ["tcga-chr1", "rna256", "variance-normalized", "pair-complete"]
+  tags: ["tcga-chr1", "rna-methylation", "variance-normalized", "pair-complete"]
   mode: online
   log_every_steps: 10
   watch_model: false

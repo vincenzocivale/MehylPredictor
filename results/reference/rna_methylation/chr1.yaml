@@ -1,0 +1,16 @@
+status: reference
+model: rna_methylation
+training_scope: chr1
+seed: 17
+training:
+  learning_rate: 5.0e-5
+  scheduler: constant
+  epochs: 80
+  array_batch: [512, 512]
+  sources: [array, epic, wgbs]
+evaluation:
+  chr1:
+    train_cpg_x_val_sample: {mas_pcc: 0.6327, mse: 0.01278}
+    val_cpg_x_train_sample: {mas_pcc: 0.5984, mse: 0.01874}
+    val_cpg_x_val_sample: {mas_pcc: 0.5613, mse: 0.01941}
+benchmark_role: matched MethylProphet chromosome-1 comparison
