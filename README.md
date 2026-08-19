@@ -48,14 +48,20 @@ python -m pip install -e .
 
 ## Unified workflows
 
-Prepare technology-aware static CpG targets:
+Prepare technology-aware static CpG targets, then the RNA model's input cache:
 
 ```bash
-python scripts/prepare_statistics.py \
+python scripts/prepare.py --model cpg_statistics \
   --canonical-root "$TCGA_CANONICAL_ROOT" \
   --registry "$TCGA_CANONICAL_ROOT/registries/array_cpg_map.parquet" \
   --scope genomewide \
   --output /path/to/derived/cpg_statistics/genomewide
+
+python scripts/prepare.py --model rna_methylation \
+  --checkpoint /path/to/cpg_statistics/best.pt \
+  --targets /path/to/derived/cpg_statistics/genomewide \
+  --embeddings /path/to/ntv3_cpg_atlas_v1.h5 \
+  --output /path/to/derived/rna_cache/genomewide
 ```
 
 Train either model:
