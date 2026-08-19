@@ -36,9 +36,9 @@ import torch
 from torch import nn
 import yaml
 
-from methylation_predictor.full_suite.cache import prepare_rna_cache
-from methylation_predictor.full_suite.probe import ScalarProbeNet
-from methylation_predictor.benchmark.table5.protocol import (
+from methylation_predictor.benchmark.methylprophet.cache import prepare_rna_cache
+from methylation_predictor.benchmark.methylprophet.probe import ScalarProbeNet
+from methylation_predictor.benchmark.methylprophet.protocol import (
     ARRAY_VIEW_EXPECTED_OBSERVED,
     SOURCE_EXPECTED_OBSERVED,
     TABLE5_EXPECTED,

@@ -1,9 +1,16 @@
 """Named source-sampling policies (explicit_balanced / proportional_to_measurements)
 and the YAML configs that drive them -- see docs/data/METHYLPROPHET_PROTOCOLS.md's
-"two-level comparison policy"."""
+"two-level comparison policy".
+
+The weight-override fixtures here are synthetic (written to tmp_path), not the
+historical source-mixing-ablation configs -- those were closed experiments and
+have been removed; this file only needs to exercise the loader/policy contract
+itself.
+"""
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -12,22 +19,43 @@ from methylation_predictor.tcga_canonical import SOURCE_SAMPLING_POLICIES, load_
 CONFIGS_DIR = Path(__file__).resolve().parents[1] / "configs" / "protocols"
 
 
+def _write_run_config(tmp_path: Path, name: str, body: str) -> Path:
+    path = tmp_path / name
+    path.write_text(dedent(body))
+    return path
+
+
 def test_no_policy_is_named_methylprophet_exact():
     assert "methylprophet_exact" not in SOURCE_SAMPLING_POLICIES
     assert set(SOURCE_SAMPLING_POLICIES) == {"explicit_balanced", "proportional_to_measurements"}
 
 
+def test_reference_config_parses_with_valid_policy():
+    config = load_protocol_run_config(CONFIGS_DIR / "tcga_mix_chr1.yaml")
+    assert config.protocol == "tcga_mix_chr1"
+    assert config.source_sampling_policy in SOURCE_SAMPLING_POLICIES
+
+
 @pytest.mark.parametrize(
-    "config_name",
+    ("policy", "weights_block"),
     [
-        "tcga_mix_chr1.yaml",
-        "ablations/tcga_mix_chr1_equal_source.yaml",
-        "ablations/tcga_mix_chr1_array_heavy.yaml",
-        "ablations/tcga_mix_chr1_proportional_to_measurements.yaml",
+        ("explicit_balanced", "weights: {array: 1.0, epic: 1.0, wgbs: 1.0}"),
+        ("explicit_balanced", "weights: {array: 4.0, epic: 1.0, wgbs: 1.0}"),
+        ("proportional_to_measurements", ""),
     ],
 )
-def test_ablation_configs_parse_with_valid_policy(config_name):
-    config = load_protocol_run_config(CONFIGS_DIR / config_name)
+def test_synthetic_configs_parse_with_valid_policy(tmp_path, policy, weights_block):
+    path = _write_run_config(
+        tmp_path,
+        "run_config.yaml",
+        f"""
+        protocol: tcga_mix_chr1
+        source_sampling:
+          policy: {policy}
+          {weights_block}
+        """,
+    )
+    config = load_protocol_run_config(path)
     assert config.protocol == "tcga_mix_chr1"
     assert config.source_sampling_policy in SOURCE_SAMPLING_POLICIES
 
@@ -41,9 +69,19 @@ def test_explicit_balanced_default_is_equal_weight_regardless_of_pool_size(bundl
     assert len({len(pool.row_positions) for pool in pools}) > 1
 
 
-def test_array_heavy_config_overrides_weights(bundle):
+def test_array_heavy_config_overrides_weights(tmp_path, bundle):
     protocol = load_protocol("tcga_mix_chr1", bundle=bundle)
-    config = load_protocol_run_config(CONFIGS_DIR / "ablations" / "tcga_mix_chr1_array_heavy.yaml")
+    path = _write_run_config(
+        tmp_path,
+        "array_heavy.yaml",
+        """
+        protocol: tcga_mix_chr1
+        source_sampling:
+          policy: explicit_balanced
+          weights: {array: 4.0, epic: 1.0, wgbs: 1.0}
+        """,
+    )
+    config = load_protocol_run_config(path)
     pools = protocol._source_pools(config.source_sampling_policy, config.source_weights)
     weights = {pool.name: pool.weight for pool in pools}
     assert weights["array"] > weights["epic"] == weights["wgbs"]

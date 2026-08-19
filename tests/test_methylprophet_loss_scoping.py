@@ -1,7 +1,7 @@
 import torch
 
 from methylation_predictor.config import LossConfig
-from methylation_predictor.benchmark.table5.trainer import loss_config_for_source
+from methylation_predictor.benchmark.methylprophet.trainer import loss_config_for_source
 from methylation_predictor.losses import masked_locus_pearson
 
 

@@ -31,7 +31,7 @@ import pyarrow  # noqa: F401
 import pyarrow.parquet as pq
 import torch
 
-from methylation_predictor.benchmark.table5.trainer import ArrayMomentMetrics, Table5Trainer
+from methylation_predictor.benchmark.methylprophet.trainer import ArrayMomentMetrics, MethylProphetTrainer
 
 UCSC_CPG_ISLAND_URL = "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cpgIslandExt.txt.gz"
 SHORE_BP = 2_000
@@ -89,7 +89,7 @@ def classify_context(pos: np.ndarray, islands: np.ndarray) -> np.ndarray:
 
 
 @torch.no_grad()
-def evaluate_per_cpg(trainer: Table5Trainer, sample_ids: np.ndarray, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
+def evaluate_per_cpg(trainer: MethylProphetTrainer, sample_ids: np.ndarray, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
     trainer.model.eval()
     compact = trainer.compact["array"]
     rows = compact.rows_of_samples(sample_ids)
@@ -123,7 +123,7 @@ def main():
     args = p.parse_args()
 
     root = args.derived_root
-    trainer = Table5Trainer(
+    trainer = MethylProphetTrainer(
         canonical_root=args.canonical_root,
         config_path=args.config,
         protocol_root=f"{root}/table5_protocol",

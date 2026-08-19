@@ -17,7 +17,7 @@ from pathlib import Path
 import pyarrow  # noqa: F401 -- target-host import ordering
 import yaml
 
-from methylation_predictor.benchmark.table5.trainer import Table5Trainer
+from methylation_predictor.benchmark.methylprophet.trainer import MethylProphetTrainer
 
 DEFAULT_CANONICAL_ROOT = Path(
     "/raid/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1"
@@ -73,7 +73,7 @@ def _canonical_yaml(payload: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--experiment", required=True, help="Experiment YAML under configs/tcga_chr1/experiments")
+    parser.add_argument("--experiment", required=True, help="Experiment YAML under configs/benchmark_methylprophet/experiments")
     parser.add_argument("--epochs", type=int, default=25)
     parser.add_argument("--seed", type=int, default=17, help="Development seed; keep 17 until final robustness runs")
     parser.add_argument("--canonical-root", default=str(DEFAULT_CANONICAL_ROOT))
@@ -119,7 +119,7 @@ def main() -> None:
     structured_sources = set(spec.get("structured_loss_sources", ["array", "epic", "wgbs"]))
 
     experiment_manifest = {
-        "benchmark": "tcga_chr1",
+        "benchmark": "benchmark_methylprophet",
         "experiment_id": experiment_id,
         "description": spec.get("description", ""),
         "seed": args.seed,
@@ -135,7 +135,7 @@ def main() -> None:
         json.dumps(experiment_manifest, indent=2) + "\n"
     )
 
-    trainer = Table5Trainer(
+    trainer = MethylProphetTrainer(
         canonical_root=args.canonical_root,
         config_path=resolved_path,
         protocol_root=prepared_root / "table5_protocol",

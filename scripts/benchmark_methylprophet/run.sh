@@ -15,10 +15,10 @@ DERIVED_ROOT="${DERIVED_ROOT:-$DATA_ROOT/derived/methylprophet_table5_tcga_chr1}
 ALL_EXPERIMENTS_ROOT="${ALL_EXPERIMENTS_ROOT:-$DATA_ROOT/experiments}"
 EXPERIMENT_ROOT="${EXPERIMENT_ROOT:-$ALL_EXPERIMENTS_ROOT/MethylPredictor/tcga_chr1}"
 SEED="${SEED:-17}"
-# Full DataConfig used to (re)build the derived caches -- see scripts/tcga_chr1/prepare.py.
-CONFIG="${CONFIG:-configs/tcga_chr1/reference.yaml}"
-# Experiment spec used for training -- see scripts/tcga_chr1/run_experiment.py.
-EXPERIMENT="${EXPERIMENT:-configs/tcga_chr1/experiments/reference.yaml}"
+# Full DataConfig used to (re)build the derived caches -- see scripts/benchmark_methylprophet/prepare.py.
+CONFIG="${CONFIG:-configs/benchmark_methylprophet/reference.yaml}"
+# Experiment spec used for training -- see scripts/benchmark_methylprophet/run_experiment.py.
+EXPERIMENT="${EXPERIMENT:-configs/benchmark_methylprophet/experiments/reference.yaml}"
 EXPERIMENT_ID="$(python -c "import yaml,sys; print(yaml.safe_load(open(sys.argv[1]))['experiment_id'])" "$EXPERIMENT")"
 RUN_ROOT="${RUN_ROOT:-$EXPERIMENT_ROOT/$EXPERIMENT_ID}"
 GPU="${GPU:-0}"
@@ -64,7 +64,7 @@ if [[ -z "$HG38_FASTA" || ! -f "$HG38_FASTA" ]]; then
   echo "FATAL: HG38_FASTA is required only to reproduce MethylProphet's 1000-bp no-N CpG filter." >&2
   echo "No NTv3 inference will be run. Locate the same hg38 FASTA and relaunch, e.g.:" >&2
   echo "  find /raid/DATASETS \"$HOME\" -type f \( -name 'hg38.fa' -o -name 'hg38.fa.gz' \) 2>/dev/null" >&2
-  echo "  HG38_FASTA=/path/to/hg38.fa GPU=$GPU bash scripts/tcga_chr1/run.sh" >&2
+  echo "  HG38_FASTA=/path/to/hg38.fa GPU=$GPU bash scripts/benchmark_methylprophet/run.sh" >&2
   exit 2
 fi
 echo "hg38_fasta=$HG38_FASTA"
@@ -108,7 +108,7 @@ if [[ ! -f "$DERIVED_ROOT/.done" || -n "$MP_EVAL_DIR" ]]; then
     [[ -e "$MP_EVAL_DIR" ]] || { echo "FATAL MP_EVAL_DIR does not exist: $MP_EVAL_DIR" >&2; exit 2; }
     PREP_ARGS+=(--mp-eval "$MP_EVAL_DIR")
   fi
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/tcga_chr1/prepare.py "${PREP_ARGS[@]}"
+  CUDA_VISIBLE_DEVICES="$GPU" python scripts/benchmark_methylprophet/prepare.py "${PREP_ARGS[@]}"
 else
   echo "[skip] exact Table-5 derived caches already prepared"
 fi
@@ -124,7 +124,7 @@ assert a["status"] == "exact_match", a
 # This repo's canonical bundle carries no Array<->WGBS patient crosswalk, so
 # the reconstructed seed=42 split is 8,260/918 (not the paper's 8,258/920);
 # these are the resulting reproducible observed-pair counts -- see
-# src/methylation_predictor/benchmark/table5/protocol.py and docs/BENCHMARK_TABLE5.md.
+# src/methylation_predictor/benchmark/methylprophet/protocol.py and docs/BENCHMARK_TABLE5.md.
 assert a["training_total_observed"] == 454_931_749, a
 assert a["training_observed"] == {"array":275_093_377,"epic":115_856_100,"wgbs":63_982_272}, a
 assert a["evaluation_observed"] == {
@@ -171,7 +171,7 @@ cat "$RUN_ROOT/epoch_budget.json"
 
 if [[ ! -f "$RUN_ROOT/.done" ]]; then
   echo "=== one-stage exact-Table5 pair-complete training ($EXPERIMENT_ID) ==="
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/tcga_chr1/run_experiment.py \
+  CUDA_VISIBLE_DEVICES="$GPU" python scripts/benchmark_methylprophet/run_experiment.py \
     --experiment "$EXPERIMENT" \
     --canonical-root "$CANONICAL_ROOT" \
     --prepared-root "$DERIVED_ROOT" \
@@ -182,7 +182,7 @@ else
   echo "[skip] final training already complete"
 fi
 
-python scripts/tcga_chr1/report.py \
+python scripts/benchmark_methylprophet/report.py \
   --input "$RUN_ROOT/evaluation/headline.json" \
   --output-dir "$RUN_ROOT/evaluation"
 

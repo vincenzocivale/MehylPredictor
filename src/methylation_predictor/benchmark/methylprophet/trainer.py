@@ -21,8 +21,8 @@ import numpy as np
 import torch
 
 from ...config import load_config
-from ...full_suite.cache import RNACache
-from ...full_suite.feature_store import SortedIndex
+from .cache import RNACache
+from .feature_store import SortedIndex
 from ...optim import build_lr_scheduler
 from ...losses import residual_loss
 from ...models import RNA2DNAmModel, VarianceNormalizedResidualModel
@@ -159,7 +159,7 @@ class FinalFeatureCache:
         self.embeddings = np.load(root / "embeddings.f16.npy", mmap_mode="r")
         self.prior = np.load(root / "prior.npy", mmap_mode="r")
         sigma_path = root / "sigma.npy"
-        # sigma.npy only exists once scripts/tcga_chr1/prepare.py has
+        # sigma.npy only exists once scripts/benchmark_methylprophet/prepare.py has
         # built the V1 (variance-normalized-residual) prior cache; fall back to
         # all-ones so callers that never read the third element of .get() (any
         # model that doesn't take sigma) are unaffected.
@@ -212,7 +212,7 @@ class ExactCompactSource:
         if len(rows) and len(cols) and row_contiguous and col_contiguous:
             return np.asarray(self.beta[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1], np.float32)
         # Fallback is used only for unusual external calls; paper training/eval
-        # uses the contiguous protocol layout prepared by scripts/tcga_chr1/prepare.py.
+        # uses the contiguous protocol layout prepared by scripts/benchmark_methylprophet/prepare.py.
         block = np.empty((len(rows), len(cols)), np.float32)
         col_order = np.argsort(cols, kind="mergesort")
         sorted_cols = cols[col_order]
@@ -304,7 +304,7 @@ class ArrayMomentMetrics:
         }
 
 
-class Table5Trainer:
+class MethylProphetTrainer:
     """Single-stage deterministic full-coverage trainer for the paper model."""
 
     def __init__(
@@ -346,7 +346,7 @@ class Table5Trainer:
         if self.protocol.provenance.get("status") != "exact_table5_ready":
             raise RuntimeError(
                 "Table-5 protocol has not passed the exact finite-pair preflight; "
-                "run scripts/tcga_chr1/prepare.py first"
+                "run scripts/benchmark_methylprophet/prepare.py first"
             )
         self.features = FinalFeatureCache(feature_cache)
         self.rna = RNACache(rna_cache)

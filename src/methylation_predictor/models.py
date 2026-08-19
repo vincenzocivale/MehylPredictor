@@ -180,7 +180,7 @@ class VarianceNormalizedResidualModel(nn.Module):
     raw output lives in a locus-variance-standardized space rather than
     directly in logit space.  ``sigma_i`` is the per-CpG inter-sample std of
     logit(beta) (exact for train CpGs, NTv3-probe-predicted for held-out/
-    auxiliary CpGs -- see scripts/tcga_chr1/prepare.py).
+    auxiliary CpGs -- see scripts/benchmark_methylprophet/prepare.py).
 
     Motivation (see docs/METHYLPROPHET_TABLE5.md V1 experiment note): under
     plain beta-MSE, a fixed absolute error contributes far more gradient on a

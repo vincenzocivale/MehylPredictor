@@ -1,6 +1,6 @@
 import numpy as np
 
-from methylation_predictor.benchmark.table5.protocol import (
+from methylation_predictor.benchmark.methylprophet.protocol import (
     TABLE5_EXPECTED,
     TABLE5_PUBLISHED_METHYLPROPHET,
     published_delta,
