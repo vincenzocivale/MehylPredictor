@@ -1,78 +1,36 @@
 # Script map
 
-The repository contains two current research workflows plus one retained legacy
-workflow. Use this file before launching a long job.
+The public workflow has four entrypoints:
 
-## Current entrypoints
+- `prepare.py` — build data for either model (`--model cpg_statistics`:
+  multi-technology `mu`/`sigma` labels; `--model rna_methylation`: the
+  `cpg_idx + NTv3 embeddings + prior + sigma` cache exported from a trained
+  `cpg_statistics` checkpoint);
+- `train.py` — train either `cpg_statistics` or `rna_methylation`;
+- `tune.py` — leakage-safe LR/scheduler/epoch search on inner development data;
+- `evaluate.py` — evaluate either model on `chr1`, `chr123` or `genomewide`.
 
-### `run_overnight_current_model_vs_mp.sh`
-
-**Role:** exact Array-chr1 current-model benchmark (E0).
-
-Orchestrates:
-
-1. canonical protocol/feature preflight;
-2. nested-development training;
-3. final refit on all official train IDs;
-4. exact three-view evaluation;
-5. optional released-MethylProphet paired scan when `MP_EVAL_DIR` is available.
-
-The MethylProphet download is optional. Auto-download is disabled by default to
-avoid treating gated-access failures as part of the scientific run.
-
-### `run_full_e2_e4.sh`
-
-**Role:** shared feature preparation plus E2/E3/E4 canonical suite.
-
-It owns reusable NTv3 expansion, feature-extension inference, compact caches,
-and the mixed/genome-wide training runs. Large reusable genomic features are
-stored outside experiment directories.
-
-To prepare features only, without starting E2/E3/E4:
+The exact validated chr1 compatibility path remains available through:
 
 ```bash
-RUN_E2=0 RUN_E3=0 RUN_E4=0 \
-  HG38_FASTA=/path/to/hg38.fa \
-  bash scripts/run_full_e2_e4.sh
+python scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1 ...
 ```
 
-### `full_suite.py`
+It reuses the prepared chr1 caches (`scripts/benchmark_methylprophet/prepare.py`)
+and the frozen pair-complete `MethylProphetTrainer`. This is the path for
+reproducing the MethylProphet-matched Table-5 chr1 reference — see
+[`../docs/BENCHMARK_METHYLPROPHET.md`](../docs/BENCHMARK_METHYLPROPHET.md).
 
-**Role:** low-level CLI used by `run_full_e2_e4.sh`.
+## Generated data
 
-Prefer the shell launcher for full workflows; call individual subcommands only
-for controlled resume/debug/feature-worker operations.
+Training runs are written under `runs/<model>/<scope>/...`; hyperparameter
+searches are written under `searches/<model>/<scope>/...`. Both roots are
+ignored by git. Small frozen reference metrics are kept in `results/reference/`.
 
-## Current helpers
+## `benchmark_methylprophet/`
 
-- `prepare_current_model_mp_benchmark.py` — builds the canonical E0 adapter and
-  renders its final-refit config.
-- `evaluate_current_model_vs_methylprophet.py` — streaming exact three-view
-  evaluator; optionally reads released MP prediction parquet files.
-- `smoke_tcga_mix_chr1.py` — canonical data/protocol smoke test.
-
-## Legacy workflow
-
-The following files belong to the older 21,792-gene training path and are kept
-for reproducibility of historical checkpoints:
-
-- `train.sh`
-- `build_dev_split.py`
-- `render_final_refit_config.py`
-- `preflight_genomewide_fullcoverage.py`
-- `evaluate_official_test.py`
-
-Their associated documentation is `docs/data.md`, `docs/training.md` and
-`docs/evaluation.md`. Do not combine their manifests/splits with the canonical
-25,017-gene E0/E2/E3/E4 workflow.
-
-## Operational rules
-
-- Canonical source data is read-only.
-- Generated checkpoints/logs/caches/features stay outside git.
-- Do not launch `run_full_e2_e4.sh` independently on multiple machines against
-  the same NTv3 store unless all extraction workers share one global
-  `world_size` with disjoint ranks.
-- A completed `.done` marker is a resumability contract; do not delete it
-  casually to force recomputation.
-- Prefer fail-closed behavior when required IDs/features are missing.
+Isolated MethylProphet-benchmark-exclusive scripts (data preparation,
+per-context analysis, reporting) that back the `--engine matched_chr1` path
+above but aren't part of the generic four-entrypoint workflow. Not intended
+as a second architecture — see
+[`../docs/BENCHMARK_METHYLPROPHET.md`](../docs/BENCHMARK_METHYLPROPHET.md).

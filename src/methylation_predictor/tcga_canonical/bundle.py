@@ -168,8 +168,28 @@ class MethylationSource:
         if self._column_major():
             data = _read_cols(dataset, cols)
             return data[rows, :]
-        data = _read_rows(dataset, rows)
-        return data[:, cols]
+
+        # Array/EPIC are one-row-per-chunk. Reading a complete 408k/740k-column
+        # row for every 512-CpG SGD block causes extreme read amplification.
+        # h5py cannot fancy-index both axes simultaneously, so use one sorted
+        # column selection per unique row and restore the caller's exact row/
+        # column order afterwards. Contiguous column bands retain the faster
+        # one-call path.
+        unique_rows, row_inverse = np.unique(rows, return_inverse=True)
+        unique_cols, col_inverse = np.unique(cols, return_inverse=True)
+        if len(unique_cols) == 0:
+            return np.empty((len(rows), 0), dtype=np.float32)
+        contiguous = len(unique_cols) == 1 or np.all(np.diff(unique_cols) == 1)
+        if contiguous:
+            selected = np.asarray(
+                dataset[unique_rows, unique_cols[0] : unique_cols[-1] + 1],
+                dtype=np.float32,
+            )
+        else:
+            selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
+            for i, row in enumerate(unique_rows.tolist()):
+                selected[i] = np.asarray(dataset[row, unique_cols], dtype=np.float32)
+        return selected[row_inverse][:, col_inverse]
 
     def finite_count(
         self, row_positions: Sequence[int], cpg_idx_query: Sequence[int], row_chunk: int = 256

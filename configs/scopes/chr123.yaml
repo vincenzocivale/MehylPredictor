@@ -1,0 +1,7 @@
+name: chr123
+chromosomes: [chr1, chr2, chr3]
+training_protocol: tcga_mix_chr123
+matched_methylprophet: true
+recommended_rna_engine: generic
+recommended_schedule_policy: pair_complete
+evaluation_scopes: [chr1, chr123, genomewide]

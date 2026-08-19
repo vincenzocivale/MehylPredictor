@@ -1,8 +1,0 @@
-experiment_id: large_sample_pcc
-base_config: ../reference.yaml
-description: Estimate Array per-CpG Pearson over 512 patients per optimization block while preserving pair-complete exposure.
-layout:
-  block_rows: {array: 512, epic: 128, wgbs: 32}
-  block_cpgs: {array: 512, epic: 4096, wgbs: 16384}
-structured_loss_sources: [array, epic, wgbs]
-loss_overrides: {}

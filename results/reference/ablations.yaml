@@ -1,0 +1,14 @@
+prior_headroom:
+  current_val_cpg_x_val_sample_mas_pcc: 0.5613
+  oracle_mu_mas_pcc: 0.5675
+  delta: 0.0062
+  conclusion: static mean prior is not the main MAS-PCC bottleneck
+prior_replacement:
+  canonical_prior_mas_pcc: 0.5613
+  marginally_better_internal_mean_predictor_mas_pcc: 0.5598
+  conclusion: better standalone mean prediction did not improve downstream reconstruction
+training_search:
+  stage1: {learning_rate: 4.0e-5, scheduler: constant, best_epoch: 39, inner_double_ood_mas_pcc: 0.56385}
+  stage2: {learning_rate: 5.0e-5, scheduler: constant, best_epoch: 57, inner_double_ood_mas_pcc: 0.5703794608764824}
+  stage3: {learning_rate: 5.0e-5, scheduler: constant, best_epoch: 80, inner_double_ood_mas_pcc: 0.5711912384841799}
+  selected: {learning_rate: 5.0e-5, scheduler: constant, epochs: 80}

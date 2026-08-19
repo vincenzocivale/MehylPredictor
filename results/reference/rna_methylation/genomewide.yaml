@@ -1,0 +1,17 @@
+status: reference
+model: rna_methylation
+training_scope: genomewide
+seed: 17
+training:
+  learning_rate: 5.0e-5
+  scheduler: constant
+  epochs: 80
+evaluation:
+  genomewide:
+    train_cpg_x_val_sample: {mas_pcc: 0.5889, mse: 0.01482}
+    val_cpg_x_train_sample: {mas_pcc: 0.5800, mse: 0.02099}
+    val_cpg_x_val_sample: {mas_pcc: 0.5244, mse: 0.02223}
+  per_chromosome:
+    mean_mas_pcc: 0.5196
+    observed_range: [0.459, 0.579]
+benchmark_role: primary genome-wide reference

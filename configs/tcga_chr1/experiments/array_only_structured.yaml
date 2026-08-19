@@ -1,5 +1,0 @@
-experiment_id: array_only_structured
-base_config: ../reference.yaml
-description: Keep pointwise and variance-normalized residual losses on every source, but use Pearson-family structured objectives only on Array.
-structured_loss_sources: [array]
-loss_overrides: {}

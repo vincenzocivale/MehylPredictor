@@ -1,0 +1,32 @@
+# Technology-aware NTv3 -> (mu, sigma) predictor.
+model:
+  input_dim: 1536
+  hidden_dim: 256
+  bottleneck_dim: 64
+  dropout: 0.1
+  ensemble_seeds: [17, 29, 43]
+  sigma_floor: 0.01
+
+training:
+  seed: 17
+  epochs: 40
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_cpgs: 4096
+  scheduler: constant
+  scheduler_horizon_epochs: 40
+  warmup_epochs: 0.0
+  min_lr_ratio: 0.1
+  amp: true
+  mu_weight: 1.0
+  sigma_weight: 1.0
+  selection_metric: joint_loss
+  development_fraction: 0.10
+  development_block_bp: 5000000
+
+tracking:
+  backend: wandb
+  # Kept configurable; set the project in your local recipe if you want the
+  # historical MethylPredicotr-CpGMeanPredictor project continuity.
+  project: MethylPredicotr-CpGMeanPredictor
+  mode: online

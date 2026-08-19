@@ -1,0 +1,9 @@
+status: historical_mean_baseline_reference
+model: cpg_statistics
+training_scope: chr1
+note: These numbers are the validated mean-predictor component before the joint mu/sigma refactor; retrain the joint model before promoting a new reference.
+mean_prediction:
+  heldout_beta_mse: 0.00768
+  heldout_mae: 0.0590
+  heldout_pcc: 0.9671
+  heldout_r2: 0.9348

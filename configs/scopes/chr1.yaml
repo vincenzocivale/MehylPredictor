@@ -1,0 +1,7 @@
+name: chr1
+chromosomes: [chr1]
+training_protocol: tcga_mix_chr1
+matched_methylprophet: true
+recommended_rna_engine: matched_chr1
+recommended_schedule_policy: pair_complete
+evaluation_scopes: [chr1, chr123, genomewide]

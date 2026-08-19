@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from methylation_predictor.benchmark.table5.trainer import (
+from methylation_predictor.benchmark.methylprophet.trainer import (
     CartesianSourceSchedule,
     interleave_cartesian_schedules,
     pair_weight_scale,
