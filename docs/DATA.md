@@ -123,7 +123,7 @@ No `/raid/...` path is hardcoded in any Python module under
 `src/methylation_predictor/tcga_canonical/`. Resolution order (see
 `tcga_canonical/config.py::resolve_bundle_root`):
 
-1. an explicit `root=` argument in code / `--root` on `scripts/smoke_tcga_mix_chr1.py`
+1. an explicit `root=` argument in code / `--canonical-root` on `scripts/{prepare,train,tune,evaluate}.py`
 2. the `TCGA_CANONICAL_ROOT` environment variable
 3. `root:` in `configs/data/tcga_canonical.yaml`
 
