@@ -2,6 +2,7 @@
 artifacts/
 runs/
 searches/
+checkpoints/
 *.pt
 *.h5
 *.hdf5
