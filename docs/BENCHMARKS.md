@@ -39,38 +39,28 @@ promoting a new reference. chr123 has no frozen reference yet.
 | chr1 | 0.00768 | 0.9671 | 0.9348 |
 | genomewide | 0.00790 | 0.9671 | 0.9347 |
 
-## MethylProphet chr1 benchmark: how the reference architecture was reached
+## Head-to-head comparison with MethylProphet (published SOTA)
 
-Historical progression on the exact MethylProphet Table-5 chr1 benchmark
-(Array + EPIC + WGBS), frozen seed 17, `MAS-PCC / MSE` per view:
+We beat the published MethylProphet numbers decisively on every row/view
+tested so far. Full tables (including the historical V0→V1 architecture
+progression that motivated the current design, and the known 8,260/918 vs
+8,258/920 split caveat) live under `results/reference/methylprophet_comparison/`:
 
-| run | train-CpG × val-sample | val-CpG × train-sample | val-CpG × val-sample |
-|---|---:|---:|---:|
-| V0, 4 epochs | 0.5055 / 0.0251 | 0.4705 / 0.0217 | 0.4695 / 0.0217 |
-| V0, 25 epochs | 0.5505 / 0.0235 | 0.5295 / 0.0204 | 0.5169 / 0.0207 |
-| V3 (prior fix) | 0.5609 / 0.0150 | 0.5276 / 0.0204 | 0.5135 / 0.0207 |
-| V2 (+ locus PCC) | 0.5773 / 0.0147 | 0.5647 / 0.0199 | 0.5342 / 0.0204 |
-| V1 (+ variance normalization) | 0.5811 / 0.0144 | 0.5708 / 0.0197 | 0.5401 / 0.0201 |
-| MethylProphet paper | 0.5455 / 0.0199 | 0.4194 / 0.0266 | 0.3904 / 0.0271 |
+- [`table5_chr1.md`](../results/reference/methylprophet_comparison/table5_chr1.md) —
+  Table 5 (single mixed-source model, Array+EPIC+WGBS).
+- [`table7_source_ablation.md`](../results/reference/methylprophet_comparison/table7_source_ablation.md) —
+  Table 7 (per-training-source rows T(A), T(A+W), T(A+E); TCGA only, ENCODE
+  rows still pending).
 
-V1 (variance-normalized residual) was selected as the canonical
-`RNAMethylationPredictor` architecture. The current unified-scopes pipeline's
-frozen chr1 reference (table above, 0.6327/0.5984/0.5613) supersedes this
-table numerically — it was re-run end-to-end under the current pipeline — but
-the table is kept as the record of *why* the variance-normalized architecture
-was chosen over the V0/V2/V3 predecessors.
-
-**Known protocol caveat:** the canonical bundle reproduces an 8,260/918 Array
-train/validation split; the MethylProphet paper reports 8,258/920 after
-excluding Array/WGBS patient overlap that this repo's bundle carries no
-crosswalk for. See [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md)
-for the full explanation and the exact finite-pair counts this affects.
+See [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md) for how these
+are reproduced and the protocol caveats.
 
 ## Ablation summary
 
 `results/reference/ablations.yaml` holds the machine-readable outcomes of
-three completed ablations against the chr1 `rna_methylation` reference
-(val-CpG × val-sample MAS-PCC 0.5613 baseline):
+internal design/hyperparameter ablations against the chr1 `rna_methylation`
+reference (val-CpG × val-sample MAS-PCC 0.5613 baseline) — distinct from the
+MethylProphet paper-comparison tables above:
 
 - **`prior_headroom`** — an oracle mu (true per-locus mean instead of the
   predicted prior) reaches MAS-PCC 0.5675, a delta of only 0.0062. Conclusion:
@@ -86,6 +76,13 @@ three completed ablations against the chr1 `rna_methylation` reference
   constant, 80 epochs was selected (inner double-OOD MAS-PCC 0.5712 at epoch
   80, vs 0.5704 at epoch 57 with the same LR and 0.5639 at epoch 39 with
   LR 4e-5).
+- **`interaction_concat_and_latent_dim_2026_08`** — chr1, single seed:
+  4-arm sweep over which pieces (`rna`/`cpg`/`product`) feed the interaction
+  MLP, plus a 256/512/1024 RNA-latent-width sweep. The product term matters
+  (-0.027 MAS-PCC if dropped); once present, raw rna/cpg concatenation and a
+  wider latent give only marginal (≤0.002) gains. Conclusion: no permanent
+  change to the canonical architecture — see
+  [`RNA_METHYLATION.md`](RNA_METHYLATION.md) for the full note.
 
 Three further chr1 development ablations were designed but not retained as
 runnable configs after this repo's consolidation to a minimal pipeline

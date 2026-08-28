@@ -146,7 +146,11 @@ correlation across CpGs (correlation across samples for each CpG); MAC-PCC is
 the median Pearson correlation across samples (correlation across CpGs for each
 sample), matching MethylProphet's evaluation code.
 
-## Table 7: training-source ablation (TCGA rows)
+The head-to-head comparison table (ours vs. this published reference, plus the
+historical architecture progression that led to the current model) is kept at
+[`results/reference/methylprophet_comparison/table5_chr1.md`](../results/reference/methylprophet_comparison/table5_chr1.md).
+
+## Table 7: training-source comparison (TCGA rows)
 
 `MethylProphetTrainer` accepts an opt-in `sources: {"array", "epic", "wgbs"}`
 subset (default: all three, so the frozen Table-5 path above is unaffected)
@@ -156,9 +160,12 @@ exact same Array chr1 protocol/split can reproduce MethylProphet paper
 rows only (ENCODE rows are a separate, not-yet-done experiment). All three
 TCGA rows — T(A), T(A+W), T(A+E) — are complete; results and
 `ours`-vs-`published` deltas are in
-[`results/reference/table7_source_ablation.md`](../results/reference/table7_source_ablation.md).
+[`results/reference/methylprophet_comparison/table7_source_ablation.md`](../results/reference/methylprophet_comparison/table7_source_ablation.md).
 The published Table 7 reference numbers live in
 `TABLE7_PUBLISHED_METHYLPROPHET` (`src/methylation_predictor/benchmark/methylprophet/protocol.py`).
+This is a head-to-head paper comparison, not a design ablation — internal
+architecture/hyperparameter ablations are tracked separately in
+`results/reference/ablations.yaml`.
 
 ## Required preflight
 

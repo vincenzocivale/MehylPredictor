@@ -113,9 +113,13 @@ Cartesian-block trainer — don't route generic-pipeline changes through it.
 `runs/<model>/<train-scope>/<run-id>/` and `searches/<model>/<scope>/<search-id>/` are the only
 places training/tuning write to; both are gitignored (along with `artifacts/`, `checkpoints/`,
 `wandb/`, `logs/`). Layout and provenance fields are defined in `run_store.py`. Only small
-machine-readable reference numbers are version-controlled, under `results/reference/`
-(`{cpg_statistics,rna_methylation}/{chr1,chr123,genomewide}.yaml` + `ablations.yaml`) —
-`docs/BENCHMARKS.md` is the narrative index into them.
+machine-readable reference numbers are version-controlled, under `results/reference/`, split by
+role: `{cpg_statistics,rna_methylation}/{chr1,chr123,genomewide}.yaml` are the two models' own
+headline results; `methylprophet_comparison/` holds head-to-head comparisons against the published
+MethylProphet paper (Table 5 mixed-source, Table 7 per-source rows) — a paper-comparison claim, not
+an internal ablation; `ablations.yaml` holds internal design/hyperparameter ablations only (prior
+choice, training search, architecture-simplification sweeps). `docs/BENCHMARKS.md` is the narrative
+index into all three.
 
 ### Model compatibility note
 
