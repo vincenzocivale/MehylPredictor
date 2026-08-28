@@ -122,7 +122,7 @@ class CpGStatisticsTrainer:
             emb_ids = np.asarray(h["cpg_idx"][...], np.int64)
             idx = SortedIndex(emb_ids, "NTv3 embedding atlas")
             rows = idx.positions_of(self.ids)
-            self.embeddings = read_h5_rows(h["embeddings"], rows, dtype=np.float32)
+            self.embeddings = read_h5_rows(h["embedding"], rows, dtype=np.float32)
         if self.embeddings.shape != (len(self.ids), self.model_cfg.input_dim):
             raise ValueError(f"unexpected embedding matrix {self.embeddings.shape}")
 

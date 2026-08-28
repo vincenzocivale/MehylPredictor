@@ -18,7 +18,7 @@ def evaluate_statistics_checkpoint(*,checkpoint,targets_dir,embeddings_h5,regist
     root=Path(targets_dir); ids=np.load(root/"cpg_idx.npy"); mu=np.load(root/"target_mu.npy"); sigma=np.load(root/"target_sigma.npy"); heldout=np.load(root/"official_val_mask.npy").astype(bool)
     eval_ids=filter_cpg_ids(ids[heldout],eval_scope,registry); index=SortedIndex(ids,"statistics targets"); rows=index.positions_of(eval_ids)
     with h5py.File(embeddings_h5,"r") as h:
-        emb_ids=np.asarray(h["cpg_idx"][...],np.int64); emb_rows=SortedIndex(emb_ids,"NTv3 embeddings").positions_of(eval_ids); emb=read_h5_rows(h["embeddings"],emb_rows,dtype=np.float32)
+        emb_ids=np.asarray(h["cpg_idx"][...],np.int64); emb_rows=SortedIndex(emb_ids,"NTv3 embeddings").positions_of(eval_ids); emb=read_h5_rows(h["embedding"],emb_rows,dtype=np.float32)
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"); state=torch.load(checkpoint,map_location=device,weights_only=False); cfg_raw=state.get("model_config",{}); cfg=CpGStatisticsModelConfig(**{**cfg_raw,"ensemble_seeds":tuple(cfg_raw.get("ensemble_seeds",(17,29,43)))})
     model=CpGStatisticsPredictor(cfg).to(device); model.load_state_dict(state["model_state"],strict=True); model.eval(); pred_mu=[]; pred_sigma=[]
     with torch.no_grad():

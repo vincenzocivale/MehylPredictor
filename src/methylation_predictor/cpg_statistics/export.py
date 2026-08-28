@@ -16,7 +16,7 @@ from ..storage import SortedIndex, read_h5_rows
 def export_feature_cache(*,checkpoint,targets_dir,embeddings_h5,output,batch_size=4096,empirical_for_train=True):
     target_root=Path(targets_dir); ids=np.load(target_root/"cpg_idx.npy"); target_mu=np.load(target_root/"target_mu.npy"); target_sigma=np.load(target_root/"target_sigma.npy"); train_mask=np.load(target_root/"official_train_mask.npy").astype(bool)
     with h5py.File(embeddings_h5,"r") as h:
-        atlas_ids=np.asarray(h["cpg_idx"][...],np.int64); rows=SortedIndex(atlas_ids,"NTv3 atlas").positions_of(ids); embeddings=read_h5_rows(h["embeddings"],rows,dtype=np.float16)
+        atlas_ids=np.asarray(h["cpg_idx"][...],np.int64); rows=SortedIndex(atlas_ids,"NTv3 atlas").positions_of(ids); embeddings=read_h5_rows(h["embedding"],rows,dtype=np.float16)
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"); state=torch.load(checkpoint,map_location=device,weights_only=False); cfg_raw=state.get("model_config",{}); cfg=CpGStatisticsModelConfig(**{**cfg_raw,"ensemble_seeds":tuple(cfg_raw.get("ensemble_seeds",(17,29,43)))})
     model=CpGStatisticsPredictor(cfg).to(device); model.load_state_dict(state["model_state"],strict=True); model.eval(); mu=[]; sigma=[]
     with torch.no_grad():
