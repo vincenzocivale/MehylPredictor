@@ -2,7 +2,11 @@ import pytest
 import torch
 
 from methylation_predictor.config import ModelConfig
-from methylation_predictor.models import RNA2DNAmModel, VarianceNormalizedResidualModel
+from methylation_predictor.models import (
+    DirectPredictionModel,
+    RNA2DNAmModel,
+    VarianceNormalizedResidualModel,
+)
 
 
 def _config() -> ModelConfig:
@@ -223,3 +227,79 @@ def test_rna2dnam_still_rejects_nonstandard_latent_dim():
     cfg.encoder.latent_dim = 512
     with pytest.raises(ValueError, match="256-D RNA latent"):
         RNA2DNAmModel(input_dim=5, locus_dim=3, config=cfg)
+
+
+@pytest.mark.parametrize("kind", ["film", "cross_attention", "bilinear"])
+def test_fusion_mechanism_ablation_forward_shapes_and_zero_init(kind):
+    torch.manual_seed(9)
+    cfg = _config()
+    cfg.interaction.kind = kind
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+    out = model(rna, loci, prior, sigma)
+
+    assert out["beta"].shape == (3, 4)
+    # zero_output() still applies regardless of interaction kind: the model
+    # starts exactly at the prior for every fusion mechanism.
+    assert torch.allclose(out["beta"], prior.unsqueeze(0).expand(3, -1), atol=1e-6)
+
+    # gradients flow through the new interaction module's parameters.
+    model.train()
+    out = model(rna, loci, prior, sigma)
+    out["beta"].sum().backward()
+    grads = [p.grad for p in model.interaction.parameters() if p.requires_grad]
+    assert grads and all(g is not None for g in grads)
+
+
+def test_rna2dnam_still_rejects_fusion_mechanism_kinds():
+    # RNA2DNAmModel (legacy flat-residual baseline) is not part of the
+    # fusion-mechanism ablation: it must keep failing closed.
+    cfg = _config()
+    cfg.interaction.kind = "film"
+    with pytest.raises(ValueError, match="interaction.kind='concat'"):
+        RNA2DNAmModel(input_dim=5, locus_dim=3, config=cfg)
+
+
+def _direct_prediction_config() -> ModelConfig:
+    cfg = _config()
+    cfg.use_prior_anchor = False
+    cfg.zero_init_residual = False
+    return cfg
+
+
+def test_direct_prediction_model_forward_shape_and_ignores_prior():
+    torch.manual_seed(10)
+    model = DirectPredictionModel(input_dim=13, locus_dim=7, config=_direct_prediction_config())
+    model.eval()
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior_a = torch.full((4,), 0.1)
+    prior_b = torch.full((4,), 0.9)
+
+    out_a = model(rna, loci, prior_a)
+    out_b = model(rna, loci, prior_b)
+
+    assert out_a["beta"].shape == (3, 4)
+    # no prior anchor: changing prior does not change the prediction at all.
+    assert torch.allclose(out_a["beta"], out_b["beta"], atol=1e-6)
+    assert out_a["prior_logit"] is None
+
+
+def test_direct_prediction_model_requires_no_prior_anchor_flag():
+    cfg = _config()  # use_prior_anchor defaults True, zero_init_residual True
+    with pytest.raises(ValueError, match="use_prior_anchor=false"):
+        DirectPredictionModel(input_dim=5, locus_dim=3, config=cfg)
+
+
+def test_direct_prediction_model_rejects_zero_init_residual():
+    cfg = _config()
+    cfg.use_prior_anchor = False
+    # zero_init_residual left True: there is no anchor to start "at zero" relative to.
+    with pytest.raises(ValueError, match="zero_init_residual=false"):
+        DirectPredictionModel(input_dim=5, locus_dim=3, config=cfg)

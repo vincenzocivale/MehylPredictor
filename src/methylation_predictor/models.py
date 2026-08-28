@@ -112,6 +112,157 @@ class ProductInteraction(nn.Module):
         nn.init.zeros_(self.network[-1].bias)
 
 
+class FiLMInteraction(nn.Module):
+    """Fusion-mechanism ablation: RNA modulates the CpG embedding via FiLM.
+
+    RNA latent -> Linear -> (gamma, beta) of ``locus_dim``; the CpG embedding
+    is affinely modulated (``loci' = loci * (1 + gamma) + beta``) before the
+    joint MLP. Not used by any canonical model path -- see
+    ``InteractionConfig.kind`` / docs/RNA_METHYLATION.md ablation note.
+    """
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
+        super().__init__()
+        self.film = nn.Linear(rna_dim, 2 * locus_dim)
+        joint_dim = rna_dim + locus_dim
+        self.network = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        batch = rna.global_vector.shape[0]
+        n_loci = loci.shape[0]
+        gamma, beta = self.film(rna.global_vector).chunk(2, dim=-1)  # each (batch, locus_dim)
+        modulated = loci[None, :, :] * (1.0 + gamma[:, None, :]) + beta[:, None, :]
+        joint = torch.cat(
+            [rna.global_vector[:, None, :].expand(batch, n_loci, -1), modulated], dim=-1
+        )
+        return self.network(joint).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
+class CrossAttentionInteraction(nn.Module):
+    """Fusion-mechanism ablation: single-head scaled dot-product cross attention.
+
+    query = W_q(rna), key/value = W_k(loci)/W_v(loci); the (sample, locus)
+    attention score is the scaled dot product of query and key (same pairwise
+    shape as ``ProductInteraction``'s product term). Unlike sequence
+    attention there is no token axis to pool over -- each locus is scored
+    independently per sample within the Cartesian minibatch -- so the score
+    gates the value via a sigmoid rather than a softmax. Not used by any
+    canonical model path -- see ``InteractionConfig.kind`` /
+    docs/RNA_METHYLATION.md ablation note.
+    """
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float, attn_dim: int | None = None):
+        super().__init__()
+        attn_dim = attn_dim or min(rna_dim, locus_dim)
+        self.attn_dim = attn_dim
+        self.query = nn.Linear(rna_dim, attn_dim)
+        self.key = nn.Linear(locus_dim, attn_dim)
+        self.value = nn.Linear(locus_dim, attn_dim)
+        joint_dim = rna_dim + locus_dim + attn_dim
+        self.network = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        batch = rna.global_vector.shape[0]
+        n_loci = loci.shape[0]
+        q = self.query(rna.global_vector)  # (batch, attn_dim)
+        k = self.key(loci)  # (n_loci, attn_dim)
+        v = self.value(loci)  # (n_loci, attn_dim)
+        score = (q[:, None, :] * k[None, :, :]).sum(-1) / (self.attn_dim ** 0.5)  # (batch, n_loci)
+        gate = torch.sigmoid(score)
+        attended = gate[:, :, None] * v[None, :, :]  # (batch, n_loci, attn_dim)
+        joint = torch.cat(
+            [
+                rna.global_vector[:, None, :].expand(batch, n_loci, -1),
+                loci[None, :, :].expand(batch, n_loci, -1),
+                attended,
+            ],
+            dim=-1,
+        )
+        return self.network(joint).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
+class BilinearInteraction(nn.Module):
+    """Fusion-mechanism ablation: learned low-rank bilinear RNA-CpG interaction.
+
+    Generalizes ``ProductInteraction``'s elementwise product term to a
+    learned rank-``rank`` bilinear form via ``nn.Bilinear``. Not used by any
+    canonical model path -- see ``InteractionConfig.kind`` /
+    docs/RNA_METHYLATION.md ablation note.
+    """
+
+    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float, rank: int = 64):
+        super().__init__()
+        self.rank = rank
+        self.bilinear = nn.Bilinear(rna_dim, locus_dim, rank)
+        joint_dim = rna_dim + locus_dim + rank
+        self.network = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
+        batch = rna.global_vector.shape[0]
+        n_loci = loci.shape[0]
+        rna_exp = rna.global_vector[:, None, :].expand(batch, n_loci, -1).reshape(batch * n_loci, -1)
+        loci_exp = loci[None, :, :].expand(batch, n_loci, -1).reshape(batch * n_loci, -1)
+        bilinear_features = self.bilinear(rna_exp, loci_exp).reshape(batch, n_loci, self.rank)
+        joint = torch.cat(
+            [
+                rna.global_vector[:, None, :].expand(batch, n_loci, -1),
+                loci[None, :, :].expand(batch, n_loci, -1),
+                bilinear_features,
+            ],
+            dim=-1,
+        )
+        return self.network(joint).squeeze(-1)
+
+    def zero_output(self) -> None:
+        nn.init.zeros_(self.network[-1].weight)
+        nn.init.zeros_(self.network[-1].bias)
+
+
+# InteractionConfig.kind -> interaction module constructor. "concat" is the
+# canonical ProductInteraction (its own include_rna/include_cpg/include_product
+# flags cover the concat/product-only ablation axis); the remaining kinds are
+# fusion-mechanism ablations -- see docs/RNA_METHYLATION.md.
+def build_interaction(config: "InteractionConfig", rna_dim: int, locus_dim: int) -> nn.Module:
+    if config.kind == "concat":
+        return ProductInteraction(
+            rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout,
+            include_rna=config.include_rna, include_cpg=config.include_cpg, include_product=config.include_product,
+        )
+    if config.kind == "film":
+        return FiLMInteraction(rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout)
+    if config.kind == "cross_attention":
+        return CrossAttentionInteraction(rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout)
+    if config.kind == "bilinear":
+        return BilinearInteraction(rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout)
+    raise ValueError(f"unknown interaction.kind: {config.kind!r}")
+
+
 class RNA2DNAmModel(nn.Module):
     """Historical flat-residual compatibility baseline.
 
@@ -232,8 +383,6 @@ class VarianceNormalizedResidualModel(nn.Module):
         super().__init__()
         if config.encoder.kind != "linear":
             raise ValueError("V1 variant requires model.encoder.kind='linear'")
-        if config.interaction.kind != "concat":
-            raise ValueError("V1 variant requires model.interaction.kind='concat'")
         if not config.zero_init_residual:
             raise ValueError("V1 variant requires zero_init_residual=true (starts exactly at the prior)")
 
@@ -247,13 +396,10 @@ class VarianceNormalizedResidualModel(nn.Module):
         self.rna_encoder = LinearRNAEncoder(
             input_dim=input_dim, latent_dim=latent_dim, layer_norm=config.encoder.layer_norm,
         )
-        self.interaction = ProductInteraction(
-            rna_dim=latent_dim, locus_dim=locus_dim,
-            hidden_dim=config.interaction.hidden_dim, dropout=config.interaction.dropout,
-            include_rna=config.interaction.include_rna,
-            include_cpg=config.interaction.include_cpg,
-            include_product=config.interaction.include_product,
-        )
+        # config.interaction.kind selects the fusion mechanism: "concat" is the
+        # canonical ProductInteraction; "film"/"cross_attention"/"bilinear" are
+        # fusion-mechanism ablations -- see build_interaction/docs/RNA_METHYLATION.md.
+        self.interaction = build_interaction(config.interaction, rna_dim=latent_dim, locus_dim=locus_dim)
         self.interaction.zero_output()  # raw_delta = 0 at init => beta_hat = prior, same safe start as RNA2DNAmModel
 
     @property
@@ -297,3 +443,70 @@ class RNAMethylationPredictor(VarianceNormalizedResidualModel):
     new code should use ``RNAMethylationPredictor``.
     """
     pass
+
+
+class DirectPredictionModel(nn.Module):
+    """Architecture-ablation model: no CpG-statistics prior/anchor at all.
+
+    ``prediction_logit = raw_delta`` directly (no ``prior_logit`` added, no
+    sigma scaling) -- measures how much the mu/sigma prior contributes versus
+    predicting methylation from RNA+CpG embedding alone. Selected only via
+    ``ModelConfig.use_prior_anchor=False``, matched_chr1 engine only (see
+    ``benchmark/methylprophet/trainer.py``). Not part of the canonical model;
+    see docs/RNA_METHYLATION.md ablation note.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        locus_dim: int,
+        config: ModelConfig,
+        epsilon: float = 1e-4,
+    ):
+        super().__init__()
+        if config.use_prior_anchor:
+            raise ValueError("DirectPredictionModel requires model.use_prior_anchor=false")
+        if config.zero_init_residual:
+            raise ValueError(
+                "DirectPredictionModel requires model.zero_init_residual=false "
+                "(there is no anchor to start safely 'at zero' relative to)"
+            )
+        if config.encoder.kind != "linear":
+            raise ValueError("DirectPredictionModel requires model.encoder.kind='linear'")
+
+        self.config = config
+        self.epsilon = float(epsilon)
+        self.rna_encoder = LinearRNAEncoder(
+            input_dim=input_dim, latent_dim=config.encoder.latent_dim, layer_norm=config.encoder.layer_norm,
+        )
+        self.interaction = build_interaction(
+            config.interaction, rna_dim=config.encoder.latent_dim, locus_dim=locus_dim
+        )
+
+    @property
+    def supports_factorized_inference(self) -> bool:
+        return False
+
+    def forward(
+        self,
+        rna: torch.Tensor,
+        loci: torch.Tensor,
+        prior: torch.Tensor,
+        sigma: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
+        del sigma  # unused: no prior/sigma anchor in this ablation
+        representation = self.rna_encoder(rna)
+        raw_delta = self.interaction(representation, loci)
+        prediction_logit = raw_delta
+        beta = torch.sigmoid(prediction_logit)
+
+        gate = torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
+        return {
+            "beta": beta,
+            "delta_logit": prediction_logit,
+            "raw_delta": raw_delta,
+            "raw_delta_logit": prediction_logit,
+            "prediction_logit": prediction_logit,
+            "gate": gate,
+            "prior_logit": None,
+        }

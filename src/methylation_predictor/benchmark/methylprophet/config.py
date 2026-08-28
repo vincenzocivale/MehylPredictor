@@ -110,7 +110,19 @@ def load_config(path: str | Path) -> RunConfig:
         variance_normalized_residual=model_raw.get(
             "variance_normalized_residual", False
         ),
+        use_prior_anchor=model_raw.get("use_prior_anchor", True),
     )
+    if not model.use_prior_anchor:
+        if model.variance_normalized_residual:
+            raise ValueError(
+                "use_prior_anchor=false is mutually exclusive with variance_normalized_residual=true "
+                "(there is no anchor to take a sigma-standardized residual against)"
+            )
+        if model.zero_init_residual:
+            raise ValueError(
+                "use_prior_anchor=false requires zero_init_residual=false "
+                "(there is no anchor to start safely 'at zero' relative to)"
+            )
 
     return RunConfig(
         data=data,

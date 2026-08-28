@@ -47,6 +47,16 @@ class ModelConfig:
     # Canonical model: logit(beta_hat) = logit(mu_i) + sigma_i * raw_delta.
     # False retains only the historical flat-residual compatibility baseline.
     variance_normalized_residual: bool = False
+    # Architecture-ablation switch, matched_chr1 engine only (see
+    # benchmark/methylprophet/trainer.py): False drops the CpG-statistics
+    # prior/anchor entirely -- prediction_logit = raw_delta directly, with no
+    # sigma scaling either (there is no anchor to take a standardized residual
+    # against). Mutually exclusive with zero_init_residual=True (there is
+    # nothing safe to start "at zero" relative to) and with
+    # variance_normalized_residual=True. Canonical stays True; see
+    # docs/RNA_METHYLATION.md ablation note before flipping this in a
+    # non-experimental recipe.
+    use_prior_anchor: bool = True
 
 
 @dataclass(slots=True)

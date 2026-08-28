@@ -25,7 +25,7 @@ from .cache import RNACache
 from .feature_store import SortedIndex
 from ...optim import build_lr_scheduler
 from ...losses import residual_loss
-from ...models import RNA2DNAmModel, VarianceNormalizedResidualModel
+from ...models import DirectPredictionModel, RNA2DNAmModel, VarianceNormalizedResidualModel
 from .protocol import (
     ARRAY_VIEW_EXPECTED_OBSERVED,
     SOURCE_EXPECTED_OBSERVED,
@@ -371,13 +371,21 @@ class MethylProphetTrainer:
         torch.backends.cuda.matmul.allow_tf32 = self.cfg.training.allow_tf32
         torch.backends.cudnn.allow_tf32 = self.cfg.training.allow_tf32
         self.variance_normalized = bool(self.cfg.model.variance_normalized_residual)
-        # Distinct label so a variance-normalized (V1) run can never silently
-        # resume from -- or be resumed into -- a frozen-architecture checkpoint.
-        self.architecture_label = (
-            FINAL_ARCHITECTURE + "_v1_variance_normalized_residual"
-            if self.variance_normalized else FINAL_ARCHITECTURE
-        )
-        if self.variance_normalized:
+        self.use_prior_anchor = bool(self.cfg.model.use_prior_anchor)
+        # Distinct label so a variance-normalized (V1) / no-anchor run can
+        # never silently resume from -- or be resumed into -- a mismatched
+        # architecture's checkpoint.
+        if not self.use_prior_anchor:
+            self.architecture_label = FINAL_ARCHITECTURE + "_ablation_no_prior_anchor"
+        elif self.variance_normalized:
+            self.architecture_label = FINAL_ARCHITECTURE + "_v1_variance_normalized_residual"
+        else:
+            self.architecture_label = FINAL_ARCHITECTURE
+        if not self.use_prior_anchor:
+            self.model = DirectPredictionModel(
+                25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon
+            ).to(self.device)
+        elif self.variance_normalized:
             self.model = VarianceNormalizedResidualModel(
                 25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon
             ).to(self.device)
