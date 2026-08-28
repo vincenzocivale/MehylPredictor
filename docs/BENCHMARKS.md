@@ -84,15 +84,17 @@ MethylProphet paper-comparison tables above:
   change to the canonical architecture — see
   [`RNA_METHYLATION.md`](RNA_METHYLATION.md) for the full note.
 
-Three further chr1 development ablations were designed but not retained as
-runnable configs after this repo's consolidation to a minimal pipeline
-(`large_sample_pcc`: wider Array Cartesian blocks for more patients per
-per-CpG Pearson estimate; `tail_aware_pcc`: split the locus-Pearson weight
-between the mean and the lower-60%-correlation tail; `array_only_structured`:
-restrict Pearson-family structured objectives to Array only, since WGBS's 32
-measurements are too few for a stable patient-dynamic gradient). Their exact
-configurations remain in git history (`configs/tcga_chr1/experiments/` before
-the unified-scopes cleanup) if any needs to be reproduced.
+- **`structured_loss_objective_variants_2026_08`** — three chr1 variants of
+  the locus-Pearson structured-loss objective (`large_sample_pcc`: wider
+  Array Cartesian blocks for more patients per per-CpG Pearson estimate;
+  `tail_aware_pcc`: split the locus-Pearson weight between the mean and the
+  lower-60%-correlation tail; `array_only_structured`: restrict Pearson-family
+  structured objectives to Array only, since WGBS's 32 measurements are too
+  few for a stable patient-dynamic gradient) all underperform the canonical
+  objective (0.548/0.545/0.540 vs 0.5613 val-CpG × val-sample MAS-PCC). None
+  adopted. Their exact configurations remain in git history
+  (`configs/tcga_chr1/experiments/` before the unified-scopes cleanup) if any
+  needs to be reproduced.
 
 ## Reproduce
 

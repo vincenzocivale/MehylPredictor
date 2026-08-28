@@ -37,3 +37,17 @@ interaction_concat_and_latent_dim_2026_08:
     include_rna/include_cpg/include_product flags on InteractionConfig and the now-configurable
     encoder.latent_dim on VarianceNormalizedResidualModel remain available in models.py/config.py
     for any future re-run of this study.
+structured_loss_objective_variants_2026_08:
+  # scope=chr1, matched_chr1 engine, seed=17, canonical LR/schedule/epoch budget.
+  # Recovered 2026-08-28 from completed-but-never-recorded runs under
+  # experiments/MethylPredictor/tcga_chr1/{tail_aware_pcc,large_sample_pcc,array_only_structured}/
+  # -- docs/BENCHMARKS.md previously (incorrectly) stated these were "designed but not run".
+  # All three modify the locus-Pearson structured-loss objective vs. the canonical one.
+  canonical: {val_cpg_x_val_sample_mas_pcc: 0.5613}
+  tail_aware_pcc: {val_cpg_x_val_sample_mas_pcc: 0.5484}
+  large_sample_pcc: {val_cpg_x_val_sample_mas_pcc: 0.5447}
+  array_only_structured: {val_cpg_x_val_sample_mas_pcc: 0.5395}
+  conclusion: >
+    All three structured-loss variants underperform the canonical objective on val-CpG x
+    val-sample MAS-PCC (-0.013 to -0.022). None adopted; canonical objective
+    (configs/models/rna_methylation.yaml loss block) left unchanged.
