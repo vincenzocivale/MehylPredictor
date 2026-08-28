@@ -9,7 +9,9 @@ superseded/deleted.
 
 Layout note (2026-08-28 reorg): new runs from `scripts/{train,tune,evaluate}.py`
 should land under `experiments/runs/` (the `RunStore` layout,
-`runs/<model>/<scope>/<run-id>/`) — the canonical output-root going forward.
+`runs/<model>/<scope>/<run-id>/`) by passing `--output-root
+/dune/DATASETS/MethylPredictionData/experiments` (RunStore appends the `runs/`
+segment itself -- do not also put `/runs` in `--output-root` or it double-nests).
 Everything below predates that convention and lives under older ad hoc paths;
 entries are updated to `experiments/runs/...` as each is redone.
 
