@@ -39,14 +39,14 @@ for both frozen chr1 and genome-wide runs.
 
 ### `cpg_statistics`
 
-Both chr1 and genomewide references below are the validated mean-predictor
-component only (pre joint mu/sigma refactor); retrain the joint model before
-promoting a new reference. chr123 has no frozen reference yet.
+Joint mu/sigma ensemble model (retrained 2026-08-28 after fixing a real bug where
+`cpg_statistics/{trainer,evaluator,export}.py` read the wrong NTv3 embedding HDF5 key --
+see `results/reference/PROVENANCE.md`). chr123 is deferred, not yet retrained.
 
-| scope | heldout beta MSE | heldout PCC | heldout R² |
-|---|---:|---:|---:|
-| chr1 | 0.00768 | 0.9671 | 0.9348 |
-| genomewide | 0.00790 | 0.9671 | 0.9347 |
+| scope | heldout mu beta MSE | heldout mu PCC | heldout mu R² | heldout sigma PCC |
+|---|---:|---:|---:|---:|
+| chr1 | 0.00782 | 0.9668 | 0.9337 | 0.7761 |
+| genomewide | 0.00822 | 0.9660 | 0.9322 | 0.7581 |
 
 ## Head-to-head comparison with MethylProphet (published SOTA)
 

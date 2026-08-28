@@ -1,9 +1,26 @@
-status: historical_mean_baseline_reference
+status: reference
 model: cpg_statistics
 training_scope: chr1
-note: These numbers are the validated mean-predictor component before the joint mu/sigma refactor; retrain the joint model before promoting a new reference.
-mean_prediction:
-  heldout_beta_mse: 0.00768
-  heldout_mae: 0.0590
-  heldout_pcc: 0.9671
-  heldout_r2: 0.9348
+seed: 17
+training:
+  learning_rate: 1.0e-3
+  scheduler: constant
+  epochs: 40
+  best_epoch: 34
+architecture: joint_mu_sigma_ensemble
+note: >
+  Joint mu/sigma ensemble model (retrained 2026-08-28 after fixing the NTv3 embedding HDF5 key bug
+  in cpg_statistics/{trainer,evaluator,export}.py, commit c8ea106). Supersedes the earlier
+  historical_mean_baseline_reference (mean-only, pre joint-model refactor).
+evaluation:
+  chr1:
+    mu_beta_mse: 0.00781656285633423
+    mu_mae: 0.05872915458507135
+    mu_pcc: 0.9668134276817137
+    mu_r2: 0.9337348993263838
+    mu_logit_mse: 0.40817942092433196
+    sigma_mse: 0.07083292403531737
+    sigma_mae: 0.19344983542533065
+    sigma_pcc: 0.7760934385944805
+    log_sigma_mse: 0.12083593112340456
+benchmark_role: supporting model for the rna_methylation chr1 prior/sigma input

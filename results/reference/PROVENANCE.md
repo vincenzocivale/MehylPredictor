@@ -27,9 +27,20 @@ entries are updated to `experiments/runs/...` as each is redone.
 
 | file | run path | checkpoint sha256 | status |
 |---|---|---|---|
-| `cpg_statistics/chr1.yaml` | `experiments/_legacy_pre_refactor/cpg_mean_predictor/chr1_baseline/final/model.pt` | `05444649...96877b9e` | **stale** — mean-only architecture (`heads.N.*` state dict), incompatible with the current joint mu/sigma `CpGStatisticsPredictor` (`mu_heads.*`/`sigma_heads.*`). Superseded once the roadmap retrain lands. |
-| `cpg_statistics/genomewide.yaml` | `experiments/_legacy_pre_refactor/cpg_mean_predictor/genomewide_baseline/final/model.pt` | `bc391cb3...24ab693488b56` | same caveat as above |
-| `cpg_statistics/chr123.yaml` | *(checkpoint lost)* | — | a joint mu/sigma checkpoint was trained 2026-08-19 (`runs/runs/cpg_statistics/chr123/20260819T141250Z_.../checkpoints/best.pt`, sha256 `06ddf93d...5731e80c8f1`) but the file no longer exists anywhere on this filesystem; only derived `prior.npy`/`sigma.npy` survive in `derived/rna_feature_cache/chr123/`. Needs a redo. |
+| `cpg_statistics/chr1.yaml` | `experiments/runs/cpg_statistics/chr1/cpg-statistics-chr1-retrain-2026-08-28/checkpoints/best.pt` | `b1b6c64a...360d43c52` | **live**, joint mu/sigma, retrained 2026-08-28 after the NTv3-embedding-key bugfix (commit `c8ea106`) |
+| `cpg_statistics/genomewide.yaml` | `experiments/runs/cpg_statistics/genomewide/cpg-statistics-genomewide-retrain-2026-08-28/checkpoints/best.pt` | `265e3bf1...71c21b87a` | **live**, joint mu/sigma, retrained 2026-08-28 |
+| `cpg_statistics/chr123.yaml` | *(not yet redone)* | — | deferred with `rna_methylation/chr123.yaml` (chr1 → genomewide is the current roadmap priority); an earlier joint mu/sigma checkpoint for this scope (2026-08-19) is lost, see below |
+
+Superseded (kept only as historical/provenance reference, no longer the source of any recorded
+number): `experiments/_legacy_pre_refactor/cpg_mean_predictor/{chr1_baseline,genomewide_baseline}/final/model.pt`
+— mean-only architecture (`heads.N.*` state dict), incompatible with the current joint mu/sigma
+`CpGStatisticsPredictor` (`mu_heads.*`/`sigma_heads.*`). Also lost: the 2026-08-19 joint mu/sigma
+checkpoints (`runs/runs/cpg_statistics/{chr1,chr123,genomewide}/20260819T*/checkpoints/best.pt`,
+sha256 recorded in `results-reference-taxonomy` session memory) that produced the `prior.npy`/
+`sigma.npy` arrays still baked into `derived/rna_feature_cache/{chr1,chr123,genomewide}/` — those
+files no longer exist on disk. `derived/rna_feature_cache/{chr1,genomewide}/` need regenerating
+from the 2026-08-28 checkpoints above via `scripts/prepare.py --model rna_methylation` before the
+next `rna_methylation` retrain uses them.
 
 ## `ablations.yaml`
 
