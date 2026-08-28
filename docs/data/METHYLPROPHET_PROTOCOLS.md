@@ -63,7 +63,14 @@ Provenance: `official_training_data/protocols/tcga_array_chr1/`
 (`array_train_sample_idx.npy`, `array_val_sample_idx.npy`,
 `array_train_cpg_idx.npy`, `array_val_cpg_idx.npy`). These files are read
 verbatim by `load_protocol()` -- never regenerated, never re-derived from a
-fresh random split.
+fresh random split. **Independently confirmed 2026-08-28**: compared against
+the actual released MethylProphet chr1 evaluation artifact
+(`MethylProphet/eval-tcga_mix_chr1-bs_512-c2b2` on HuggingFace) -- exact ID-set
+match on all four axes, not just matching counts. See
+`results/reference/methylprophet_comparison/chr1_official_split_verification.md`
+and `docs/BENCHMARK_METHYLPROPHET.md`'s "Split verified exact" section for the
+full record (this also retracts that document's earlier "known divergence
+from the paper's published split" claim -- there is none).
 
 The same Array split is reused unchanged by `tcga_array_epic_chr1`,
 `tcga_array_wgbs_chr1`, and `tcga_mix_chr1` (verified equal in
@@ -102,8 +109,17 @@ originally-released train pool and the CpGs added by a later note):
 Provenance: `official_training_data/protocols/tcga_mix_chr123/`
 (`array_train_cpg_idx.parquet`, `array_val_cpg_idx.parquet`,
 `status: exact_array_split_source_revision_compatible_auxiliary` in
-`protocol.json`). The Array split itself is exact; EPIC/WGBS CpG pools for
-this protocol fall under source-revision drift (§3).
+`protocol.json`). The sample axis is exact -- it's the same genome-wide Array
+sample split verified for chr1 above (see §1: the sample split is
+chromosome-independent). **The CpG axis (`note1 ∪ note4`) has not been
+through the same direct verification** as chr1's: no released chr1-3
+evaluation artifact (parallel to `eval-tcga_mix_chr1-bs_512-c2b2`) has been
+found publicly, and access to a candidate source
+(`MethylProphet/tcga-mix-chr123-bs_512-32xl40s-aws`, a model checkpoint, not
+an eval-rows dataset) is still being pursued as of 2026-08-28. Until that
+access succeeds, treat chr123's CpG split as **documented but unverified**,
+not "exact" in the same sense chr1 now is -- EPIC/WGBS CpG pools for this
+protocol additionally fall under source-revision drift (§3).
 
 ## 3. Source-revision drift: 241213 vs. 241231
 

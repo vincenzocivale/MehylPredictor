@@ -34,8 +34,12 @@ Genome-wide Array evaluation of the frozen current architecture reaches:
 - **0.5800 / 0.02099**
 - **0.5244 / 0.02223**
 
-Machine-readable references live in `results/reference/`. `chr1` and `chr123`
-are the MethylProphet-comparison scopes; `genomewide` is the general benchmark.
+Machine-readable references live in `results/reference/`. `chr1` is the
+MethylProphet-comparison scope (official split independently verified against
+the released MethylProphet evaluation artifact — see
+`docs/BENCHMARK_METHYLPROPHET.md`); `genomewide` is the general benchmark.
+`chr123` is a usable general scope but not currently a verified MethylProphet
+comparison.
 
 ## Installation
 

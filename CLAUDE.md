@@ -9,7 +9,12 @@ representations. Two canonical trainable models share one genomic-scope axis:
 
 - `CpGStatisticsPredictor` (`src/methylation_predictor/cpg_statistics/`): frozen NTv3 CpG embedding -> locus mean `mu` and logit-scale `sigma`.
 - `RNAMethylationPredictor` (`src/methylation_predictor/models.py`, trained via `rna_training/`): RNA + CpG embedding + `(mu, sigma)` -> sample-specific methylation.
-- Scopes: `chr1`, `chr123` (`chr1 ∪ chr2 ∪ chr3`), `genomewide`. `chr1`/`chr123` are MethylProphet-matched comparison scopes; `genomewide` is the primary general benchmark.
+- Scopes: `chr1`, `chr123` (`chr1 ∪ chr2 ∪ chr3`), `genomewide`. `chr1` is the MethylProphet-matched
+  comparison scope (official Array split independently verified against the released MethylProphet
+  evaluation artifact, see `docs/BENCHMARK_METHYLPROPHET.md`); `genomewide` is the primary general
+  benchmark, and the roadmap goes chr1 → genomewide directly. `chr123` remains a usable general
+  scope but is not currently a verified MethylProphet comparison (its CpG-split provenance is
+  unverified; access to a verification source is still being pursued).
 
 Read `README.md`, `docs/WORKFLOWS.md`, `docs/RNA_METHYLATION.md`, `docs/CPG_STATISTICS.md`, and
 `docs/BENCHMARKS.md` before making architectural changes — they hold the current design rationale

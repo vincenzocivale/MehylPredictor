@@ -1,5 +1,11 @@
 status: pending
 model: rna_methylation
 training_scope: chr123
-benchmark_role: matched MethylProphet chromosome-1/2/3 comparison
-note: No frozen reference result is recorded yet; do not fabricate one from chr1 or genome-wide runs.
+benchmark_role: general scope; NOT currently a verified MethylProphet comparison
+note: >
+  No frozen reference result is recorded yet; do not fabricate one from chr1 or genome-wide runs.
+  Roadmap priority is chr1 (verified) -> genomewide; chr123 is deferred. Its CpG-split provenance
+  (note1 union note4) is unverified against a real released MethylProphet artifact -- unlike chr1
+  (see results/reference/methylprophet_comparison/chr1_official_split_verification.md), access to
+  an equivalent chr123 verification source is still being pursued. Do not label chr123 results
+  "MethylProphet-matched" until that access succeeds.

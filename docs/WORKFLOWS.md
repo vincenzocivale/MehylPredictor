@@ -38,8 +38,10 @@ The flat residual `RNA2DNAmModel` remains compatibility/ablation code only.
 - `genomewide`
 
 The scope filters the frozen official CpG split; it never changes architecture.
-`chr1` and `chr123` are MethylProphet-matched benchmark scopes.  Genome-wide is
-the primary general benchmark.
+`chr1` is the (verified) MethylProphet-matched benchmark scope; genome-wide is
+the primary general benchmark. `chr123` is a usable general scope but not
+currently a verified MethylProphet comparison -- see
+[`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md).
 
 ## Training
 
@@ -99,8 +101,10 @@ Any RNA checkpoint can be evaluated on any scope:
 | chr123 | yes | yes | yes |
 | genomewide | yes | yes | yes |
 
-Same-scope chr1 and chr123 are matched benchmark cells; cross-scope cells are
-generalization analyses.
+The chr1/chr1 cell is the verified MethylProphet-matched comparison; chr123/chr123
+is a same-scope cell but not currently a verified MethylProphet comparison
+(see [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md)); other
+cross-scope cells are generalization analyses.
 
 ```
 python scripts/evaluate.py --model rna_methylation \

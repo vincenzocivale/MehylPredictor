@@ -10,9 +10,18 @@ Two trainable models, three genomic scopes:
 - `CpGStatisticsPredictor` → `results/reference/cpg_statistics/{chr1,chr123,genomewide}.yaml`
 - `RNAMethylationPredictor` → `results/reference/rna_methylation/{chr1,chr123,genomewide}.yaml`
 
-`chr1` and `chr123` (`chr1 ∪ chr2 ∪ chr3`) are the MethylProphet-matched
-comparison scopes (see [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md));
-`genomewide` is the primary general benchmark.
+`chr1` is the MethylProphet-matched comparison scope -- its official Array
+split is independently verified against the actual released MethylProphet
+evaluation artifact, exact ID-set match (see
+[`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md)). `genomewide` is
+the primary general benchmark; the roadmap goes chr1 → genomewide directly.
+`chr123` (`chr1 ∪ chr2 ∪ chr3`) remains a usable general scope in the
+pipeline, but is **not currently presented as a verified MethylProphet-matched
+comparison**: its CpG-axis split provenance has not been through the same
+direct verification as chr1's, and access to a candidate source dataset for
+that verification is still being pursued (see
+[`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md)'s "chr123: not
+verified" note).
 
 ## Current reference results
 

@@ -10,28 +10,50 @@ held-out views.
 This repository represents that paper benchmark as
 `methylprophet_table5_tcga_chr1`.  It reuses the same CpG/pair-count
 machinery as the older `tcga_array_chr1` / `tcga_mix_chr1` protocol
-manifests, and, in practice, reconstructs the *same* 8,260/918 Array sample
-split as those manifests (`Array HDF5`'s own `sample_split` field) rather
-than the paper's published 8,258/920.
+manifests, which carry the 8,260/918 Array sample split and 33,885/6,742
+Array CpG split (`Array HDF5`'s own `sample_split` field).
 
-### Known divergence from the paper's published split
+### Split verified exact against the released evaluation artifact
 
-The paper's preprocessing excludes Array samples that overlap the WGBS
-source before running the stratified 90/10 split, which is why it lands on
-8,258/920 instead of 8,260/918.  This repo's canonical bundle carries no
-Array<->WGBS patient crosswalk: checking both `sample_idx` and parsed TCGA
-patient barcodes finds **zero** overlap between the 9,178 Array rows and the
-32 WGBS measurements, so there is nothing to exclude and the reconstructed
-seed=42 `numpy.random.default_rng(42)` stratified split naturally reproduces
-the 8,260/918 split already baked into the canonical Array source instead.
-All finite-pair counts below are this repo's actual, reproducible output for
-that split -- they are **not** the paper's published counts.
+**2026-08-28: independently verified, not just reconstructed.** Downloaded
+the actual released MethylProphet chr1 evaluation artifact
+(`MethylProphet/eval-tcga_mix_chr1-bs_512-c2b2` on HuggingFace) and compared
+its sample/CpG ID membership set-for-set against this repo's cached
+`tcga_array_chr1` protocol. **Exact match on all four axes** (train/val
+samples, train/val CpGs) -- not merely matching counts, the actual ID sets
+are identical. Full record, checksums, and reproduction command:
+[`results/reference/methylprophet_comparison/chr1_official_split_verification.md`](../results/reference/methylprophet_comparison/chr1_official_split_verification.md).
+A regression test (`tests/test_methylprophet_official_split_verification.py`,
+opt-in via `MP_EVAL_DIR`) re-runs this check against a local copy of the
+artifact.
 
-If you obtain the released MethylProphet evaluation rows (or the original
-`split_sample_tcga.py` + Array<->WGBS crosswalk), pass `MP_EVAL_DIR` to
-extract the exact sample/CpG IDs directly instead of reconstructing them;
-preparation then requires them to agree with the reconstructed manifests
-and fails rather than silently reconciling a release-vs-paper discrepancy.
+This **retracts an earlier claim** in this document that our split (8,260/918)
+diverged from "the paper's published 8,258/920" due to an unreproducible
+Array<->WGBS patient-overlap exclusion. That figure came from the paper's
+prose, not from the actually-released evaluation data; the real released
+rows contain exactly 8,260/918, identical to this repo's split. There is no
+known divergence for chr1.
+
+The stratified seed=42 `numpy.random.default_rng(42)` reconstruction in
+`scripts/benchmark_methylprophet/prepare.py` (used when `MP_EVAL_DIR` is not
+supplied) is kept as the default path since it now has independent
+confirmation of producing the correct split; passing `MP_EVAL_DIR` extracts
+the exact sample/CpG IDs directly from the released rows instead and is the
+stronger audit path when the artifact is available -- preparation requires
+the two to agree and fails rather than silently reconciling any future
+disagreement.
+
+### chr123: not verified
+
+The chr1-3 CpG split (`note1 ∪ note4`, see
+[`METHYLPROPHET_PROTOCOLS.md`](data/METHYLPROPHET_PROTOCOLS.md)) has **not**
+been through the same direct verification -- no released chr1-3 evaluation
+artifact has been found publicly, and access to a candidate source
+(`MethylProphet/tcga-mix-chr123-bs_512-32xl40s-aws`, a model checkpoint, not
+an eval-rows dataset) is still being pursued. Do not present chr123 as a
+verified MethylProphet-matched comparison scope until this is resolved; see
+`results/reference/methylprophet_comparison/chr1_official_split_verification.md`'s
+final section.
 
 ## Data contract (this repo's reproducible split)
 

@@ -1,3 +1,9 @@
 status: pending
 model: cpg_statistics
 training_scope: chr123
+note: >
+  A joint mu/sigma checkpoint for this scope was trained once (2026-08-19, current RunStore-format
+  path) but the checkpoint file itself is now lost -- only derived prior/sigma arrays baked into
+  derived/rna_feature_cache/chr123/ survive. Needs a redo, not a first run. Not a MethylProphet
+  comparison scope (see rna_methylation/chr123.yaml note): roadmap priority is chr1
+  (verified) -> genomewide first.
