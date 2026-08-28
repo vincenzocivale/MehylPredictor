@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from methylation_predictor.config import ModelConfig
-from methylation_predictor.models import RNA2DNAmModel
+from methylation_predictor.models import RNA2DNAmModel, VarianceNormalizedResidualModel
 
 
 def _config() -> ModelConfig:
@@ -111,4 +111,115 @@ def test_zero_initialization_is_not_optional():
     cfg = _config()
     cfg.zero_init_residual = False
     with pytest.raises(ValueError, match="zero_init_residual=true"):
+        RNA2DNAmModel(input_dim=5, locus_dim=3, config=cfg)
+
+
+def test_include_product_defaults_true_and_is_opt_in_only():
+    cfg = _config()
+    assert cfg.interaction.include_product is True
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    assert model.interaction.include_product is True
+    assert model.interaction.rna_product is not None
+    assert model.interaction.locus_product is not None
+
+
+def test_no_product_ablation_drops_product_term_and_still_starts_at_prior():
+    torch.manual_seed(5)
+    cfg = _config()
+    cfg.interaction.include_product = False
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    assert model.interaction.rna_product is None
+    assert model.interaction.locus_product is None
+    # joint_dim should be rna_dim(256) + locus_dim(7), no product_dim added.
+    assert model.interaction.network[1].in_features == 256 + 7
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+
+    out = model(rna, loci, prior, sigma)
+
+    assert out["beta"].shape == (3, 4)
+    assert torch.allclose(out["beta"], prior.unsqueeze(0).expand(3, -1), atol=1e-6)
+
+
+def test_product_only_ablation_drops_raw_rna_and_cpg():
+    torch.manual_seed(6)
+    cfg = _config()
+    cfg.interaction.include_rna = False
+    cfg.interaction.include_cpg = False
+    cfg.interaction.include_product = True
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    product_dim = min(256, 7)
+    assert model.interaction.network[1].in_features == product_dim
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+    out = model(rna, loci, prior, sigma)
+    assert out["beta"].shape == (3, 4)
+
+
+def test_cpg_product_ablation_drops_raw_rna_only():
+    torch.manual_seed(7)
+    cfg = _config()
+    cfg.interaction.include_rna = False
+    cfg.interaction.include_cpg = True
+    cfg.interaction.include_product = True
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    product_dim = min(256, 7)
+    assert model.interaction.network[1].in_features == 7 + product_dim
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+    out = model(rna, loci, prior, sigma)
+    assert out["beta"].shape == (3, 4)
+
+
+def test_at_least_one_interaction_piece_is_required():
+    cfg = _config()
+    cfg.interaction.include_rna = False
+    cfg.interaction.include_cpg = False
+    cfg.interaction.include_product = False
+    with pytest.raises(ValueError, match="at least one"):
+        VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+
+
+def test_wider_rna_latent_is_an_opt_in_scaling_ablation():
+    torch.manual_seed(8)
+    cfg = _config()
+    cfg.encoder.latent_dim = 512
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    assert model.rna_encoder.projection.out_features == 512
+    product_dim = min(512, 7)
+    assert model.interaction.network[1].in_features == 512 + 7 + product_dim
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+    out = model(rna, loci, prior, sigma)
+    assert out["beta"].shape == (3, 4)
+    # zero-init still holds regardless of latent width
+    assert torch.allclose(out["beta"], prior.unsqueeze(0).expand(3, -1), atol=1e-6)
+
+
+def test_rna2dnam_still_rejects_nonstandard_latent_dim():
+    # RNA2DNAmModel (legacy flat-residual baseline) is untouched by the
+    # latent-dim ablation: it must keep failing closed on non-256 widths.
+    cfg = _config()
+    cfg.encoder.latent_dim = 512
+    with pytest.raises(ValueError, match="256-D RNA latent"):
         RNA2DNAmModel(input_dim=5, locus_dim=3, config=cfg)

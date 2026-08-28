@@ -12,3 +12,28 @@ training_search:
   stage2: {learning_rate: 5.0e-5, scheduler: constant, best_epoch: 57, inner_double_ood_mas_pcc: 0.5703794608764824}
   stage3: {learning_rate: 5.0e-5, scheduler: constant, best_epoch: 80, inner_double_ood_mas_pcc: 0.5711912384841799}
   selected: {learning_rate: 5.0e-5, scheduler: constant, epochs: 80}
+interaction_concat_and_latent_dim_2026_08:
+  # scope=chr1, mode=development (inner double-OOD split), lr 5e-5 constant, 80-epoch
+  # budget, single seed=17 run per arm. Ran to check whether the canonical
+  # [rna, cpg, projected_rna * projected_cpg] MLP input (ProductInteraction) is
+  # unnecessarily complex, and whether widening the canonical 256-D RNA latent helps.
+  interaction_concat:
+    product_canonical: {best_epoch: 66, inner_double_ood_mas_pcc: 0.5155717891620339}
+    product_only: {best_epoch: 68, inner_double_ood_mas_pcc: 0.5134622078412563}
+    cpg_product_no_raw_rna: {best_epoch: 66, inner_double_ood_mas_pcc: 0.512564532403244}
+    no_product_rna_cpg_only: {best_epoch: 79, inner_double_ood_mas_pcc: 0.4887319849031522}
+  latent_dim:
+    latent_256_canonical: {inner_double_ood_mas_pcc: 0.5155717891620339}
+    latent_512: {best_epoch: 79, inner_double_ood_mas_pcc: 0.517627737035514}
+    latent_1024: {best_epoch: 68, inner_double_ood_mas_pcc: 0.5177722273718632}
+  conclusion: >
+    The product interaction term matters (no_product is clearly worst, -0.027 vs canonical);
+    once present, whether raw rna/cpg are also concatenated barely moves the metric (all three
+    product-containing arms within ~0.003). Widening the RNA latent 256->512->1024 gives a
+    small, saturating gain (+0.002 then +0.0001) not judged worth the ~4x parameter/VRAM cost.
+    Single seed/run per arm, chr1 only -- directional evidence, not conclusive. User's decision:
+    no permanent architecture change adopted; canonical recipe (configs/models/rna_methylation.yaml,
+    all interaction.include_* true, encoder.latent_dim=256) left unchanged. The
+    include_rna/include_cpg/include_product flags on InteractionConfig and the now-configurable
+    encoder.latent_dim on VarianceNormalizedResidualModel remain available in models.py/config.py
+    for any future re-run of this study.

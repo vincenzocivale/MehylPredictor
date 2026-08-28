@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class EncoderConfig:
     kind: str = "linear"
+    # Canonical width of the RNA latent (LinearRNAEncoder output / ProductInteraction
+    # rna_dim). A wider value is an architecture-scaling ablation only -- see
+    # docs/RNA_METHYLATION.md ablation note before flipping this in a non-experimental recipe.
     latent_dim: int = 256
     layer_norm: bool = True
 
@@ -22,6 +25,16 @@ class InteractionConfig:
     kind: str = "concat"
     hidden_dim: int = 128
     dropout: float = 0.1
+    # Canonical (all True): joint MLP input is [rna, cpg, projected_rna * projected_cpg].
+    # Each flag is an independent architecture-simplification ablation switch -- setting
+    # one to False drops that piece from the MLP's joint input (the product term, when
+    # included, is always computed from the *projected* rna/cpg regardless of whether the
+    # raw rna/cpg pieces are also included). At least one must stay True. See
+    # docs/RNA_METHYLATION.md ablation note before flipping any of these in a
+    # non-experimental recipe.
+    include_rna: bool = True
+    include_cpg: bool = True
+    include_product: bool = True
 
 
 @dataclass(slots=True)
