@@ -306,13 +306,14 @@ class MethylProphetTrainer:
         feature_cache: str | Path,
         rna_cache: str | Path,
         array_cache: str | Path,
-        epic_cache: str | Path,
+        epic_cache: str | Path | None = None,
         output_dir: str | Path,
         epochs: int,
         seed: int = 17,
         block_rows: dict[str, int] | None = None,
         block_cpgs: dict[str, int] | None = None,
         structured_loss_sources: set[str] | None = None,
+        sources: set[str] | None = None,
     ):
         if epochs < 1:
             raise ValueError("epochs must be positive")
@@ -327,6 +328,21 @@ class MethylProphetTrainer:
         self.epochs = int(epochs); self.seed = int(seed)
         self.block_rows = block_rows or {"array": 512, "epic": 128, "wgbs": 32}
         self.block_cpgs = block_cpgs or {"array": 512, "epic": 4096, "wgbs": 16384}
+        # Which sources actually train this run. Defaults to all three so
+        # every pre-existing call site (the frozen Table-5 `run.sh` path,
+        # the `reference` experiment) is byte-identical when omitted; a
+        # restricted subset is used for source-ablation experiments (e.g.
+        # MethylProphet Table 7's T(A)/T(A+W) rows) that reuse the exact same
+        # Array chr1 split and prepared caches. Evaluation always depends on
+        # Array, so it must always be included.
+        self.sources = set(sources or {"array", "epic", "wgbs"})
+        unknown_sources = self.sources - {"array", "epic", "wgbs"}
+        if unknown_sources:
+            raise ValueError(f"unknown training sources: {sorted(unknown_sources)}")
+        if "array" not in self.sources:
+            raise ValueError("'array' must be included in sources (evaluation depends on it)")
+        if "epic" in self.sources and epic_cache is None:
+            raise ValueError("epic_cache is required when 'epic' is in sources")
         self.structured_loss_sources = set(structured_loss_sources or {"array", "epic", "wgbs"})
         unknown = self.structured_loss_sources - {"array", "epic", "wgbs"}
         if unknown:
@@ -340,10 +356,13 @@ class MethylProphetTrainer:
             )
         self.features = FinalFeatureCache(feature_cache)
         self.rna = RNACache(rna_cache)
-        self.compact = {
-            "array": ExactCompactSource(array_cache),
-            "epic": ExactCompactSource(epic_cache),
+        self.compact = {"array": ExactCompactSource(array_cache)}
+        if "epic" in self.sources:
+            self.compact["epic"] = ExactCompactSource(epic_cache)
+        self.expected_observed = {
+            k: v for k, v in SOURCE_EXPECTED_OBSERVED.items() if k in self.sources
         }
+        self.expected_total_observed = sum(self.expected_observed.values())
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.device.type != "cuda":
             raise RuntimeError("final paper training requires CUDA")
@@ -381,7 +400,6 @@ class MethylProphetTrainer:
 
     def _build_pools(self) -> list[TrainingPool]:
         array = self.compact["array"]
-        epic = self.compact["epic"]
         # Exact cache layout: Array train rows/CpGs first, validation second.
         n_array_s = len(self.protocol.array_train_sample_idx)
         n_array_c = len(self.protocol.array_train_cpg_idx)
@@ -389,23 +407,26 @@ class MethylProphetTrainer:
             raise RuntimeError("Array Table-5 compact cache train sample order mismatch")
         if not np.array_equal(array.cpg_idx[:n_array_c], self.protocol.array_train_cpg_idx):
             raise RuntimeError("Array Table-5 compact cache train CpG order mismatch")
-        if not np.array_equal(epic.cpg_idx, self.protocol.epic_train_cpg_idx):
-            raise RuntimeError("EPIC Table-5 compact cache CpG order mismatch")
         pools = [
             TrainingPool(
                 "array", np.arange(n_array_s, dtype=np.int64),
                 self.protocol.array_train_sample_idx, self.protocol.array_train_cpg_idx,
             ),
-            TrainingPool(
+        ]
+        if "epic" in self.sources:
+            epic = self.compact["epic"]
+            if not np.array_equal(epic.cpg_idx, self.protocol.epic_train_cpg_idx):
+                raise RuntimeError("EPIC Table-5 compact cache CpG order mismatch")
+            pools.append(TrainingPool(
                 "epic", np.arange(len(epic.sample_idx), dtype=np.int64),
                 epic.sample_idx, self.protocol.epic_train_cpg_idx,
-            ),
-        ]
-        wgbs = self.bundle.sources["wgbs"]
-        pools.append(TrainingPool(
-            "wgbs", np.arange(wgbs.n_rows, dtype=np.int64),
-            np.asarray(wgbs.sample_idx, np.int64), self.protocol.wgbs_train_cpg_idx,
-        ))
+            ))
+        if "wgbs" in self.sources:
+            wgbs = self.bundle.sources["wgbs"]
+            pools.append(TrainingPool(
+                "wgbs", np.arange(wgbs.n_rows, dtype=np.int64),
+                np.asarray(wgbs.sample_idx, np.int64), self.protocol.wgbs_train_cpg_idx,
+            ))
         required = np.unique(np.concatenate([p.cpg_idx for p in pools]))
         self.features.index.positions_of(required)
         return pools
@@ -474,8 +495,8 @@ class MethylProphetTrainer:
             "schedule": "complete Cartesian sample-block x CpG-block coverage",
             "steps_per_source": counts,
             "steps_per_epoch": len(plan),
-            "expected_finite_pairs_per_source": SOURCE_EXPECTED_OBSERVED,
-            "expected_finite_pairs_per_epoch": TABLE5_EXPECTED["total_train_observed"],
+            "expected_finite_pairs_per_source": self.expected_observed,
+            "expected_finite_pairs_per_epoch": self.expected_total_observed,
             "coverage": {p.name: schedule.coverage_report() for p, schedule in zip(self.pools, schedules)},
         }
 
@@ -579,6 +600,7 @@ class MethylProphetTrainer:
             "training": "single_stage_fixed_budget_complete_table5_pair_coverage_no_heldout_selection",
             "protocol": TABLE5_PROTOCOL_NAME,
             "seed": self.seed, "epochs": self.epochs,
+            "sources": sorted(self.sources),
             "structured_loss_sources": sorted(self.structured_loss_sources),
             "schedule": schedule_info,
         }
@@ -636,7 +658,7 @@ class MethylProphetTrainer:
                         )
                         scale = pair_weight_scale(
                             int(pieces["observed"]),
-                            TABLE5_EXPECTED["total_train_observed"],
+                            self.expected_total_observed,
                             len(plan),
                         )
                         loss = raw_loss * scale
@@ -680,11 +702,11 @@ class MethylProphetTrainer:
                 # Fail closed: every source-local full-coverage schedule must be consumed.
                 if source_steps != counts:
                     raise RuntimeError(f"incomplete Cartesian Table-5 epoch: actual={source_steps}, expected={counts}")
-                if source_observed != SOURCE_EXPECTED_OBSERVED:
+                if source_observed != self.expected_observed:
                     raise RuntimeError(
-                        f"Table-5 pair coverage mismatch: actual={source_observed}, expected={SOURCE_EXPECTED_OBSERVED}"
+                        f"Table-5 pair coverage mismatch: actual={source_observed}, expected={self.expected_observed}"
                     )
-                if sum(source_observed.values()) != TABLE5_EXPECTED["total_train_observed"]:
+                if sum(source_observed.values()) != self.expected_total_observed:
                     raise RuntimeError("Table-5 total training pair coverage mismatch")
                 row = {
                     "epoch": epoch, "seconds": time.time() - started,
@@ -745,7 +767,20 @@ class MethylProphetTrainer:
         result["seconds"] = time.time() - started
         return result
 
-    def evaluate(self) -> dict[str, object]:
+    def evaluate(
+        self,
+        published_reference: dict | None = None,
+        published_label: str = "methylprophet_table5_published",
+    ) -> dict[str, object]:
+        """Evaluate on the official Array chr1 held-out views.
+
+        `published_reference`/`published_label` let a caller compare against
+        a different paper table than the default Table-5 mix reference (e.g.
+        MethylProphet Table 7's per-source rows in `TABLE7_PUBLISHED_METHYLPROPHET`)
+        while reusing the exact same evaluation code and Array split -- the
+        views/finite-pair counts are unaffected by which sources trained.
+        """
+        reference = published_reference if published_reference is not None else TABLE5_PUBLISHED_METHYLPROPHET
         views = self.protocol.evaluation_views()
         ours = {name: self._evaluate_array(s, c) for name, (s, c) in views.items()}
         for name, metrics in ours.items():
@@ -757,10 +792,11 @@ class MethylProphetTrainer:
         result = {
             "architecture": self.architecture_label,
             "protocol": TABLE5_PROTOCOL_NAME,
+            "sources": sorted(self.sources),
             "ours": ours,
-            "methylprophet_table5_published": TABLE5_PUBLISHED_METHYLPROPHET,
-            "delta_ours_minus_methylprophet_published": {
-                name: published_delta(metrics, name) for name, metrics in ours.items()
+            published_label: reference,
+            f"delta_ours_minus_{published_label}": {
+                name: published_delta(metrics, name, reference) for name, metrics in ours.items()
             },
         }
         out = self.output / "evaluation"; out.mkdir(exist_ok=True)
@@ -770,14 +806,18 @@ class MethylProphetTrainer:
             for view, metrics in ours.items():
                 for key in ("mse", "mae", "mas_pcc", "mac_pcc", "skill_vs_prior"):
                     summary[f"final/{view}/{key}"] = metrics[key]
-                delta = result["delta_ours_minus_methylprophet_published"][view]
+                delta = result[f"delta_ours_minus_{published_label}"][view]
                 for key, value in delta.items():
                     summary[f"table5_delta/{view}/{key}"] = value
             self.tracker.set_summary(summary)
         return result
 
-    def run(self) -> dict[str, object]:
+    def run(
+        self,
+        published_reference: dict | None = None,
+        published_label: str = "methylprophet_table5_published",
+    ) -> dict[str, object]:
         self.train()
-        result = self.evaluate()
+        result = self.evaluate(published_reference=published_reference, published_label=published_label)
         (self.output / ".done").write_text("ok\n")
         return result

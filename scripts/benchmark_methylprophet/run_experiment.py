@@ -18,6 +18,29 @@ import pyarrow  # noqa: F401 -- target-host import ordering
 import yaml
 
 from methylation_predictor.benchmark.methylprophet.trainer import MethylProphetTrainer
+from methylation_predictor.benchmark.methylprophet.protocol import (
+    TABLE5_PUBLISHED_METHYLPROPHET,
+    TABLE7_PUBLISHED_METHYLPROPHET,
+)
+
+# Maps an experiment spec's optional `published_reference:` name to the
+# (reference dict, headline.json label) MethylProphetTrainer.evaluate() should
+# compare against. `None`/omitted keeps the trainer's own Table-5-mix default.
+PUBLISHED_REFERENCE_REGISTRY = {
+    "table5_reference": (TABLE5_PUBLISHED_METHYLPROPHET, "methylprophet_table5_published"),
+    "table7_train_array": (
+        TABLE7_PUBLISHED_METHYLPROPHET["train_array"],
+        "methylprophet_table7_train_array_published",
+    ),
+    "table7_train_array_wgbs": (
+        TABLE7_PUBLISHED_METHYLPROPHET["train_array_wgbs"],
+        "methylprophet_table7_train_array_wgbs_published",
+    ),
+    "table7_train_array_epic": (
+        TABLE7_PUBLISHED_METHYLPROPHET["train_array_epic"],
+        "methylprophet_table7_train_array_epic_published",
+    ),
+}
 
 DEFAULT_CANONICAL_ROOT = Path(
     "/raid/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1"
@@ -116,7 +139,18 @@ def main() -> None:
     layout = spec.get("layout", {})
     block_rows = layout.get("block_rows")
     block_cpgs = layout.get("block_cpgs")
+    sources = set(spec.get("sources", ["array", "epic", "wgbs"]))
     structured_sources = set(spec.get("structured_loss_sources", ["array", "epic", "wgbs"]))
+    published_reference_name = spec.get("published_reference")
+    if published_reference_name is not None:
+        if published_reference_name not in PUBLISHED_REFERENCE_REGISTRY:
+            raise ValueError(
+                f"unknown published_reference {published_reference_name!r}; "
+                f"known: {sorted(PUBLISHED_REFERENCE_REGISTRY)}"
+            )
+        published_reference, published_label = PUBLISHED_REFERENCE_REGISTRY[published_reference_name]
+    else:
+        published_reference, published_label = None, "methylprophet_table5_published"
 
     experiment_manifest = {
         "benchmark": "benchmark_methylprophet",
@@ -127,7 +161,9 @@ def main() -> None:
         "config_sha256": config_sha256,
         "experiment_spec": str(experiment_path),
         "prepared_root": str(prepared_root),
+        "sources": sorted(sources),
         "structured_loss_sources": sorted(structured_sources),
+        "published_reference": published_reference_name,
         "block_rows": block_rows,
         "block_cpgs": block_cpgs,
     }
@@ -142,20 +178,21 @@ def main() -> None:
         feature_cache=prepared_root / "features",
         rna_cache=prepared_root / "rna",
         array_cache=prepared_root / "methylation" / "array_table5_chr1.h5",
-        epic_cache=prepared_root / "methylation" / "epic_table5_chr1.h5",
+        epic_cache=(prepared_root / "methylation" / "epic_table5_chr1.h5") if "epic" in sources else None,
         output_dir=run_dir,
         epochs=args.epochs,
         seed=args.seed,
         block_rows=block_rows,
         block_cpgs=block_cpgs,
         structured_loss_sources=structured_sources,
+        sources=sources,
     )
     try:
         print(json.dumps({
             "experiment": experiment_manifest,
             "schedule": trainer.schedule_summary(),
         }, indent=2), flush=True)
-        result = trainer.run()
+        result = trainer.run(published_reference=published_reference, published_label=published_label)
         print(json.dumps(result, indent=2), flush=True)
     finally:
         trainer.close()

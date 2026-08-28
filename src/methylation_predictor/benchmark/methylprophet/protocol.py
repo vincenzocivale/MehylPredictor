@@ -200,9 +200,46 @@ class Table5Protocol:
         return {field: sha256_ids(getattr(self, field)) for field in _MANIFEST_FILES}
 
 
-def published_delta(ours: dict[str, float], view: str) -> dict[str, float]:
-    reference = TABLE5_PUBLISHED_METHYLPROPHET[view]
+def published_delta(
+    ours: dict[str, float], view: str, reference: dict[str, dict[str, float]] | None = None
+) -> dict[str, float]:
+    reference = (reference if reference is not None else TABLE5_PUBLISHED_METHYLPROPHET)[view]
     return {
         metric: float(ours[metric]) - float(reference[metric])
         for metric in ("mas_pcc", "mac_pcc", "mse", "mae")
     }
+
+
+# MethylProphet paper Table 7 ("Results of training models on different data
+# sources"), TCGA rows only (ENCODE rows excluded here) -- a different
+# published table than TABLE5_PUBLISHED_METHYLPROPHET above, but evaluated on
+# the exact same Array chr1 held-out split (Table 7's "Val Data" column is
+# T(A) for every TCGA row). Keys match `Table5Protocol.evaluation_views()`.
+TABLE7_PUBLISHED_METHYLPROPHET = {
+    # Train Data = T(A): Array-only training.
+    "train_array": {
+        "train_cpg_x_val_sample": {"mas_pcc": 0.4000, "mac_pcc": 0.8669, "mse": 0.0363, "mae": 0.1216},
+        "val_cpg_x_train_sample": {"mas_pcc": 0.2769, "mac_pcc": 0.7914, "mse": 0.0555, "mae": 0.1498},
+        "val_cpg_x_val_sample": {"mas_pcc": 0.2597, "mac_pcc": 0.7930, "mse": 0.0557, "mae": 0.1504},
+    },
+    # Train Data = T(A+W): Array + WGBS training.
+    "train_array_wgbs": {
+        "train_cpg_x_val_sample": {"mas_pcc": 0.4705, "mac_pcc": 0.9112, "mse": 0.0252, "mae": 0.1006},
+        "val_cpg_x_train_sample": {"mas_pcc": 0.3244, "mac_pcc": 0.8674, "mse": 0.0365, "mae": 0.1205},
+        "val_cpg_x_val_sample": {"mas_pcc": 0.2981, "mac_pcc": 0.8673, "mse": 0.0369, "mae": 0.1212},
+    },
+    # Train Data = T(A+E): Array + EPIC training (EPIC assay, not the ENCODE dataset).
+    "train_array_epic": {
+        "train_cpg_x_val_sample": {"mas_pcc": 0.5226, "mac_pcc": 0.9232, "mse": 0.0222, "mae": 0.0920},
+        "val_cpg_x_train_sample": {"mas_pcc": 0.3727, "mac_pcc": 0.8738, "mse": 0.0350, "mae": 0.1147},
+        "val_cpg_x_val_sample": {"mas_pcc": 0.3451, "mac_pcc": 0.8743, "mse": 0.0355, "mae": 0.1157},
+    },
+    # Train Data = T(A+E+W): Array + EPIC + WGBS -- identical to TABLE5_PUBLISHED_METHYLPROPHET
+    # above (same numbers, same protocol); duplicated here under its Table-7 name so the
+    # published_reference registry lookup is uniform across all four TCGA rows.
+    "train_array_epic_wgbs": {
+        "train_cpg_x_val_sample": {"mas_pcc": 0.5455, "mac_pcc": 0.9320, "mse": 0.0199, "mae": 0.0882},
+        "val_cpg_x_train_sample": {"mas_pcc": 0.4194, "mac_pcc": 0.9065, "mse": 0.0266, "mae": 0.1000},
+        "val_cpg_x_val_sample": {"mas_pcc": 0.3904, "mac_pcc": 0.9059, "mse": 0.0271, "mae": 0.1011},
+    },
+}

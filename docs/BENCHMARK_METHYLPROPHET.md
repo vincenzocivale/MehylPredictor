@@ -146,6 +146,20 @@ correlation across CpGs (correlation across samples for each CpG); MAC-PCC is
 the median Pearson correlation across samples (correlation across CpGs for each
 sample), matching MethylProphet's evaluation code.
 
+## Table 7: training-source ablation (TCGA rows)
+
+`MethylProphetTrainer` accepts an opt-in `sources: {"array", "epic", "wgbs"}`
+subset (default: all three, so the frozen Table-5 path above is unaffected)
+plus a pluggable published-reference table for `evaluate()`/`run()`, so the
+exact same Array chr1 protocol/split can reproduce MethylProphet paper
+**Table 7** ("results of training models on different data sources"), TCGA
+rows only (ENCODE rows are a separate, not-yet-done experiment). All three
+TCGA rows — T(A), T(A+W), T(A+E) — are complete; results and
+`ours`-vs-`published` deltas are in
+[`results/reference/table7_source_ablation.md`](../results/reference/table7_source_ablation.md).
+The published Table 7 reference numbers live in
+`TABLE7_PUBLISHED_METHYLPROPHET` (`src/methylation_predictor/benchmark/methylprophet/protocol.py`).
+
 ## Required preflight
 
 Do **not** launch the expensive training first.  Prepare and audit the protocol:
