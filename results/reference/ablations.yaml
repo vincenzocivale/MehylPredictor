@@ -51,3 +51,72 @@ structured_loss_objective_variants_2026_08:
     All three structured-loss variants underperform the canonical objective on val-CpG x
     val-sample MAS-PCC (-0.013 to -0.022). None adopted; canonical objective
     (configs/models/rna_methylation.yaml loss block) left unchanged.
+sigma_normalization_2026_08:
+  # scope=chr1, matched_chr1 engine, seed=17, canonical LR/schedule/80-epoch budget.
+  # Does sigma-scaling the residual (VarianceNormalizedResidualModel, canonical) vs. a
+  # flat/unscaled residual (RNA2DNAmModel; model.variance_normalized_residual=false,
+  # loss weights mirrored onto the non-standardized residual_huber/shrinkage fields --
+  # configs/models/rna_methylation_ablation_flat_residual.yaml) change val-CpG x
+  # val-sample MAS-PCC?
+  canonical_sigma_normalized: {val_cpg_x_val_sample_mas_pcc: 0.5613}
+  flat_residual_no_sigma: {val_cpg_x_val_sample_mas_pcc: 0.5620}
+  conclusion: >
+    No measurable effect (+0.0007, within the noise band single-seed ablations in this
+    file show elsewhere). Sigma-scaling the residual is not the source of the model's
+    skill on this metric. Single seed/run per arm, chr1 only -- directional evidence, not
+    conclusive. No permanent architecture change adopted; canonical recipe
+    (configs/models/rna_methylation.yaml, variance_normalized_residual=true) left
+    unchanged. model.variance_normalized_residual=false remains available for any future
+    re-run of this study.
+prior_anchor_2026_08:
+  # scope=chr1, matched_chr1 engine, seed=17, canonical LR/schedule/80-epoch budget.
+  # Does anchoring the prediction to the CpG-statistics prior (canonical:
+  # logit(beta_hat) = logit(mu_i) + sigma_i * raw_delta) vs. predicting the logit
+  # directly with no prior/sigma at all (new DirectPredictionModel;
+  # model.use_prior_anchor=false, zero_init_residual=false, variance_normalized_
+  # residual=false -- configs/models/rna_methylation_ablation_direct_prediction.yaml)
+  # change val-CpG x val-sample MAS-PCC?
+  canonical_prior_anchored: {val_cpg_x_val_sample_mas_pcc: 0.5613}
+  direct_prediction_no_anchor: {val_cpg_x_val_sample_mas_pcc: 0.5548}
+  conclusion: >
+    Dropping the prior/mu anchor costs -0.0065 MAS-PCC -- a real, if modest, effect
+    (clearly outside the noise band the sigma_normalization_2026_08 and
+    interaction_concat_and_latent_dim_2026_08 studies show for their closest arms).
+    cpg_win_fraction also drops noticeably (0.65 vs the canonical run's higher rate),
+    consistent with the model struggling most on loci where a locus-specific mean
+    would otherwise have anchored the prediction. Single seed/run, chr1 only --
+    directional evidence, not conclusive. No permanent architecture change adopted;
+    canonical recipe (configs/models/rna_methylation.yaml, use_prior_anchor implicitly
+    true by omission) left unchanged. model.use_prior_anchor=false and
+    DirectPredictionModel remain available for any future re-run of this study.
+fusion_mechanism_2026_08:
+  # scope=chr1, matched_chr1 engine (switched from the generic engine used by
+  # interaction_concat_and_latent_dim_2026_08 -- the generic engine's shared
+  # rna_feature_cache/chr1 turned out to cover only the 40,627 official Array CpGs,
+  # not the full tcga_mix_chr1 multi-technology universe axis_full_coverage needs;
+  # matched_chr1 has its own isolated cache), seed=17, canonical LR/schedule/80-epoch
+  # budget. Extends the concat/product-only/concat+product axis
+  # (interaction_concat_and_latent_dim_2026_08) with three new RNA-CpG fusion
+  # mechanisms via InteractionConfig.kind + build_interaction() (models.py):
+  # FiLM/gating, single-head cross-attention (sigmoid-gated, no seq-pooling axis
+  # exists in this Cartesian batch shape), and low-rank bilinear pooling. Note this
+  # study's canonical baseline (matched_chr1, official split) is not numerically
+  # comparable to interaction_concat_and_latent_dim_2026_08's (generic engine,
+  # inner double-OOD dev split, 0.5155717891620339) -- compare only within this block.
+  canonical_concat_product: {val_cpg_x_val_sample_mas_pcc: 0.5613}
+  film: {val_cpg_x_val_sample_mas_pcc: 0.5530}
+  bilinear: {val_cpg_x_val_sample_mas_pcc: 0.5460}
+  cross_attention: {val_cpg_x_val_sample_mas_pcc: 0.5329}
+  conclusion: >
+    None of the three new fusion mechanisms beat the canonical concat+product
+    interaction; all three regress it (film -0.0083, bilinear -0.0153, cross_attention
+    -0.0285), with cross_attention the worst by a wide margin. Combined with
+    interaction_concat_and_latent_dim_2026_08's earlier finding that the product term
+    matters but extra concatenation barely helps, this is consistent evidence that the
+    canonical [rna, cpg, proj(rna)*proj(cpg)] joint MLP input is a comparatively strong,
+    simple choice among the mechanisms tried so far. Single seed/run per arm, chr1 only
+    -- directional evidence, not conclusive. No permanent architecture change adopted;
+    canonical recipe (configs/models/rna_methylation.yaml, interaction.kind=concat) left
+    unchanged. FiLMInteraction/CrossAttentionInteraction/BilinearInteraction and
+    InteractionConfig.kind={film,cross_attention,bilinear} remain available in
+    models.py/config.py for any future re-run of this study.
