@@ -204,16 +204,22 @@ class CrossAttentionInteraction(nn.Module):
 class BilinearInteraction(nn.Module):
     """Fusion-mechanism ablation: learned low-rank bilinear RNA-CpG interaction.
 
-    Generalizes ``ProductInteraction``'s elementwise product term to a
-    learned rank-``rank`` bilinear form via ``nn.Bilinear``. Not used by any
-    canonical model path -- see ``InteractionConfig.kind`` /
-    docs/RNA_METHYLATION.md ablation note.
+    Generalizes ``ProductInteraction``'s elementwise product term (rank ==
+    ``min(rna_dim, locus_dim)``, one shared projection pair) to an
+    independent rank-``rank`` low-rank bilinear form: separate ``rna``/
+    ``locus`` projections to ``rank`` dims, combined elementwise. This is the
+    standard memory-efficient low-rank bilinear pooling factorization; a
+    literal ``nn.Bilinear(rna_dim, locus_dim, rank)`` was tried first but its
+    dense per-pair weight tensor OOMs on the large WGBS Cartesian blocks
+    (batch*n_loci ~ 5*10^5) used here. Not used by any canonical model path --
+    see ``InteractionConfig.kind`` / docs/RNA_METHYLATION.md ablation note.
     """
 
     def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float, rank: int = 64):
         super().__init__()
         self.rank = rank
-        self.bilinear = nn.Bilinear(rna_dim, locus_dim, rank)
+        self.rna_bilinear = nn.Linear(rna_dim, rank)
+        self.locus_bilinear = nn.Linear(locus_dim, rank)
         joint_dim = rna_dim + locus_dim + rank
         self.network = nn.Sequential(
             nn.LayerNorm(joint_dim),
@@ -226,9 +232,9 @@ class BilinearInteraction(nn.Module):
     def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
         batch = rna.global_vector.shape[0]
         n_loci = loci.shape[0]
-        rna_exp = rna.global_vector[:, None, :].expand(batch, n_loci, -1).reshape(batch * n_loci, -1)
-        loci_exp = loci[None, :, :].expand(batch, n_loci, -1).reshape(batch * n_loci, -1)
-        bilinear_features = self.bilinear(rna_exp, loci_exp).reshape(batch, n_loci, self.rank)
+        bilinear_features = (
+            self.rna_bilinear(rna.global_vector)[:, None, :] * self.locus_bilinear(loci)[None, :, :]
+        )  # (batch, n_loci, rank)
         joint = torch.cat(
             [
                 rna.global_vector[:, None, :].expand(batch, n_loci, -1),
