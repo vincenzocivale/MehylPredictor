@@ -30,22 +30,27 @@ verified" note).
 | scope | train-CpG × val-sample | val-CpG × train-sample | val-CpG × val-sample |
 |---|---:|---:|---:|
 | chr1 | 0.6327 / 0.01278 | 0.5984 / 0.01874 | 0.5613 / 0.01941 |
-| chr123 | *pending — see `results/reference/rna_methylation/chr123.yaml`* | | |
+| chr123 | 0.5468 / 0.01592 | 0.5492 / 0.02198 | 0.5034 / 0.02287 |
 | genomewide | 0.5889 / 0.01482 | 0.5800 / 0.02099 | 0.5244 / 0.02223 |
 
 Cells are `MAS-PCC / MSE`. Genome-wide per-chromosome mean MAS-PCC: 0.5196
 (observed range 0.459–0.579). LR 5e-5, constant scheduler, 80 epochs, seed 17
-for both frozen chr1 and genome-wide runs.
+for chr1, chr123, and genome-wide runs. chr123 (2026-08-31) is not a
+MethylProphet-matched result -- see the scope note above -- and required
+extending the generic engine's feature cache to the full multi-technology
+CpG universe (see `results/reference/PROVENANCE.md`).
 
 ### `cpg_statistics`
 
 Joint mu/sigma ensemble model (retrained 2026-08-28 after fixing a real bug where
 `cpg_statistics/{trainer,evaluator,export}.py` read the wrong NTv3 embedding HDF5 key --
-see `results/reference/PROVENANCE.md`). chr123 is deferred, not yet retrained.
+see `results/reference/PROVENANCE.md`). chr123 retrained 2026-08-31 (replaces a lost
+2026-08-19 checkpoint).
 
 | scope | heldout mu beta MSE | heldout mu PCC | heldout mu R² | heldout sigma PCC |
 |---|---:|---:|---:|---:|
 | chr1 | 0.00782 | 0.9668 | 0.9337 | 0.7761 |
+| chr123 | 0.00873 | 0.9635 | 0.9269 | 0.7657 |
 | genomewide | 0.00822 | 0.9660 | 0.9322 | 0.7581 |
 
 ## Head-to-head comparison with MethylProphet (published SOTA)

@@ -1,9 +1,26 @@
-status: pending
+status: reference
 model: cpg_statistics
 training_scope: chr123
+seed: 17
+training:
+  learning_rate: 1.0e-3
+  scheduler: constant
+  epochs: 40
+  best_epoch: 23
+architecture: joint_mu_sigma_ensemble
 note: >
-  A joint mu/sigma checkpoint for this scope was trained once (2026-08-19, current RunStore-format
-  path) but the checkpoint file itself is now lost -- only derived prior/sigma arrays baked into
-  derived/rna_feature_cache/chr123/ survive. Needs a redo, not a first run. Not a MethylProphet
-  comparison scope (see rna_methylation/chr123.yaml note): roadmap priority is chr1
-  (verified) -> genomewide first.
+  Joint mu/sigma ensemble model (retrained 2026-08-31, same fix/architecture as the 2026-08-28
+  chr1/genomewide retrains). Replaces the 2026-08-19 checkpoint, which was lost -- only its derived
+  prior/sigma arrays baked into the (now also regenerated) rna_feature_cache/chr123/ had survived.
+evaluation:
+  chr123:
+    mu_beta_mse: 0.008726506029996826
+    mu_mae: 0.06075561706180336
+    mu_pcc: 0.9634828505129949
+    mu_r2: 0.9268852543196832
+    mu_logit_mse: 0.4428029670055785
+    sigma_mse: 0.07703112887856131
+    sigma_mae: 0.20055425083337874
+    sigma_pcc: 0.7656776988290286
+    log_sigma_mse: 0.13225830147029125
+benchmark_role: supporting model for the rna_methylation chr123 prior/sigma input

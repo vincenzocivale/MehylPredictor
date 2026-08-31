@@ -1,11 +1,32 @@
-status: pending
+status: reference
 model: rna_methylation
 training_scope: chr123
-benchmark_role: general scope; NOT currently a verified MethylProphet comparison
+seed: 17
+training:
+  learning_rate: 5.0e-5
+  scheduler: constant
+  epochs: 80
+  mode: final
+  engine: generic
+evaluation:
+  chr123:
+    train_cpg_x_val_sample: {mas_pcc: 0.5468, mac_pcc: 0.9452, mse: 0.01592, mae: 0.07465}
+    val_cpg_x_train_sample: {mas_pcc: 0.5492, mac_pcc: 0.9230, mse: 0.02198, mae: 0.08994}
+    val_cpg_x_val_sample: {mas_pcc: 0.5034, mac_pcc: 0.9200, mse: 0.02287, mae: 0.09173}
+benchmark_role: general scope; NOT a verified MethylProphet comparison
 note: >
-  No frozen reference result is recorded yet; do not fabricate one from chr1 or genome-wide runs.
-  Roadmap priority is chr1 (verified) -> genomewide; chr123 is deferred. Its CpG-split provenance
-  (note1 union note4) is unverified against a real released MethylProphet artifact -- unlike chr1
-  (see results/reference/methylprophet_comparison/chr1_official_split_verification.md), access to
-  an equivalent chr123 verification source is still being pursued. Do not label chr123 results
-  "MethylProphet-matched" until that access succeeds.
+  First-ever completed rna_methylation training run for this scope (2026-08-31). Uses the generic
+  engine, not a paper-matched pipeline: no matched_chr123 equivalent to matched_chr1 exists.
+  Required extending the rna_methylation feature cache beyond the cpg_statistics/chr123 official-
+  Array-only universe (93,104 CpGs) to the full tcga_mix_chr123 protocol universe (5,407,797 CpGs,
+  i.e. +5,314,693 EPIC/WGBS-only auxiliary loci) -- built via a one-off padding script (auxiliary
+  rows carry official_train_mask=false, placeholder target_mu/sigma=0, model-predicted mu/sigma used
+  at export instead), not scripts/prepare.py itself; see PROVENANCE.md. All 5,407,797 required CpGs
+  were already present in the NTv3 atlas, so no new NTv3 inference was needed. Training took ~3h54m
+  (80 epochs, final mode, single run) on this machine, dominated by the ~5.4M-locus WGBS auxiliary
+  pool.
+  Its CpG-split provenance (note1 union note4) is unverified against a real released MethylProphet
+  artifact -- unlike chr1 (see results/reference/methylprophet_comparison/chr1_official_split_verification.md),
+  access to an equivalent chr123 verification source is still being pursued. Do not label this
+  "MethylProphet-matched" until that access succeeds; MethylProphet's paper never published chr123
+  numbers at all, so there is no baseline to compare against regardless.
