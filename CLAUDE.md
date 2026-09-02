@@ -64,6 +64,14 @@ python scripts/tune.py --model rna_methylation --scope chr123 --lrs 2e-5,5e-5,8e
 python scripts/evaluate.py --model rna_methylation --checkpoint /path/to/best.pt --eval-scope genomewide ...
 ```
 
+A fifth, read-only diagnostic entrypoint explains a trained `rna_methylation` checkpoint's
+predictions rather than training/evaluating one -- see `docs/EXPLAINABILITY.md`:
+
+```bash
+python scripts/explain.py --checkpoint /path/to/best.pt --canonical-root ... --feature-cache ... \
+  --rna-cache ... --sample-idx 1234 --cpg-idx-file candidate_cpg_ids.npy --auto-top-loci 20
+```
+
 Exact MethylProphet chr1 reproduction path (frozen, pair-complete):
 
 ```bash

@@ -2,7 +2,9 @@
 
 `RNAMethylationPredictor` (former "V1"): frozen NTv3 CpG embedding + RNA ->
 sample-specific methylation. See [`CPG_STATISTICS.md`](CPG_STATISTICS.md) for
-the companion `CpGStatisticsPredictor` (mu, sigma) model this one consumes.
+the companion `CpGStatisticsPredictor` (mu, sigma) model this one consumes, and
+[`EXPLAINABILITY.md`](EXPLAINABILITY.md) for attributing a trained checkpoint's
+predictions back to RNA genes (`scripts/explain.py`).
 
 ```text
 RNA (25,017) -> LayerNorm -> Linear(256) -> z_s
