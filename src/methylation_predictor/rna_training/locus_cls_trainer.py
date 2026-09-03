@@ -118,6 +118,7 @@ class LocusCLSJointTrainer:
         early_stop_patience: int | None = None,
         run_id: str | None = None,
         overrides: dict | None = None,
+        track: bool = True,
     ):
         # >1.0 gives the raw/RNA branch (raw_branch, fusion, residual_head --
         # everything that only ever gets gradient through the fusion layer,
@@ -217,6 +218,42 @@ class LocusCLSJointTrainer:
                 "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
                 "trunk_hidden_dim": trunk_hidden_dim, "bottleneck_dim": bottleneck_dim,
+            },
+        })
+
+        # wandb: one run per training call, resumed later by evaluate_official_split
+        # so the official-split numbers land as `val/*` in the same run instead of a
+        # disconnected second entry -- see that function and _save_checkpoint below,
+        # which persists (project, entity, run_id) into the checkpoint for exactly
+        # that resume. `track=False` is used by evaluate_official_split's own scratch
+        # trainer instance so evaluation-only re-instantiation never opens a second,
+        # spurious training run.
+        self.wandb_run = None
+        tracking = self.recipe.tracking
+        if track and tracking.backend == "wandb" and tracking.mode != "disabled":
+            import wandb
+            kwargs = {
+                "project": tracking.project, "entity": tracking.entity,
+                "group": tracking.group or self.architecture_label,
+                "name": tracking.name or self.store.run_id, "job_type": tracking.job_type,
+                "mode": tracking.mode, "dir": str(self.store.path),
+                "tags": [*tracking.tags, f"scope-{scope}", f"mode-{mode}", self.architecture_label],
+                "config": {
+                    "model": asdict(self.recipe.model), "loss": asdict(self.recipe.loss),
+                    "training": asdict(self.recipe.training), "schedule_policy": self.recipe.schedule_policy,
+                    "locus_cls": {
+                        "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
+                        "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
+                        "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
+                    },
+                    "scope": scope, "mode": mode, "seed": self.seed, "architecture": self.architecture_label,
+                },
+            }
+            self.wandb_run = wandb.init(**{k: v for k, v in kwargs.items() if v is not None})
+        self.store.save_metadata({
+            "architecture": self.architecture_label, "seed": self.seed,
+            "wandb": None if self.wandb_run is None else {
+                "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
             },
         })
 
@@ -413,6 +450,9 @@ class LocusCLSJointTrainer:
                 "fusion_init_std": self._fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
             },
+            "wandb": None if self.wandb_run is None else {
+                "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
+            },
         }
         tmp = Path(str(path) + ".tmp")
         torch.save(payload, tmp)
@@ -463,6 +503,7 @@ class LocusCLSJointTrainer:
             self.model.train()
             schedules, plan = self._schedules(epoch)
             losses = []
+            piece_sums: dict[str, list[float]] = {}
             optimizer_steps = 0
             for source_i, local_step in plan:
                 pool = self.pools[source_i]
@@ -479,11 +520,14 @@ class LocusCLSJointTrainer:
                 scheduler.step()
                 optimizer_steps += 1
                 losses.append(float(loss.detach()))
+                for key, value in pieces.items():
+                    piece_sums.setdefault(key, []).append(value)
             row = {
                 "epoch": epoch, "seconds": time.time() - started, "optimizer_steps": optimizer_steps,
                 "loss": float(np.mean(losses)) if losses else float("nan"),
                 "lr": optimizer.param_groups[0]["lr"],
             }
+            piece_means = {k: float(np.mean(v)) for k, v in piece_sums.items() if v}
             if self.mode == "development":
                 dev = self.evaluate_development()
                 row["development"] = dev
@@ -505,6 +549,17 @@ class LocusCLSJointTrainer:
             self._save_checkpoint(latest, optimizer, scheduler, epoch, history)
             write_json(self.store.training_file("history.json"), history)
             print(f"[locus-cls-joint:{self.scope}:{self.mode}:{epoch}/{self.epochs}] loss={row['loss']:.6g}", flush=True)
+            if self.wandb_run is not None:
+                wandb_log = {
+                    "train/loss": row["loss"], "train/lr": row["lr"], "train/seconds": row["seconds"],
+                    "train/optimizer_steps": row["optimizer_steps"],
+                    **{f"train/{k}": v for k, v in piece_means.items()},
+                    **{f"diagnostics/{k}": v for k, v in diagnostics.items()},
+                }
+                if self.mode == "development":
+                    for view_name, view_metrics in row["development"].items():
+                        wandb_log.update({f"val/{view_name}/{k}": v for k, v in view_metrics.items()})
+                self.wandb_run.log(wandb_log, step=epoch)
             if self.early_stop_patience is not None:
                 if self.mode == "development":
                     stalled = epoch - best_epoch >= self.early_stop_patience
@@ -525,6 +580,15 @@ class LocusCLSJointTrainer:
             "elapsed_seconds": time.time() - started_all, "run_dir": str(self.store.path),
         }
         write_json(self.store.training_file("summary.json"), summary)
+        if self.wandb_run is not None:
+            # finish() here so the run reads as complete rather than "crashed" for
+            # anyone inspecting it before evaluation runs. evaluate_official_split
+            # (a separate CLI call on this engine, see its docstring) resumes this
+            # exact run id -- via the (project, entity, run_id) this class persists
+            # into the checkpoint above -- and appends the official-split `val/*`
+            # numbers to it, so one wandb run still carries the whole story.
+            self.wandb_run.summary.update({f"train/{k}": v for k, v in summary.items() if k != "run_dir"})
+            self.wandb_run.finish()
         return summary
 
 
@@ -551,7 +615,11 @@ def evaluate_official_split(
     lc = ckpt.get("locus_cls") or {}
     # LocusCLSJointTrainer always wants its own run-store scratch dir (distinct
     # from `output`, which here is the single evaluation-summary JSON file the
-    # scripts/evaluate.py CLI convention expects).
+    # scripts/evaluate.py CLI convention expects). track=False: this is an
+    # evaluation-only re-instantiation of the model, not a second training run --
+    # it must not open its own wandb run. The training run this checkpoint came
+    # from is resumed explicitly below instead, by (project, entity, run_id)
+    # persisted into the checkpoint by LocusCLSJointTrainer._save_checkpoint.
     scratch_root = Path(output).parent / ".eval_runs"
     trainer = LocusCLSJointTrainer(
         canonical_root=canonical_root, scope="chr1", recipe_path=recipe_path,
@@ -561,6 +629,7 @@ def evaluate_official_split(
         use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
         fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
+        track=False,
     )
     try:
         trainer.model.load_state_dict(ckpt["model_state"])
@@ -573,6 +642,17 @@ def evaluate_official_split(
             "eval_scope": "chr1", "view": "official_val_cpg_x_val_sample", "metrics": result,
         }
         write_json(Path(output), summary)
+        wandb_info = ckpt.get("wandb")
+        if wandb_info and wandb_info.get("run_id"):
+            import wandb
+            run = wandb.init(
+                project=wandb_info.get("project"), entity=wandb_info.get("entity"),
+                id=wandb_info["run_id"], resume="must",
+            )
+            run.log({f"val/official_{k}": v for k, v in result.items()})
+            run.summary.update({f"val/official_{k}": v for k, v in result.items()})
+            run.summary.update({"val/official_view": summary["view"], "val/official_checkpoint_epoch": ckpt.get("epoch")})
+            run.finish()
         return summary
     finally:
         trainer.close()

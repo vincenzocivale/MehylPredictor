@@ -83,4 +83,9 @@ development:
   block_bp: 5000000
 
 tracking:
-  backend: none
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: reference
+  job_type: train
+  tags: [rna-methylation, shared-backbone, reference]

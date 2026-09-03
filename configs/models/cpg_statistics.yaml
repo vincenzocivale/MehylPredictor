@@ -26,7 +26,10 @@ training:
 
 tracking:
   backend: wandb
-  # Kept configurable; set the project in your local recipe if you want the
-  # historical MethylPredicotr-CpGMeanPredictor project continuity.
-  project: MethylPredicotr-CpGMeanPredictor
+  # Unified under the single MethylPredictor wandb project (2026-09-03) --
+  # was MethylPredicotr-CpGMeanPredictor historically; kept configurable per
+  # local recipe if a run needs that project instead.
+  project: MethylPredictor
   mode: online
+  group: cpg-statistics
+  job_type: train

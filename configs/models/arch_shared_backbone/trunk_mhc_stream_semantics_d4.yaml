@@ -100,5 +100,9 @@ development:
   block_bp: 5000000
 
 tracking:
-  backend: none
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: trunk_mhc_stream_semantics_d4
+  job_type: train
   tags: [arch-novelty, trunk, mhc, stream-semantics, d4]
