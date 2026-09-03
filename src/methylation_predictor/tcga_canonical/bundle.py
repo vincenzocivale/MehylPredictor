@@ -189,18 +189,27 @@ class MethylationSource:
             data = _read_cols(dataset, cols)
             return data[rows, :]
 
-        # h5py cannot fancy-index both axes in one call. Array/EPIC are strictly
-        # one-row-per-chunk (chunk shape (1, chunk_width)): each physical chunk
-        # belongs to exactly one row, so grouping scattered columns into chunk
-        # "bands" and reading all queried rows per band in one fancy-row-selection
-        # call does NOT reduce the number of underlying per-row chunk touches --
-        # h5py's fancy multi-row point-selection has enough of its own overhead
-        # that it measured *slower* than the row loop below for a few-hundred-row
-        # block (see git history / joint-training-ablation investigation notes).
-        # WGBS's chunk shape (32, chunk_width) is different: one physical chunk
-        # already covers many rows, so grouping by band there is a genuine win
-        # (one call reads data for all rows from a chunk instead of one call per
-        # row re-reading the same chunk). Branch on chunks[0] accordingly.
+        # h5py cannot fancy-index both axes in one call, and its fancy MULTI-ROW
+        # point-selection (dataset[row_array, col_slice_or_array]) has enough of
+        # its own overhead to dominate regardless of chunk shape: measured
+        # ~2.3s for a 640x640 scattered block on this source's (128, 2048)-
+        # chunked array cache, REGARDLESS of chunking (a purpose-rechunked
+        # (1, n_cols) copy of the same data measured the same ~2.3s for the
+        # fancy path -- see architecture_novelty_2026_09/mHC-ladder perf
+        # investigation, 2026-09-03). A plain per-row loop of single-row fancy
+        # COLUMN selections (dataset[row, col_array], one row at a time) avoided
+        # h5py's multi-row selection machinery entirely and measured ~0.43s for
+        # the same block on the same (128, 2048)-chunked file -- ~5x faster,
+        # with the same per-row memory footprint as before (never reads more
+        # columns than requested, so this stays safe at chr123/genomewide
+        # column counts too, unlike reading each full row and slicing after).
+        # Previously this branched on dataset.chunks[0] (a banded fancy-row
+        # selection when chunks[0] > 1, the plain loop only when chunks[0] == 1)
+        # on the assumption that grouping columns into chunk-width bands would
+        # help chunks[0] > 1 layouts; measurement showed that banded path was
+        # actually the slow one on this repo's real array cache -- the loop
+        # below is now unconditional whenever the column selection isn't a
+        # single contiguous run.
         unique_rows, row_inverse = np.unique(rows, return_inverse=True)
         unique_cols, col_inverse = np.unique(cols, return_inverse=True)
         if len(unique_cols) == 0:
@@ -211,18 +220,6 @@ class MethylationSource:
                 dataset[unique_rows, unique_cols[0] : unique_cols[-1] + 1],
                 dtype=np.float32,
             )
-        elif dataset.chunks[0] > 1:
-            chunk_width = dataset.chunks[1]
-            band_of_col = unique_cols // chunk_width
-            band_ids, band_start = np.unique(band_of_col, return_index=True)
-            band_bounds = np.append(band_start, len(unique_cols))
-            selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
-            for b, band_id in enumerate(band_ids.tolist()):
-                lo, hi = int(band_bounds[b]), int(band_bounds[b + 1])
-                band_lo = band_id * chunk_width
-                band_hi = min(band_lo + chunk_width, dataset.shape[1])
-                band_data = np.asarray(dataset[unique_rows, band_lo:band_hi], dtype=np.float32)
-                selected[:, lo:hi] = band_data[:, unique_cols[lo:hi] - band_lo]
         else:
             selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
             for i, row in enumerate(unique_rows.tolist()):
