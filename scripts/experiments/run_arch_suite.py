@@ -1,28 +1,34 @@
 #!/usr/bin/env python3
-"""Queue runner for the architecture-novelty suite (architecture_novelty_2026_09).
+"""Queue runner for the architecture-novelty suite (architecture_novelty_2026_09),
+targeting the primary shared-backbone architecture (retargeted 2026-09-04).
 
 Not part of the stable CLI -- delete alongside scripts/experiments/arch_suite.py
 once the study concludes (CLAUDE.md: one-off experiment scripts are deleted, not
 kept as a second workflow).
 
-Designed to be started independently on several machines that share the output
-root. Each machine takes a shard, each unit of work has a deterministic run id,
-and a unit whose run directory already carries the trainer's ``.done`` marker is
-skipped -- so shards can overlap, a machine can be added late, and a killed
-runner can simply be restarted.
+Two differences from the retired two-stage suite's runner, both consequences of
+how ``matched_chr1_shared_backbone`` works:
 
-    # preflight, no GPU: build every arm on CPU and check it starts at the prior
+  * Training and evaluation are SEPARATE steps here (``scripts/train.py`` only
+    trains; the official-split number comes from a second
+    ``scripts/evaluate.py --engine matched_chr1_shared_backbone`` call against
+    the checkpoint it produced). Each unit of work is therefore two subprocess
+    calls, run back to back.
+  * ``LocusCLSJointTrainer`` has NO resume support (its ``RunStore.create`` is
+    never called with ``resume=True``) -- a run directory left behind by a
+    killed process is a dead end, not something a re-invocation can continue.
+    This runner never attempts to resume; it reports a blocked unit and moves on.
+
+    # preflight, no GPU: build every arm on CPU and check its shapes/finiteness
     python scripts/experiments/run_arch_suite.py --dry-run
 
     # machine 1 of 3
     python scripts/experiments/run_arch_suite.py --shard 1/3 --gpu 0
 
-    # a specific stage on a machine with a different data mount
-    python scripts/experiments/run_arch_suite.py --stages 2-hyper-connections \
-        --data-root /mnt/methyl --gpu 1
-
-Run --stages 0-noise-floor first: every other arm's delta is judged against the
-seed SD it measures.
+Run --stages 0-noise-floor first: it is both the seed-SD floor every other arm
+is judged against AND the missing convergence run for the project's own primary-
+architecture reference number (rung_b_official_final was stopped by user request
+at epoch 47/80, not converged -- see results/reference/ablations.yaml).
 """
 from __future__ import annotations
 
@@ -41,7 +47,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from arch_suite import ARMS_BY_NAME, REPO_ROOT, STAGES, Arm, data_paths, jobs, run_id, select  # noqa: E402
+from arch_suite import ARMS_BY_NAME, ENGINE, REPO_ROOT, STAGES, Arm, data_paths, jobs, run_id, select  # noqa: E402
 
 
 def _gpu_free_gb(index: int) -> float | None:
@@ -56,12 +62,6 @@ def _gpu_free_gb(index: int) -> float | None:
 
 
 def _wait_for_gpu(index: int, min_free_gb: float, max_wait_hours: float, poll_seconds: int) -> bool:
-    """Block until the GPU has room. Returns False if it never frees up.
-
-    The suite is expected to share a machine with unrelated long-running jobs
-    (an NTv3 atlas extraction has held ~16 GB here for days), so a runner that
-    grabbed the GPU immediately would either OOM or evict someone.
-    """
     deadline = time.time() + max_wait_hours * 3600
     while True:
         free = _gpu_free_gb(index)
@@ -72,155 +72,156 @@ def _wait_for_gpu(index: int, min_free_gb: float, max_wait_hours: float, poll_se
             return True
         if time.time() > deadline:
             return False
-        print(
-            f"[arch-suite] GPU {index} has {free:.1f} GB free, need {min_free_gb:.1f} GB; "
-            f"waiting {poll_seconds}s",
-            flush=True,
-        )
+        print(f"[arch-suite] GPU {index} has {free:.1f} GB free, need {min_free_gb:.1f} GB; "
+              f"waiting {poll_seconds}s", flush=True)
         time.sleep(poll_seconds)
+
+
+def _run_dir(paths: dict[str, str], arm: Arm, seed: int) -> Path:
+    return Path(paths["output_root"]) / "runs" / "locus_cls_joint" / "chr1" / run_id(arm, seed)
+
+
+def _eval_output(run_dir: Path) -> Path:
+    return run_dir / "evaluation" / "chr1" / "metrics.json"
 
 
 def _train_command(arm: Arm, seed: int, paths: dict[str, str]) -> list[str]:
     return [
         sys.executable, "scripts/train.py",
-        "--model", "rna_methylation",
-        "--scope", "chr1",
-        "--engine", "matched_chr1",
-        "--mode", "final",
-        "--recipe", arm.recipe,
-        "--seed", str(seed),
-        "--run-id", run_id(arm, seed),
-        "--canonical-root", paths["canonical_root"],
-        "--prepared-root", paths["prepared_root"],
-        "--feature-cache", paths["feature_cache"],
-        "--rna-cache", paths["rna_cache"],
-        "--registry", paths["registry"],
-        "--output-root", paths["output_root"],
-        *arm.extra_args,
+        "--model", "rna_methylation", "--scope", "chr1", "--engine", ENGINE, "--mode", "final",
+        "--recipe", arm.recipe, "--seed", str(seed), "--run-id", run_id(arm, seed),
+        "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
+        "--feature-cache", paths["feature_cache"], "--rna-cache", paths["rna_cache"],
+        "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
+        "--output-root", paths["output_root"], *arm.extra_args,
     ]
 
 
-def _run_dir(paths: dict[str, str], arm: Arm, seed: int) -> Path:
-    return Path(paths["output_root"]) / "runs" / "rna_methylation" / "chr1" / run_id(arm, seed)
+def _eval_command(arm: Arm, seed: int, paths: dict[str, str], run_dir: Path) -> list[str]:
+    checkpoint = run_dir / "checkpoints" / "best.pt"
+    return [
+        sys.executable, "scripts/evaluate.py",
+        "--model", "rna_methylation", "--engine", ENGINE,
+        "--checkpoint", str(checkpoint), "--eval-scope", "chr1",
+        "--output", str(_eval_output(run_dir)),
+        "--recipe", arm.recipe,
+        "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
+        "--feature-cache", paths["feature_cache"], "--rna-cache", paths["rna_cache"],
+        "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
+    ]
+
+
+def _is_complete(run_dir: Path) -> bool:
+    return (
+        (run_dir / "training" / "summary.json").is_file()
+        and (run_dir / "checkpoints" / "best.pt").is_file()
+        and _eval_output(run_dir).is_file()
+    )
 
 
 def dry_run(arms: tuple[Arm, ...]) -> int:
-    """Build every selected arm on CPU and assert the zero-init contract.
-
-    Catches config threading mistakes, shape bugs and capacity blowups before any
-    GPU hour is spent -- an arm with 50x the canonical parameter count would be
-    measuring capacity, not architecture.
-    """
-    import copy
+    """Build every selected arm on CPU: check shapes, finiteness, and the
+    fusion_init_std=0 -> exactly-0.5 invariant, before spending any GPU hour."""
     import torch
-    import yaml
-    from methylation_predictor.benchmark.methylprophet.config import load_config
-    from methylation_predictor.config import ModelConfig
+
+    from methylation_predictor.rna_training.config import load_rna_recipe
     from methylation_predictor.models import (
-        ArchitectureVariantModel, VarianceNormalizedResidualModel,
-        architecture_variant_label, is_architecture_variant,
+        FeatureFusionArchitectureVariantModel, FeatureFusionLocusCLSModel,
+        feature_fusion_variant_label, is_architecture_variant,
     )
 
-    base_raw = yaml.safe_load((REPO_ROOT / "configs/benchmark_methylprophet/reference.yaml").read_text())
-    scratch = Path(os.environ.get("TMPDIR", "/tmp")) / "arch_suite_dry_run"
-    scratch.mkdir(parents=True, exist_ok=True)
-    canonical_params = sum(
-        p.numel()
-        for p in VarianceNormalizedResidualModel(
-            25_017, 1536, ModelConfig(variance_normalized_residual=True), epsilon=1e-4
-        ).parameters()
-    )
+    reference = load_rna_recipe(REPO_ROOT / "configs/models/rna_methylation_shared_backbone.yaml")
+    reference_model = FeatureFusionLocusCLSModel(25_017, 1536, reference.model, trunk_hidden_dim=256, bottleneck_dim=64)
+    reference_params = sum(p.numel() for p in reference_model.parameters())
 
-    print(f"{'arm':<40} {'stage':<24} {'params':>13} {'vs canon':>9}  topology")
-    print(f"{'(canonical reference)':<40} {'':<24} {canonical_params:>13,} {'  +0.0%':>9}")
+    print(f"{'arm':<42} {'stage':<24} {'params':>13} {'vs reference':>13}  topology")
+    print(f"{'(reference: rung_b)':<42} {'':<24} {reference_params:>13,} {'+0.0%':>13}")
     failures = 0
     for arm in arms:
-        recipe = yaml.safe_load((REPO_ROOT / arm.recipe).read_text())
-        base = copy.deepcopy(base_raw)
-        base["model"] = copy.deepcopy(recipe["model"])
-        base["loss"] = copy.deepcopy(recipe["loss"])
-        base["training"] = {**base.get("training", {}), **copy.deepcopy(recipe.get("training", {}))}
-        base["tracking"] = {**base.get("tracking", {}), **copy.deepcopy(recipe.get("tracking", {}))}
-        resolved = scratch / f"{arm.name}.yaml"
-        resolved.write_text(yaml.safe_dump(base, sort_keys=False))
         try:
-            cfg = load_config(resolved)
-            variant = is_architecture_variant(cfg.model)
-            cls = ArchitectureVariantModel if variant else VarianceNormalizedResidualModel
-            model = cls(25_017, 1536, cfg.model, epsilon=cfg.data.clip_beta_epsilon).eval()
+            recipe = load_rna_recipe(REPO_ROOT / arm.recipe)
+            lc = recipe.raw.get("locus_cls", {})
+            variant = is_architecture_variant(recipe.model)
+            cls = FeatureFusionArchitectureVariantModel if variant else FeatureFusionLocusCLSModel
+            model = cls(
+                25_017, 1536, recipe.model,
+                trunk_hidden_dim=lc.get("trunk_hidden_dim", 256), bottleneck_dim=lc.get("bottleneck_dim", 64),
+                trunk_dropout=lc.get("trunk_dropout", 0.1), use_mean_branch=lc.get("use_mean_branch", True),
+                use_fusion_product=lc.get("use_fusion_product", False),
+                fusion_init_std=0.0,  # exact invariant check: must predict 0.5 everywhere
+            ).eval()
             rna, loci = torch.randn(3, 25_017), torch.randn(5, 1536)
-            prior, sigma = torch.rand(5) * 0.8 + 0.1, torch.rand(5) * 0.4 + 0.1
             kwargs = {"cpg_positions": torch.arange(5) * 91} if getattr(model, "requires_cpg_positions", False) else {}
             with torch.no_grad():
-                beta = model(rna, loci, prior, sigma=sigma, **kwargs)["beta"]
-            if not torch.allclose(beta, prior[None].expand(3, 5), atol=1e-5):
-                raise AssertionError("does not start at the prior (zero-init contract violated)")
+                beta = model(rna, loci, **kwargs)["beta"]
+            if not torch.allclose(beta, torch.full_like(beta, 0.5), atol=1e-5):
+                raise AssertionError("fusion_init_std=0 does not predict exactly 0.5 (zero-init contract violated)")
             total = sum(p.numel() for p in model.parameters())
-            label = architecture_variant_label(cfg.model) if variant else "canonical model class"
-            delta = 100.0 * (total - canonical_params) / canonical_params
-            print(f"{arm.name:<40} {arm.stage:<24} {total:>13,} {delta:>+8.1f}%  {label}")
-        except Exception as exc:  # noqa: BLE001 -- preflight reports, it does not abort the sweep
+            label = feature_fusion_variant_label(recipe.model) if variant else "reference model class"
+            delta = 100.0 * (total - reference_params) / reference_params
+            print(f"{arm.name:<42} {arm.stage:<24} {total:>13,} {delta:>+12.1f}%  {label}")
+        except Exception as exc:  # noqa: BLE001 -- preflight reports, does not abort the sweep
             failures += 1
-            print(f"{arm.name:<40} {arm.stage:<24} {'FAILED':>13}            {type(exc).__name__}: {exc}")
+            print(f"{arm.name:<42} {arm.stage:<24} {'FAILED':>13} {'':>13}  {type(exc).__name__}: {exc}")
     print()
     print(f"{len(arms)} arm(s), {len(jobs(arms))} run(s), {failures} failure(s)")
     return 1 if failures else 0
 
 
 def cuda_smoke(arms: tuple[Arm, ...], gpu: int, samples: int, loci: int) -> int:
-    """One forward+backward per arm on the GPU, under the real bf16 autocast.
-
-    The --dry-run preflight runs on CPU in float32, which cannot catch the things
-    that actually break on device: einsum under bf16 autocast, the float32
-    Sinkhorn island inside a bf16 graph, gradient checkpointing under autocast,
-    and the axial attention's masked softmax in low precision. Blocks are small,
-    so this checks correctness, not the real per-step memory -- run it whenever
-    the GPU has a couple of spare GB, before committing to multi-hour runs.
-    """
-    import copy
+    """One forward+backward per arm on the GPU under real bf16 autocast, plus
+    the auxiliary mean/residual losses LocusCLSJointTrainer actually applies --
+    catches what the CPU/float32 dry run cannot (bf16 einsum, the float32
+    Sinkhorn island inside a bf16 graph, gradient checkpointing under autocast)."""
     import torch
-    import yaml
-    from methylation_predictor.benchmark.methylprophet.config import load_config
-    from methylation_predictor.losses import residual_loss
+
+    from methylation_predictor.losses import beta_nll_term, locus_correlation_loss, masked_mean
+    from methylation_predictor.rna_training.config import load_rna_recipe
     from methylation_predictor.models import (
-        ArchitectureVariantModel, VarianceNormalizedResidualModel, is_architecture_variant,
+        FeatureFusionArchitectureVariantModel, FeatureFusionLocusCLSModel, is_architecture_variant,
     )
 
     if not torch.cuda.is_available():
         print("[arch-suite] CUDA not available"); return 1
     device = torch.device("cuda")
-    base_raw = yaml.safe_load((REPO_ROOT / "configs/benchmark_methylprophet/reference.yaml").read_text())
-    scratch = Path(os.environ.get("TMPDIR", "/tmp")) / "arch_suite_cuda_smoke"
-    scratch.mkdir(parents=True, exist_ok=True)
-
     failures = 0
     for arm in arms:
-        recipe = yaml.safe_load((REPO_ROOT / arm.recipe).read_text())
-        base = copy.deepcopy(base_raw)
-        base["model"] = copy.deepcopy(recipe["model"])
-        base["loss"] = copy.deepcopy(recipe["loss"])
-        base["training"] = {**base.get("training", {}), **copy.deepcopy(recipe.get("training", {}))}
-        resolved = scratch / f"{arm.name}.yaml"
-        resolved.write_text(yaml.safe_dump(base, sort_keys=False))
         try:
-            cfg = load_config(resolved)
-            cls = ArchitectureVariantModel if is_architecture_variant(cfg.model) else VarianceNormalizedResidualModel
-            model = cls(25_017, 1536, cfg.model, epsilon=cfg.data.clip_beta_epsilon).to(device).train()
+            recipe = load_rna_recipe(REPO_ROOT / arm.recipe)
+            lc = recipe.raw.get("locus_cls", {})
+            variant = is_architecture_variant(recipe.model)
+            cls = FeatureFusionArchitectureVariantModel if variant else FeatureFusionLocusCLSModel
+            model = cls(
+                25_017, 1536, recipe.model,
+                trunk_hidden_dim=lc.get("trunk_hidden_dim", 256), bottleneck_dim=lc.get("bottleneck_dim", 64),
+                trunk_dropout=lc.get("trunk_dropout", 0.1), use_mean_branch=lc.get("use_mean_branch", True),
+                use_fusion_product=lc.get("use_fusion_product", False),
+                fusion_init_std=lc.get("fusion_init_std", 0.01),
+            ).to(device).train()
             rna = torch.randn(samples, 25_017, device=device)
             emb = torch.randn(loci, 1536, device=device)
-            prior = torch.rand(loci, device=device) * 0.8 + 0.1
-            sigma = torch.rand(loci, device=device) * 0.4 + 0.1
             target = torch.rand(samples, loci, device=device)
-            target[0, :3] = float("nan")  # missing observations must not poison the backward pass
+            target[0, :3] = float("nan")
             kwargs = (
                 {"cpg_positions": torch.arange(loci, device=device) * 91}
                 if getattr(model, "requires_cpg_positions", False) else {}
             )
-            torch.cuda.reset_peak_memory_stats(device)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                outputs = model(rna, emb, prior, sigma=sigma, **kwargs)
-                loss, _ = residual_loss(outputs, target, prior, cfg.loss,
-                                        epsilon=cfg.data.clip_beta_epsilon, sigma=sigma)
+                out = model(rna, emb, **kwargs)
+                mask = torch.isfinite(target)
+                safe_target = torch.where(mask, target, torch.zeros_like(target))
+                beta_mse = masked_mean((out["beta"] - safe_target) ** 2, mask)
+                pearson, _ = locus_correlation_loss(out["beta"], safe_target, mask, recipe.loss)
+                nll = beta_nll_term(out, safe_target, mask, recipe.loss)
+                loss = (
+                    recipe.loss.beta_mse_weight * beta_mse
+                    + recipe.loss.locus_pearson_weight * pearson
+                    + recipe.loss.beta_nll_weight * nll
+                )
+                if lc.get("use_mean_branch", True) and out["mu_logit"] is not None:
+                    loss = loss + 0.15 * out["mu_logit"].pow(2).mean()  # stand-in aux target, gradient-flow check only
+                if out["residual_logit"] is not None:
+                    loss = loss + 0.0 * out["residual_logit"].sum()  # exercised at weight 0 in the reference recipe
             if not torch.isfinite(loss):
                 raise AssertionError("non-finite loss under bf16 autocast")
             loss.backward()
@@ -232,18 +233,17 @@ def cuda_smoke(arms: tuple[Arm, ...], gpu: int, samples: int, loci: int) -> int:
                 raise AssertionError(f"non-finite gradients: {', '.join(bad[:3])}")
             diagnostics = model.diagnostics() if hasattr(model, "diagnostics") else {}
             peak = torch.cuda.max_memory_allocated(device) / 2**30
-            loss_value = float(loss.detach())
-            print(f"{arm.name:<40} loss={loss_value:>8.4f} peak={peak:>5.2f}GB "
+            print(f"{arm.name:<42} loss={float(loss.detach()):>8.4f} peak={peak:>5.2f}GB "
                   f"grads={len(grads):>3} {diagnostics or ''}")
-            del model, outputs, loss
+            del model, out, loss
             torch.cuda.empty_cache()
-        except Exception as exc:  # noqa: BLE001 -- smoke test reports every arm
+        except Exception as exc:  # noqa: BLE001
             failures += 1
-            print(f"{arm.name:<40} FAILED  {type(exc).__name__}: {exc}")
+            print(f"{arm.name:<42} FAILED  {type(exc).__name__}: {exc}")
             torch.cuda.empty_cache()
     print()
     print(f"{len(arms)} arm(s), {failures} failure(s) "
-          f"(blocks were {samples}x{loci}; real array blocks are 512x512, WGBS 32x16384)")
+          f"(blocks were {samples}x{loci}; real array blocks are 640x640, WGBS 32x20480)")
     return 1 if failures else 0
 
 
@@ -252,10 +252,9 @@ def main() -> int:
     ap.add_argument("--arms", help="comma-separated arm names (default: all)")
     ap.add_argument("--stages", help=f"comma-separated stages; known: {', '.join(STAGES)}")
     ap.add_argument("--shard", help="i/n -- run this machine's slice of the selected arms")
-    ap.add_argument("--gpu", type=int, default=0, help="GPU index (sets CUDA_VISIBLE_DEVICES for the child)")
+    ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--data-root", help="overrides METHYL_DATA_ROOT for a machine with a different mount")
-    ap.add_argument("--min-free-gb", type=float, default=20.0,
-                    help="wait until the GPU has this much free memory before starting a run")
+    ap.add_argument("--min-free-gb", type=float, default=20.0)
     ap.add_argument("--max-wait-hours", type=float, default=24.0)
     ap.add_argument("--poll-seconds", type=int, default=300)
     ap.add_argument("--dry-run", action="store_true", help="CPU preflight only: build every arm, print sizes")
@@ -263,8 +262,7 @@ def main() -> int:
                     help="one small forward+backward per arm on the GPU under real bf16 autocast")
     ap.add_argument("--smoke-samples", type=int, default=8)
     ap.add_argument("--smoke-loci", type=int, default=256)
-    ap.add_argument("--print-commands", action="store_true", help="print the train.py commands and exit")
-    ap.add_argument("--force", action="store_true", help="re-run units that already completed")
+    ap.add_argument("--print-commands", action="store_true")
     args = ap.parse_args()
 
     os.chdir(REPO_ROOT)
@@ -281,7 +279,9 @@ def main() -> int:
     units = jobs(arms)
     if args.print_commands:
         for arm, seed in units:
+            run_dir = _run_dir(paths, arm, seed)
             print(shlex.join(_train_command(arm, seed, paths)))
+            print(shlex.join(_eval_command(arm, seed, paths, run_dir)))
         return 0
 
     host = socket.gethostname()
@@ -290,13 +290,23 @@ def main() -> int:
     state_path = log_dir / f"queue_state_{host}.json"
     state: dict[str, dict] = json.loads(state_path.read_text()) if state_path.is_file() else {}
 
-    print(f"[arch-suite] host={host} gpu={args.gpu} arms={len(arms)} runs={len(units)}", flush=True)
+    print(f"[arch-suite] host={host} gpu={args.gpu} engine={ENGINE} arms={len(arms)} runs={len(units)}", flush=True)
     for arm, seed in units:
         unit = run_id(arm, seed)
         run_dir = _run_dir(paths, arm, seed)
-        if (run_dir / ".done").is_file() and not args.force:
+        if _is_complete(run_dir):
             print(f"[arch-suite] {unit}: already complete, skipping", flush=True)
             state[unit] = {**state.get(unit, {}), "status": "already_complete", "run_dir": str(run_dir)}
+            state_path.write_text(json.dumps(state, indent=2) + "\n")
+            continue
+        if run_dir.is_dir():
+            # No resume support on this engine (see module docstring). A pre-
+            # existing, incomplete run directory is a dead end -- report it and
+            # move on rather than deleting or fighting over someone's partial run.
+            print(f"[arch-suite] {unit}: run directory exists but is incomplete, and this engine has no "
+                  f"resume support. Remove {run_dir} to retry (or pick a new --run-id); skipping.", flush=True)
+            state[unit] = {**state.get(unit, {}), "status": "blocked_incomplete_run_dir",
+                           "run_dir": str(run_dir), "host": host}
             state_path.write_text(json.dumps(state, indent=2) + "\n")
             continue
 
@@ -306,55 +316,48 @@ def main() -> int:
             state_path.write_text(json.dumps(state, indent=2) + "\n")
             return 2
 
-        command = _train_command(arm, seed, paths)
-        if run_dir.is_dir():
-            # RunStore refuses to reopen an existing run directory without --resume,
-            # so a unit killed mid-training would otherwise fail forever. Resume when
-            # there is a checkpoint to resume from; otherwise stop and say so rather
-            # than deleting someone's partial run directory.
-            if (run_dir / "checkpoints" / "latest.pt").is_file():
-                print(f"[arch-suite] {unit}: incomplete run found, resuming", flush=True)
-                command = command + ["--resume"]
-            else:
-                print(
-                    f"[arch-suite] {unit}: run directory exists with no checkpoints/latest.pt "
-                    f"(a failed start). Inspect and remove {run_dir} to retry; skipping.",
-                    flush=True,
-                )
-                state[unit] = {**state.get(unit, {}), "status": "blocked_incomplete_run_dir",
-                               "run_dir": str(run_dir), "host": host}
-                state_path.write_text(json.dumps(state, indent=2) + "\n")
-                continue
-        log_path = log_dir / f"{unit}.log"
+        env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(args.gpu), "PYTHONPATH": str(REPO_ROOT / "src")}
         started = datetime.now(timezone.utc)
         state[unit] = {
-            "status": "running", "host": host, "platform": platform.platform(), "gpu": args.gpu,
+            "status": "training", "host": host, "platform": platform.platform(), "gpu": args.gpu,
             "arm": arm.name, "stage": arm.stage, "seed": seed, "recipe": arm.recipe,
-            "run_dir": str(run_dir), "log": str(log_path),
-            "command": shlex.join(command), "started_at_utc": started.isoformat(),
+            "run_dir": str(run_dir), "started_at_utc": started.isoformat(),
         }
         state_path.write_text(json.dumps(state, indent=2) + "\n")
-        print(f"[arch-suite] {unit}: starting -> {log_path}", flush=True)
 
-        env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(args.gpu), "PYTHONPATH": str(REPO_ROOT / "src")}
-        with log_path.open("a") as handle:
-            handle.write(f"\n=== {started.isoformat()} {host} :: {shlex.join(command)}\n")
+        train_log = log_dir / f"{unit}.train.log"
+        print(f"[arch-suite] {unit}: training -> {train_log}", flush=True)
+        with train_log.open("a") as handle:
+            handle.write(f"\n=== {started.isoformat()} {host} :: {shlex.join(_train_command(arm, seed, paths))}\n")
             handle.flush()
-            result = subprocess.run(command, stdout=handle, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT)
+            train_result = subprocess.run(
+                _train_command(arm, seed, paths), stdout=handle, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT,
+            )
+        if train_result.returncode != 0:
+            state[unit].update({"status": "train_failed", "train_returncode": train_result.returncode})
+            state_path.write_text(json.dumps(state, indent=2) + "\n")
+            print(f"[arch-suite] {unit}: training FAILED (rc={train_result.returncode}), see {train_log}", flush=True)
+            continue
+
+        eval_log = log_dir / f"{unit}.eval.log"
+        print(f"[arch-suite] {unit}: evaluating -> {eval_log}", flush=True)
+        (run_dir / "evaluation" / "chr1").mkdir(parents=True, exist_ok=True)
+        with eval_log.open("a") as handle:
+            eval_cmd = _eval_command(arm, seed, paths, run_dir)
+            handle.write(f"\n=== {datetime.now(timezone.utc).isoformat()} {host} :: {shlex.join(eval_cmd)}\n")
+            handle.flush()
+            eval_result = subprocess.run(eval_cmd, stdout=handle, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT)
 
         finished = datetime.now(timezone.utc)
         state[unit].update({
-            "status": "completed" if result.returncode == 0 else "failed",
-            "returncode": result.returncode,
+            "status": "completed" if eval_result.returncode == 0 else "eval_failed",
+            "eval_returncode": eval_result.returncode,
             "finished_at_utc": finished.isoformat(),
             "wall_seconds": (finished - started).total_seconds(),
         })
         state_path.write_text(json.dumps(state, indent=2) + "\n")
-        print(
-            f"[arch-suite] {unit}: {state[unit]['status']} in "
-            f"{state[unit]['wall_seconds'] / 3600:.2f} h (rc={result.returncode})",
-            flush=True,
-        )
+        print(f"[arch-suite] {unit}: {state[unit]['status']} in "
+              f"{state[unit]['wall_seconds'] / 3600:.2f} h", flush=True)
 
     print(f"[arch-suite] shard finished; state -> {state_path}", flush=True)
     return 0

@@ -35,8 +35,13 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from ..losses import locus_correlation_loss, masked_mean
-from ..models import FeatureFusionLocusCLSModel
+from ..losses import beta_nll_term, locus_correlation_loss, masked_mean
+from ..models import (
+    FeatureFusionArchitectureVariantModel,
+    FeatureFusionLocusCLSModel,
+    feature_fusion_variant_label,
+    is_architecture_variant,
+)
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
@@ -53,8 +58,12 @@ from .trainer import TrainingPool, loss_config_for_source
 def _direct_beta_loss(outputs: dict, target_beta: torch.Tensor, loss_cfg) -> tuple[torch.Tensor, dict]:
     """No-prior beta loss -- FeatureFusionLocusCLSModel predicts beta directly
     (no mu/sigma anchor to derive residual_loss's other terms from), so this
-    is just the beta_mse/locus_pearson subset of that objective (same subset
-    DirectPredictionModel effectively reduces to)."""
+    is just the beta_mse/locus_pearson/beta_nll subset of that objective (same
+    subset DirectPredictionModel effectively reduces to). beta_nll_term is a
+    no-op whenever loss_cfg.beta_nll_weight is zero or the model produced no
+    concentration head, so it is always safe to add unconditionally --
+    architecture_novelty_2026_09's beta_likelihood_head arm is the only one
+    that ever makes it nonzero."""
     mask = torch.isfinite(target_beta)
     prediction = outputs["beta"]
     safe_target = torch.where(mask, target_beta, torch.zeros_like(target_beta))
@@ -64,10 +73,16 @@ def _direct_beta_loss(outputs: dict, target_beta: torch.Tensor, loss_cfg) -> tup
     else:
         pearson_loss = prediction.sum() * 0.0
         valid_loci = 0
-    total = loss_cfg.beta_mse_weight * beta_mse + loss_cfg.locus_pearson_weight * pearson_loss
+    beta_nll = beta_nll_term(outputs, safe_target, mask, loss_cfg)
+    total = (
+        loss_cfg.beta_mse_weight * beta_mse
+        + loss_cfg.locus_pearson_weight * pearson_loss
+        + loss_cfg.beta_nll_weight * beta_nll
+    )
     return total, {
         "beta_mse": float(beta_mse.detach().cpu()),
         "locus_pearson_loss": float(pearson_loss.detach().cpu()),
+        "beta_nll": float(beta_nll.detach().cpu()),
         "valid_correlation_loci": valid_loci,
         "observed": int(mask.sum().detach().cpu()),
     }
@@ -169,7 +184,21 @@ class LocusCLSJointTrainer:
 
         self.use_mean_branch = bool(use_mean_branch)
         self._fusion_init_std = float(fusion_init_std)
-        self.model = FeatureFusionLocusCLSModel(
+        # An architecture-novelty recipe (a non-default encoder kind, trunk or
+        # axial block, or a beta-likelihood head) routes to
+        # FeatureFusionArchitectureVariantModel instead of the reference class --
+        # see architecture_novelty_2026_09 / docs/RNA_METHYLATION.md. At every
+        # default this class is numerically identical to
+        # FeatureFusionLocusCLSModel (tests/test_architecture_variants.py), so
+        # this dispatch changes nothing for the reference recipe itself.
+        self.architecture_variant = is_architecture_variant(self.recipe.model)
+        model_cls = FeatureFusionArchitectureVariantModel if self.architecture_variant else FeatureFusionLocusCLSModel
+        self.architecture_label = (
+            "feature_fusion_locus_cls_arch_" + feature_fusion_variant_label(self.recipe.model)
+            if self.architecture_variant
+            else "feature_fusion_locus_cls"
+        )
+        self.model = model_cls(
             25_017, 1536, self.recipe.model,
             trunk_hidden_dim=trunk_hidden_dim, bottleneck_dim=bottleneck_dim, trunk_dropout=trunk_dropout,
             use_mean_branch=use_mean_branch, use_fusion_product=use_fusion_product, fusion_init_std=fusion_init_std,
@@ -309,8 +338,9 @@ class LocusCLSJointTrainer:
         emb_np, _, _ = self.features.get(cpg_ids, embedding_dtype=np.float16)
         emb = torch.from_numpy(emb_np).to(self.device).float()
         beta = torch.from_numpy(beta_np).to(self.device)
+        position_kwargs = self._position_kwargs(cpg_ids)
         with self._autocast():
-            out = self.model(rna_x, emb)
+            out = self.model(rna_x, emb, **position_kwargs)
             loss_cfg = loss_config_for_source(self.recipe.loss, pool.name, self.recipe.structured_loss_sources)
             main_loss, pieces = _direct_beta_loss(out, beta, loss_cfg)
             main_loss = main_loss * (float(finite.sum()) / max(float(finite.size), 1.0))
@@ -330,6 +360,19 @@ class LocusCLSJointTrainer:
             pieces["residual_aux_loss"] = float(residual_aux_loss.detach().cpu())
         return total, pieces
 
+    def _position_kwargs(self, cpg_ids: np.ndarray) -> dict[str, torch.Tensor]:
+        """CpG ordinals for the axial arm, empty for every other architecture.
+
+        Cartesian blocks are contiguous slices of a source's CpG index array
+        (CartesianSourceSchedule / SourceSchedule), so these ordinals are
+        monotone in genomic coordinate within the chromosome -- a proxy for
+        base-pair distance, which is all the axial attention's distance decay
+        needs.
+        """
+        if not getattr(self.model, "requires_cpg_positions", False):
+            return {}
+        return {"cpg_positions": torch.from_numpy(np.asarray(cpg_ids, dtype=np.int64)).to(self.device)}
+
     @torch.no_grad()
     def evaluate_view(self, sample_ids, cpg_ids, *, sample_chunk=128, cpg_chunk=2048):
         self.model.eval()
@@ -346,7 +389,7 @@ class LocusCLSJointTrainer:
                 emb_np, prior_np, _ = self.features.get(local_c)
                 emb = torch.from_numpy(emb_np).to(self.device)
                 with self._autocast():
-                    pred = self.model(rna_x, emb)["beta"]
+                    pred = self.model(rna_x, emb, **self._position_kwargs(local_c))["beta"]
                 target = source.block(rows[s0:s1], local_c)
                 metrics.add(s0, c0, target, pred.float().cpu().numpy(), prior_np)
         self.model.train()
@@ -360,7 +403,7 @@ class LocusCLSJointTrainer:
     def _save_checkpoint(self, path, optimizer, scheduler, epoch, history):
         payload = {
             "schema_version": 2, "model": "locus_cls_joint", "scope": self.scope, "mode": self.mode,
-            "epoch": epoch, "epochs_planned": self.epochs, "architecture": "feature_fusion_locus_cls",
+            "epoch": epoch, "epochs_planned": self.epochs, "architecture": self.architecture_label,
             "model_state": self.model.state_dict(),
             "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(),
             "model_config": asdict(self.recipe.model),
@@ -454,6 +497,9 @@ class LocusCLSJointTrainer:
                 if np.isfinite(loss_val) and loss_val < best_loss * (1 - loss_improve_rel):
                     best_loss = loss_val
                     best_loss_epoch = epoch
+            diagnostics = self.model.diagnostics() if hasattr(self.model, "diagnostics") else {}
+            if diagnostics:
+                row["architecture_diagnostics"] = diagnostics
             history.append(row)
             last_epoch = epoch
             self._save_checkpoint(latest, optimizer, scheduler, epoch, history)
@@ -501,7 +547,7 @@ def evaluate_official_split(
     the number this is directly comparable to the canonical model's own
     val_cpg_x_val_sample_mas_pcc (see docs/PAPER_EXPERIMENTS.md's methodology
     note on mode=development's inner proxy split vs. this true split)."""
-    ckpt = torch.load(checkpoint, map_location="cpu")
+    ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     lc = ckpt.get("locus_cls") or {}
     # LocusCLSJointTrainer always wants its own run-store scratch dir (distinct
     # from `output`, which here is the single evaluation-summary JSON file the

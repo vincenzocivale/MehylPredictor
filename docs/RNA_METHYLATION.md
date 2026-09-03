@@ -96,6 +96,29 @@ for, not by any mean-branch deficiency. This is why C-F (all targeting the
 RNA-conditioned/residual branch) failed to move the number: the mean branch was already
 doing its job.
 
+### Architecture-novelty suite (`architecture_novelty_2026_09`)
+
+A 2026-09 suite, prompted by a separate postdoc review that judged the architecture too
+simple for the paper's novelty claim, targets two things this ladder never touched: the
+raw branch's RNA encoder (still a single `Linear(25017 -> 256)`, no nonlinearity) and how
+`h_mean`/`h_raw` are combined (still one `Linear`). It adds
+`models.py::FeatureFusionArchitectureVariantModel` -- a separate class, so
+`FeatureFusionLocusCLSModel`'s parameter set is untouched -- selected whenever a recipe
+sets a non-default `model.encoder.kind`, `model.trunk`, `model.axial` or
+`model.beta_likelihood_head`. The flagship arm answers the postdoc's suggestion most
+literally: with `trunk.stream_semantics=True`, `h_mean` and `h_raw` themselves become the
+two streams of a Manifold-Constrained Hyper-Connections (mHC, arXiv:2512.24880) trunk --
+exchanging information under a doubly stochastic, mass-conserving mixing matrix for
+several depth steps instead of being combined once. Every arm runs on
+`matched_chr1_shared_backbone` at `mode=final`, evaluated via `evaluate_official_split`,
+so its MAS-PCC is directly comparable to rung B's own number. Its noise-floor arm
+(3 seeds, full 80-epoch budget) doubles as the full-budget rerun this section already
+flagged as worth doing -- see `results/reference/ablations/architecture_novelty_2026_09/README.md`.
+
+Note: this suite originally targeted the earlier two-stage architecture (see that
+section's own note below) -- it was rebuilt on `FeatureFusionLocusCLSModel` on
+2026-09-04, once this ladder concluded and the shared-backbone model became primary.
+
 ## Previous architecture: two-stage frozen prior + residual
 
 Kept live and fully supported for reproducing/extending existing chr1/chr123/genomewide
@@ -136,7 +159,9 @@ FiLM/gating, cross-attention, low-rank bilinear pooling, via `InteractionConfig.
 (`::fusion_mechanism_2026_08`). No permanent architecture change adopted from any of
 these; the two-stage recipe (`configs/models/rna_methylation.yaml`) is unchanged.
 
-A 2026-09 suite (`architecture_novelty_2026_09`) goes after the two axes none of the above
+**Historical / compatibility-only note** (retired architecture, not the primary target of the
+suite as of 2026-09-04 -- see the shared-backbone section above): a 2026-09 suite
+(`architecture_novelty_2026_09`) originally went after the two axes none of the above
 touched, following a postdoc review that judged the architecture too simple for the paper's
 novelty claim: the **RNA encoder** (canonically a single `Linear(25017 -> 256)` with no
 nonlinearity -- only its width was ever ablated) and the **depth/topology of the fusion trunk**

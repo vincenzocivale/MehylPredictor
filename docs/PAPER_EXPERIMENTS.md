@@ -252,24 +252,29 @@ one as of 2026-09-02:
   run to convergence — a full-budget rerun (or a second seed) is worth doing before citing 0.5627
   as final; see `ablations.yaml`'s entry for full numbers/caveats.
 
-- **`architecture_novelty_2026_09`** (in progress): an architecture-novelty suite prompted by a
-  postdoc review (2026-09-03) that judged the current architecture too simple for the paper's
-  novelty claim despite its numbers. Targets the two axes never previously ablated -- the RNA
-  encoder (a single `Linear(25017 -> 256)`, only its width ever tested) and the depth/topology of
-  the fusion trunk (one hidden layer) -- plus a bounded Beta likelihood head, windowed attention
-  along the CpG axis, and Hyper-Connections/mHC on top of the depth ladder that has to precede
-  them. Two arms carry the novelty claim: a locus-conditioned RNA encoder (each CpG queries a set
-  of gene-program tokens, so the RNA representation stops being locus-invariant) and mHC with
-  *modality*-identified streams (the doubly stochastic residual mapping becomes a mass-conserving
-  cross-modal exchange operator, readable per depth). Unlike the locus-CLS ladder, every arm runs
-  at `mode=final` on the matched_chr1 engine and official split, so its MAS-PCC is directly
-  comparable to 0.5613 without a follow-up confirmation run. It also establishes the repo's first
-  measured seed-noise floor, against which every arm -- and, retrospectively, every earlier
-  single-seed ablation delta in `ablations.yaml` -- should be read. Ablation-only/throwaway code
-  (see file docstrings). **No number from this study is a paper result**, and nothing is adopted
-  as canonical without clearing `2 x` the seed SD; if an arm ever is adopted, the baseline rule at
-  the top of this document applies and it must be retrained independently in all three settings.
-  See `results/reference/ablations/architecture_novelty_2026_09/README.md`.
+- **`architecture_novelty_2026_09`** (in progress, retargeted 2026-09-04): an architecture-novelty
+  suite prompted by a postdoc review (2026-09-03) that judged the architecture too simple for the
+  paper's novelty claim despite its numbers. Originally built against the two-stage
+  `RNAMethylationPredictor`; rebuilt on `FeatureFusionLocusCLSModel` once
+  `shared_backbone_locus_cls_2026_09` (above) concluded and that model became primary -- the
+  retired arms stay in the repo, unrun further, as a compatibility-only measurement (see the
+  study's README for the retarget note). Targets the two axes never ablated on the primary
+  architecture -- the raw branch's RNA encoder (still a single `Linear(25017 -> 256)`) and how
+  `h_mean`/`h_raw` are combined (still one `Linear`) -- plus a bounded Beta likelihood head,
+  windowed attention along the CpG axis, and Hyper-Connections/mHC on top of a depth ladder. The
+  flagship arm (`trunk_mhc_stream_semantics_d4`) makes `h_mean` and `h_raw` themselves the two
+  streams of an mHC trunk instead of the single fusion `Linear` -- the most literal possible
+  answer to "improve how the two branch embeddings are combined," asked of the architecture that
+  actually has two named embeddings. Every arm runs at `mode=final` on the
+  `matched_chr1_shared_backbone` engine, evaluated via `evaluate_official_split`, so its MAS-PCC is
+  directly comparable to rung B's. Its noise-floor arm (3 seeds, full 80-epoch budget) doubles as
+  the full-budget rerun `shared_backbone_locus_cls_2026_09`'s own entry above already flagged as
+  needed before 0.5627 can be cited as final -- so this suite is also how that number gets
+  resolved. Ablation-only/throwaway code (see file docstrings). **No number from this study is a
+  paper result**, and nothing is adopted as canonical without clearing `2 x` the seed SD; if an arm
+  ever is adopted, the baseline rule at the top of this document applies and it must be retrained
+  independently in all three settings. See
+  `results/reference/ablations/architecture_novelty_2026_09/README.md`.
 
 ## Future, not a paper-comparison setting: TCGA whole-genome + ENCODE merged
 

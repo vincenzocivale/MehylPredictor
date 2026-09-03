@@ -1,18 +1,28 @@
 """Shared registry for the architecture-novelty suite (architecture_novelty_2026_09).
 
-Not part of the stable CLI -- delete this module together with
-scripts/experiments/{run_arch_suite,collect_arch_results}.py, configs/models/arch/
-and the ArchitectureVariantModel machinery in src/methylation_predictor/models.py
-once the study concludes and a decision is recorded in
-results/reference/ablations.yaml.
+Retargeted 2026-09-04: the suite originally sat on ``VarianceNormalizedResidualModel``
+(the two-stage frozen-prior architecture); that architecture is now frozen for
+old-checkpoint compatibility only (CLAUDE.md's "Model compatibility note"),
+superseded by ``FeatureFusionLocusCLSModel`` via the ``shared_backbone_locus_cls_2026_09``
+ablation ladder. Every arm here now extends
+``models.py::FeatureFusionArchitectureVariantModel`` instead, on the
+``matched_chr1_shared_backbone`` engine. The suite's earlier arms and their
+``configs/models/arch/`` recipes stay in the repo (frozen, not deleted) as a
+compatibility-only measurement of the retired architecture; they are not part of
+this registry.
 
-Every arm runs on the frozen matched_chr1 engine at mode=final, so its MAS-PCC on
-the official Table-5 chr1 views is directly comparable both to the canonical
-0.5613 and to the earlier fusion_mechanism_2026_08 arms, which used the same
-engine, split, seed and budget. There is deliberately no development-mode
-screening tier: MethylProphetTrainer has no refit cycle by design, and inventing a
-second metric convention (inner_double_ood_mas_pcc) for this suite would make its
-numbers non-comparable to the very baseline it is being judged against.
+Not part of the stable CLI -- delete this module together with
+scripts/experiments/{run_arch_suite,collect_arch_results}.py,
+configs/models/arch_shared_backbone/ and
+``models.py::FeatureFusionArchitectureVariantModel`` once the study concludes and
+a decision is recorded in results/reference/ablations.yaml.
+
+Every arm runs on ``matched_chr1_shared_backbone`` at ``mode=final``, evaluated on
+the official Table-5 chr1 Array views via ``evaluate_official_split`` -- the same
+protocol that produced ``rung_b_official_final`` -- so results are directly
+comparable to it. There is no development-mode screening tier for the same reason
+as before: a second metric convention would make this suite's numbers
+non-comparable to the number it is judged against.
 """
 from __future__ import annotations
 
@@ -23,12 +33,19 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY = "architecture_novelty_2026_09"
 
-# Canonical reference this suite is judged against
-# (results/reference/rna_methylation/chr1.yaml, mode=final, matched_chr1).
-CANONICAL_MAS_PCC = 0.5613
-CANONICAL_MSE = 0.01941
-CANONICAL_RECIPE = "configs/models/rna_methylation.yaml"
-HEADLINE_VIEW = "val_cpg_x_val_sample"
+# PROVISIONAL reference: rung_b_official_final (results/reference/ablations.yaml)
+# was stopped by user request at epoch 47/80, still improving 0.3-0.8%/epoch --
+# this is a LOWER BOUND, not a converged number. seed_variance_reference (the
+# noise-floor arm below) runs the same recipe to the full 80-epoch budget and
+# supplies the real reference this suite should actually be judged against;
+# update these two constants once it completes.
+CANONICAL_MAS_PCC = 0.5627
+CANONICAL_MSE = 0.01702
+CANONICAL_RECIPE = "configs/models/rna_methylation_shared_backbone.yaml"
+CANONICAL_IS_CONVERGED = False
+
+HEADLINE_VIEW = "official_val_cpg_x_val_sample"
+ENGINE = "matched_chr1_shared_backbone"
 
 
 @dataclass(frozen=True)
@@ -38,45 +55,42 @@ class Arm:
     stage: str
     question: str
     seeds: tuple[int, ...] = (17,)
-    # Arms whose result is only interpretable next to another arm's.
     control: str | None = None
     extra_args: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _arch(name: str) -> str:
-    return f"configs/models/arch/{name}.yaml"
+    return f"configs/models/arch_shared_backbone/{name}.yaml"
 
 
 ARMS: tuple[Arm, ...] = (
-    # -- Stage 0: the noise floor. Run this FIRST; nothing else is interpretable
-    # without it. Three seeds of the unmodified canonical recipe give the SD that
-    # every other arm's delta is judged against. No previous ablation in this repo
-    # ever measured it, which is why sigma_normalization_2026_08's +0.0007 could
-    # only be called "in noise" by assertion rather than by measurement.
-    Arm("seed_variance_canonical", CANONICAL_RECIPE, "0-noise-floor",
-        "How large is a null delta on this protocol?", seeds=(17, 29, 43)),
+    # -- Stage 0: the noise floor AND the missing convergence run for rung_b.
+    # Run this FIRST -- nothing else is interpretable without it, and the
+    # project is separately missing a converged reference number for its own
+    # primary architecture until this exists.
+    Arm("seed_variance_reference", CANONICAL_RECIPE, "0-noise-floor",
+        "How large is a null delta on this protocol, and what does rung_b converge to?",
+        seeds=(17, 29, 43)),
 
-    # -- Stage 1a: is the RNA branch simply capacity-starved?
+    # -- Stage 1a: is the raw branch's RNA encoder simply capacity-starved?
     Arm("enc_mlp", _arch("enc_mlp"), "1a-encoder-capacity",
-        "Does the RNA branch just need a nonlinearity and a hidden layer?"),
-    Arm("enc_program_bottleneck", _arch("enc_program_bottleneck"), "1a-encoder-capacity",
-        "Does an interpretable normalized gene-program bottleneck match a plain MLP?",
-        control="enc_mlp"),
+        "Does the raw branch's RNA encoder just need a nonlinearity and a hidden layer?"),
 
-    # -- Stage 1b: the flagship. Make the RNA representation locus-specific.
+    # -- Stage 1b: the flagship encoder arm.
     Arm("enc_locus_attention_k64", _arch("enc_locus_attention_k64"), "1b-locus-conditioned-rna",
-        "Does letting each CpG query the transcriptome beat one locus-invariant vector?",
+        "Does letting each CpG query the transcriptome beat one locus-invariant RNA vector?",
         control="enc_mlp"),
     Arm("enc_locus_attention_k128", _arch("enc_locus_attention_k128"), "1b-locus-conditioned-rna",
         "Is the token count the binding constraint?", control="enc_locus_attention_k64"),
 
-    # -- Stage 1c: depth. The mandatory control for anything HC/mHC claims.
+    # -- Stage 1c: depth on the concatenated [h_mean, h_raw] joint -- the
+    # mandatory control for the HC/mHC arms below.
     Arm("trunk_plain_d2", _arch("trunk_plain_d2"), "1c-trunk-depth",
-        "Does the depth-1 fusion head lose anything to depth at all?"),
+        "Does the reference architecture's single fusion Linear lose anything to depth at all?"),
     Arm("trunk_plain_d4", _arch("trunk_plain_d4"), "1c-trunk-depth",
-        "Where does trunk depth saturate?", control="trunk_plain_d2"),
+        "Where does depth saturate?", control="trunk_plain_d2"),
     Arm("trunk_plain_d8", _arch("trunk_plain_d8"), "1c-trunk-depth",
-        "Where does trunk depth saturate?", control="trunk_plain_d4"),
+        "Where does depth saturate?", control="trunk_plain_d4"),
 
     # -- Stage 1d/1e: orthogonal structural and likelihood changes.
     Arm("axial_cpg_d4", _arch("axial_cpg_d4"), "1d-axial-comethylation",
@@ -85,27 +99,23 @@ ARMS: tuple[Arm, ...] = (
     Arm("beta_likelihood_head", _arch("beta_likelihood_head"), "1e-output-likelihood",
         "Does a bounded, heteroscedastic likelihood beat MSE on beta values?"),
 
-    # -- Stage 1f: make the 2026-08 fusion verdict defensible at matched capacity.
-    Arm("fusion_bilinear_rank512", _arch("fusion_bilinear_rank512"), "1f-fusion-retest",
-        "Does interaction rank ABOVE the canonical 256 help? (rank 256 is provably "
-        "identical to canonical -- see tests/test_architecture_variants.py)"),
-    Arm("fusion_cross_attention_h4", _arch("fusion_cross_attention_h4"), "1f-fusion-retest",
-        "Was cross_attention's 0.5329 a single-head artefact?"),
-
-    # -- Stage 2: HC vs mHC vs the depth control, at matched depth/width.
-    Arm("trunk_hc_n4_d4", _arch("trunk_hc_n4_d4"), "2-hyper-connections",
-        "Do four unconstrained residual streams beat one?", control="trunk_plain_d4"),
-    Arm("trunk_mhc_n4_d4", _arch("trunk_mhc_n4_d4"), "2-hyper-connections",
+    # -- Stage 2: HOW THE TWO BRANCH EMBEDDINGS ARE COMBINED -- the postdoc's
+    # original question, now asked of the architecture that actually has two
+    # named branch embeddings to combine.
+    Arm("trunk_hc_n2_d4", _arch("trunk_hc_n2_d4"), "2-hyper-connections",
+        "Do two unconstrained residual streams over the joint beat one?", control="trunk_plain_d4"),
+    Arm("trunk_mhc_n2_d4", _arch("trunk_mhc_n2_d4"), "2-hyper-connections",
         "Does the Birkhoff/doubly-stochastic constraint recover what HC loses?",
-        control="trunk_hc_n4_d4"),
-    Arm("trunk_mhc_semantic_d4", _arch("trunk_mhc_semantic_d4"), "2-hyper-connections",
-        "Do modality-identified streams make the conserved exchange operator useful?",
-        control="trunk_mhc_n4_d4"),
+        control="trunk_hc_n2_d4"),
+    Arm("trunk_mhc_stream_semantics_d4", _arch("trunk_mhc_stream_semantics_d4"), "2-hyper-connections",
+        "Do the mean/raw embeddings themselves, as the two mHC streams, beat a single fusion Linear? "
+        "(the literal answer to 'improve how the two branch embeddings are combined')",
+        control="trunk_mhc_n2_d4"),
 
     # -- Stage 3: only after both components clear the promotion threshold.
     Arm("combined_locus_attention_mhc_semantic", _arch("combined_locus_attention_mhc_semantic"),
         "3-combination", "Do the two novelty components compose?",
-        control="trunk_mhc_semantic_d4"),
+        control="trunk_mhc_stream_semantics_d4"),
 )
 
 ARMS_BY_NAME = {arm.name: arm for arm in ARMS}
@@ -113,22 +123,19 @@ STAGES = tuple(dict.fromkeys(arm.stage for arm in ARMS))
 
 
 def jobs(arms: tuple[Arm, ...] = ARMS) -> list[tuple[Arm, int]]:
-    """Flatten arms into (arm, seed) units of work -- the schedulable granularity."""
     return [(arm, seed) for arm in arms for seed in arm.seeds]
 
 
 def run_id(arm: Arm, seed: int) -> str:
-    """Stable, path-safe identity for one unit of work.
-
-    Deterministic on purpose: re-running the same arm/seed on any machine reopens
-    the same run directory instead of creating a duplicate, so a suite spread
-    across machines that share the output root merges by construction.
-    """
-    return f"arch-{STUDY}-{arm.name}-seed{seed}"
+    """Deterministic per (arm, seed): re-running the same unit on any machine
+    reopens the same run directory instead of creating a duplicate. Unlike the
+    two-stage suite, this engine has NO resume support (LocusCLSJointTrainer's
+    RunStore.create is never called with resume=True) -- a killed run's
+    directory is a dead end, not something a re-invocation can continue."""
+    return f"arch-{STUDY}-shared-{arm.name}-seed{seed}"
 
 
 def select(names: str | None, stages: str | None, shard: str | None) -> tuple[Arm, ...]:
-    """Resolve --arms/--stages/--shard into the arms this machine should run."""
     chosen = ARMS
     if names:
         wanted = [n.strip() for n in names.split(",") if n.strip()]
@@ -146,19 +153,11 @@ def select(names: str | None, stages: str | None, shard: str | None) -> tuple[Ar
         index, total = (int(x) for x in shard.split("/"))
         if not (1 <= index <= total):
             raise SystemExit(f"--shard must be i/n with 1 <= i <= n; got {shard!r}")
-        # Round-robin over the *arm* list so each machine gets a mix of cheap and
-        # expensive arms rather than one machine drawing every deep-trunk run.
         chosen = tuple(a for i, a in enumerate(chosen) if i % total == index - 1)
     return chosen
 
 
 def data_paths(data_root: str | None = None) -> dict[str, str]:
-    """Machine-portable data locations.
-
-    Defaults target this machine; ``METHYL_DATA_ROOT`` (or --data-root) retargets
-    the whole set on another host, since the derived cache layout underneath is
-    identical wherever prepare.py built it.
-    """
     root = Path(data_root or os.environ.get("METHYL_DATA_ROOT", "/dune/DATASETS/MethylPredictionData"))
     prepared = root / "derived" / "methylprophet_table5_tcga_chr1"
     canonical = root / "datasets" / "methylprophet_repro_v1"
@@ -168,5 +167,6 @@ def data_paths(data_root: str | None = None) -> dict[str, str]:
         "feature_cache": str(prepared / "features"),
         "rna_cache": str(prepared / "rna"),
         "registry": str(canonical / "cpg" / "registries" / "array_cpg_map.parquet"),
+        "cpg_targets_dir": str(root / "derived" / "cpg_statistics" / "chr1"),
         "output_root": str(root / "experiments"),
     }

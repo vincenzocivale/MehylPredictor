@@ -26,8 +26,12 @@ from methylation_predictor.losses import residual_loss
 from methylation_predictor.models import (
     ArchitectureVariantModel,
     BilinearInteraction,
+    CpGTrunk,
+    FeatureFusionArchitectureVariantModel,
+    FeatureFusionLocusCLSModel,
     ProductInteraction,
     RNARepresentation,
+    feature_fusion_variant_label,
     AxialCpGAttention,
     HyperConnectionTrunk,
     RNAMethylationPredictor,
@@ -366,3 +370,167 @@ def test_bilinear_at_canonical_rank_is_the_product_term():
     loci = torch.randn(6, locus_dim, generator=generator)
     with torch.no_grad():
         assert torch.equal(product(rna, loci), bilinear(rna, loci))
+
+
+# ==========================================================================
+# FeatureFusionArchitectureVariantModel -- the shared-backbone suite
+# (architecture_novelty_2026_09, retargeted 2026-09-04 after
+# FeatureFusionLocusCLSModel became the primary/reference architecture).
+#
+# This model family has no prior/sigma anchor, so there is no "starts exactly
+# at the prior" invariant to test. Its own established convention
+# (FeatureFusionLocusCLSModel's fusion_init_std) is a small NONZERO init; the
+# exact, testable invariant is fusion_init_std=0.0 -> every prediction is
+# exactly 0.5, whatever the encoder/trunk/axial configuration.
+# ==========================================================================
+
+FF_INPUT_DIM = 48
+FF_CPG_DIM = 32
+FF_SAMPLES = 4
+FF_LOCI = 6
+
+
+def _ff_config(**overrides) -> ModelConfig:
+    config = ModelConfig(
+        encoder=EncoderConfig(latent_dim=16, hidden_dim=24, n_programs=6, program_dim=8, n_heads=2),
+        interaction=InteractionConfig(hidden_dim=12),
+    )
+    for key, value in overrides.items():
+        setattr(config, key, value)
+    return config
+
+
+def _ff_batch(seed: int = 0):
+    generator = torch.Generator().manual_seed(seed)
+    rna = torch.randn(FF_SAMPLES, FF_INPUT_DIM, generator=generator)
+    loci = torch.randn(FF_LOCI, FF_CPG_DIM, generator=generator)
+    return rna, loci
+
+
+def _ff_build(config: ModelConfig, **kwargs) -> FeatureFusionArchitectureVariantModel:
+    kwargs.setdefault("trunk_hidden_dim", 20)
+    kwargs.setdefault("bottleneck_dim", 10)
+    return FeatureFusionArchitectureVariantModel(FF_INPUT_DIM, FF_CPG_DIM, config, **kwargs)
+
+
+FF_ARM_CONFIGS = {
+    "default_equivalent": {},
+    "encoder_mlp": {"encoder": EncoderConfig(kind="mlp", latent_dim=16, hidden_dim=24)},
+    "encoder_locus_attention": {
+        "encoder": EncoderConfig(kind="locus_attention", latent_dim=16, n_programs=6, program_dim=8, n_heads=2)
+    },
+    "trunk_plain": {"trunk": TrunkConfig(kind="plain", depth=2, width=10)},
+    "trunk_hc": {"trunk": TrunkConfig(kind="hc", depth=2, width=10, n_streams=3)},
+    "trunk_mhc": {"trunk": TrunkConfig(kind="mhc", depth=2, width=10, n_streams=3)},
+    "trunk_mhc_stream_semantics": {"trunk": TrunkConfig(kind="mhc", depth=2, width=10, n_streams=2, stream_semantics=True)},
+    "axial": {"trunk": TrunkConfig(kind="plain", depth=1, width=10), "axial": AxialConfig(enabled=True, n_heads=2, window=3)},
+    "beta_head": {"beta_likelihood_head": True},
+    "no_mean_branch": {},  # exercised via use_mean_branch=False below
+}
+
+
+@pytest.mark.parametrize("name", sorted(FF_ARM_CONFIGS))
+def test_ff_arm_with_zero_fusion_init_predicts_exactly_half(name):
+    """fusion_init_std=0.0 must zero the final head's weight AND bias, so every
+    prediction is exactly sigmoid(0) = 0.5 regardless of encoder/trunk/axial."""
+    kwargs = {"fusion_init_std": 0.0}
+    if name == "no_mean_branch":
+        kwargs["use_mean_branch"] = False
+    model = _ff_build(_ff_config(**FF_ARM_CONFIGS[name]), **kwargs).eval()
+    rna, loci = _ff_batch()
+    with torch.no_grad():
+        beta = model(rna, loci)["beta"]
+    assert beta.shape == (FF_SAMPLES, FF_LOCI)
+    assert torch.allclose(beta, torch.full_like(beta, 0.5), atol=1e-6)
+
+
+@pytest.mark.parametrize("name", sorted(FF_ARM_CONFIGS))
+def test_ff_arm_produces_finite_gradients_everywhere(name):
+    kwargs = {}
+    if name == "no_mean_branch":
+        kwargs["use_mean_branch"] = False
+    model = _ff_build(_ff_config(**FF_ARM_CONFIGS[name]), **kwargs).train()
+    rna, loci = _ff_batch(seed=1)
+    target = torch.rand(FF_SAMPLES, FF_LOCI)
+    target[0, 0] = float("nan")
+    loss_cfg = LossConfig(locus_pearson_weight=0.15, locus_min_observed_samples=2)
+    if FF_ARM_CONFIGS[name].get("beta_likelihood_head") or name == "beta_head":
+        loss_cfg.beta_nll_weight = 0.1
+    # The real trainer always passes CpG ordinals when the axial arm is active
+    # (LocusCLSJointTrainer._position_kwargs); without them axial.distance_scale
+    # is a genuinely inert parameter (the decay term is skip-added only when
+    # positions are given), so this only matters for the "axial" arm here.
+    position_kwargs = {"cpg_positions": torch.arange(FF_LOCI) * 91} if model.requires_cpg_positions else {}
+    outputs = model(rna, loci, **position_kwargs)
+    from methylation_predictor.rna_training.locus_cls_trainer import _direct_beta_loss
+    loss, pieces = _direct_beta_loss(outputs, target, loss_cfg)
+    assert torch.isfinite(loss)
+    loss.backward()
+    grads = [(n, p.grad) for n, p in model.named_parameters() if p.requires_grad]
+    missing = [n for n, g in grads if g is None]
+    # residual_head/mean_head only receive gradient through the auxiliary
+    # residual/mean losses, which locus_cls_trainer applies separately
+    # (residual_aux_weight/aux_weight) -- neither is exercised by
+    # _direct_beta_loss alone, so both are expected to be gradient-free here.
+    missing = [n for n in missing if not (n.startswith("residual_head") or n.startswith("mean_head"))]
+    assert not missing, f"no gradient reached: {missing}"
+    non_finite = [n for n, g in grads if g is not None and not torch.isfinite(g).all()]
+    assert not non_finite, f"non-finite gradient: {non_finite}"
+    assert pieces["observed"] == FF_SAMPLES * FF_LOCI - 1
+
+
+def test_ff_default_matches_reference_parameter_shapes():
+    config = _ff_config()
+    assert not is_architecture_variant(config)
+    variant = _ff_build(config)
+    reference = FeatureFusionLocusCLSModel(
+        FF_INPUT_DIM, FF_CPG_DIM, config, trunk_hidden_dim=20, bottleneck_dim=10,
+    )
+    assert sorted(tuple(p.shape) for p in variant.parameters()) == sorted(tuple(p.shape) for p in reference.parameters())
+    assert sum(p.numel() for p in variant.parameters()) == sum(p.numel() for p in reference.parameters())
+
+
+def test_ff_default_matches_reference_outputs_under_copied_weights():
+    """At every default, FeatureFusionArchitectureVariantModel must reproduce
+    FeatureFusionLocusCLSModel's forward computation exactly -- the same
+    same-code-control role ArchitectureVariantModel plays for the retired
+    two-stage architecture."""
+    config = _ff_config()
+    variant = _ff_build(config, fusion_init_std=0.05).eval()
+    reference = FeatureFusionLocusCLSModel(
+        FF_INPUT_DIM, FF_CPG_DIM, config, trunk_hidden_dim=20, bottleneck_dim=10, fusion_init_std=0.05,
+    ).eval()
+
+    variant.rna_encoder.load_state_dict(reference.rna_encoder.state_dict())
+    variant.rna_product.load_state_dict(reference.rna_product.state_dict())
+    variant.locus_product.load_state_dict(reference.locus_product.state_dict())
+    variant.raw_branch.load_state_dict(reference.raw_branch.state_dict())
+    variant.residual_head.load_state_dict(reference.residual_head.state_dict())
+    variant.trunk_cpg.load_state_dict(reference.trunk.state_dict())
+    variant.mean_head.load_state_dict(reference.mean_head.state_dict())
+    variant.fusion.load_state_dict(reference.fusion.state_dict())
+
+    rna, loci = _ff_batch(seed=2)
+    with torch.no_grad():
+        assert torch.allclose(variant(rna, loci)["beta"], reference(rna, loci)["beta"], atol=1e-6)
+
+
+def test_ff_stream_semantics_validation():
+    with pytest.raises(ValueError, match="n_streams must be 2"):
+        _ff_build(_ff_config(trunk=TrunkConfig(kind="mhc", depth=1, width=10, n_streams=4, stream_semantics=True)))
+    with pytest.raises(ValueError, match="both branches"):
+        _ff_build(
+            _ff_config(trunk=TrunkConfig(kind="mhc", depth=1, width=10, n_streams=2, stream_semantics=True)),
+            use_mean_branch=False,
+        )
+    with pytest.raises(ValueError, match="multi-stream trunk"):
+        _ff_build(_ff_config(trunk=TrunkConfig(kind="plain", depth=1, width=10, stream_semantics=True)))
+
+
+def test_ff_variant_labels_are_distinct():
+    plain = feature_fusion_variant_label(_ff_config(trunk=TrunkConfig(kind="plain", depth=3, width=64)))
+    semantic = feature_fusion_variant_label(
+        _ff_config(trunk=TrunkConfig(kind="mhc", depth=3, width=64, n_streams=2, stream_semantics=True))
+    )
+    assert plain != semantic
+    assert "sem" in semantic and "sem" not in plain

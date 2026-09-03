@@ -1516,3 +1516,254 @@ def architecture_variant_label(config: ModelConfig) -> str:
     if config.beta_likelihood_head:
         parts.append("betahead")
     return "_".join(parts)
+
+
+class FeatureFusionArchitectureVariantModel(nn.Module):
+    """Configurable extension of ``FeatureFusionLocusCLSModel`` for the
+    architecture-novelty suite (``architecture_novelty_2026_09``), retargeted
+    2026-09-04 after ``FeatureFusionLocusCLSModel`` was selected as the repo's
+    primary/reference architecture (``shared_backbone_locus_cls_2026_09``,
+    ``docs/RNA_METHYLATION.md``). The suite's earlier work
+    (``ArchitectureVariantModel``, above) targeted the now-superseded two-stage
+    frozen-prior model and stays only for old-checkpoint-compatible experiments.
+
+    Same constructor signature as ``FeatureFusionLocusCLSModel`` (drop-in for
+    ``LocusCLSJointTrainer``), same two branches -- a locus-only mean branch
+    (``CpGTrunk``) and an RNA-conditioned raw branch -- but three axes become
+    configurable through ``ModelConfig``:
+
+      * ``config.encoder`` -- the RNA branch (``linear`` canonical,
+        ``mlp``/``program_bottleneck`` capacity controls, ``locus_attention``
+        makes the raw branch's RNA representation locus-specific).
+      * ``config.trunk`` -- how the two branch embeddings are combined. This is
+        the architecture's own core design question, and the postdoc's original
+        suggestion applies most literally here: with
+        ``trunk.stream_semantics=True`` (requires ``trunk.n_streams=2``), the
+        mean and raw embeddings themselves become the two streams of an
+        HC/mHC trunk -- they exchange information under a (for mHC) doubly
+        stochastic, mass-conserving mixing matrix for ``trunk.depth`` steps,
+        instead of being concatenated once into a single ``Linear``. Without
+        ``stream_semantics``, the trunk instead deepens the already-concatenated
+        joint representation (the depth control every HC/mHC claim needs).
+      * ``config.axial`` / ``config.beta_likelihood_head`` -- unchanged from the
+        two-stage suite's versions (windowed CpG-axis attention on the final
+        joint representation; an additional Beta-concentration output head).
+
+    At every default (``encoder.kind="linear"``, ``trunk.kind="none"``,
+    ``axial.enabled=False``, no beta head) this reduces to
+    ``FeatureFusionLocusCLSModel``'s exact forward computation -- verified
+    numerically in tests -- so it is a valid same-code control for the current
+    reference architecture, the same role ``ArchitectureVariantModel`` played
+    for the retired one.
+
+    Unlike the two-stage suite, there is no prior/sigma anchor here to give an
+    exact "starts at the prior" contract: this architecture's own established
+    convention (``fusion_init_std``, see ``FeatureFusionLocusCLSModel``'s
+    docstring) is a small *nonzero* init, because a hard-zero final layer was
+    measured to starve the raw branch of gradient. The exact, testable
+    invariant this class keeps is ``fusion_init_std=0.0`` -> the final head's
+    weight and bias are both exactly zero -> every prediction is exactly 0.5
+    at step 0, regardless of which encoder/trunk/axial configuration is active.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        cpg_input_dim: int,
+        config: ModelConfig,
+        trunk_hidden_dim: int = 256,
+        bottleneck_dim: int = 64,
+        trunk_dropout: float = 0.1,
+        use_mean_branch: bool = True,
+        use_fusion_product: bool = False,
+        fusion_init_std: float = 0.01,
+    ):
+        super().__init__()
+        self.config = config
+        self.use_mean_branch = bool(use_mean_branch)
+        self.use_fusion_product = bool(use_fusion_product)
+        trunk_cfg, axial_cfg = config.trunk, config.axial
+        self.stream_semantics = bool(trunk_cfg.stream_semantics)
+        if self.stream_semantics:
+            if not self.use_mean_branch:
+                raise ValueError("trunk.stream_semantics needs both branches: use_mean_branch=True")
+            if trunk_cfg.kind == "plain":
+                raise ValueError("trunk.stream_semantics is only meaningful for a multi-stream trunk (hc/mhc)")
+            if trunk_cfg.n_streams != 2:
+                raise ValueError(
+                    "trunk.stream_semantics assigns one stream per branch (mean, raw); "
+                    f"trunk.n_streams must be 2, got {trunk_cfg.n_streams}"
+                )
+
+        if self.use_mean_branch:
+            self.trunk_cpg = CpGTrunk(cpg_input_dim, trunk_hidden_dim, bottleneck_dim, trunk_dropout)
+            self.mean_head = nn.Linear(bottleneck_dim, 1)
+
+        encoder_cfg, interaction_cfg = config.encoder, config.interaction
+        self.rna_encoder = build_rna_encoder(encoder_cfg, input_dim=input_dim, locus_dim=cpg_input_dim)
+        self.locus_conditioned = encoder_cfg.kind == "locus_attention"
+        rna_pair_dim = encoder_cfg.program_dim if self.locus_conditioned else encoder_cfg.latent_dim
+        raw_hidden_dim = interaction_cfg.hidden_dim
+        dropout = interaction_cfg.dropout
+        product_dim = min(rna_pair_dim, cpg_input_dim)
+        self.rna_product = nn.Linear(rna_pair_dim, product_dim)
+        self.locus_product = nn.Linear(cpg_input_dim, product_dim)
+        joint_dim = rna_pair_dim + cpg_input_dim + product_dim
+        self.raw_branch = nn.Sequential(
+            nn.LayerNorm(joint_dim),
+            nn.Linear(joint_dim, raw_hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        self.residual_head = nn.Linear(raw_hidden_dim, 1)  # auxiliary probe only, mirrors FeatureFusionLocusCLSModel
+
+        # ---- how the two branch embeddings are combined -------------------
+        trunk_kind = trunk_cfg.kind
+        if trunk_kind == "none":
+            # Byte-for-byte FeatureFusionLocusCLSModel's own fusion stage, so the
+            # all-default configuration reproduces it exactly.
+            fusion_dim = raw_hidden_dim + (bottleneck_dim if self.use_mean_branch else 0)
+            if self.use_fusion_product:
+                if not self.use_mean_branch:
+                    raise ValueError("use_fusion_product requires use_mean_branch")
+                self.fusion_product_dim = min(bottleneck_dim, raw_hidden_dim)
+                self.mean_fusion_proj = nn.Linear(bottleneck_dim, self.fusion_product_dim)
+                self.raw_fusion_proj = nn.Linear(raw_hidden_dim, self.fusion_product_dim)
+                fusion_dim += self.fusion_product_dim
+            self.combine_stage = None
+            self.trunk = None
+            width = fusion_dim
+        else:
+            if trunk_cfg.depth < 1:
+                raise ValueError(f"trunk.kind={trunk_kind!r} requires trunk.depth >= 1")
+            width = trunk_cfg.width
+            if self.stream_semantics:
+                self.mean_stream_proj = nn.Linear(bottleneck_dim, width)
+                self.raw_stream_proj = nn.Linear(raw_hidden_dim, width)
+                self.combine_stage = None
+            else:
+                fusion_dim = raw_hidden_dim + (bottleneck_dim if self.use_mean_branch else 0)
+                self.combine_stage = nn.Sequential(nn.LayerNorm(fusion_dim), nn.Linear(fusion_dim, width))
+            if trunk_kind == "plain":
+                self.trunk = PlainTrunk(
+                    width=width, depth=trunk_cfg.depth, expansion=trunk_cfg.expansion,
+                    dropout=trunk_cfg.dropout, gradient_checkpointing=trunk_cfg.gradient_checkpointing,
+                )
+            elif trunk_kind in {"hc", "mhc"}:
+                self.trunk = HyperConnectionTrunk(
+                    width=width, depth=trunk_cfg.depth, expansion=trunk_cfg.expansion,
+                    dropout=trunk_cfg.dropout, n_streams=trunk_cfg.n_streams,
+                    manifold=(trunk_kind == "mhc"), sinkhorn_iters=trunk_cfg.sinkhorn_iters,
+                    identity_init_scale=trunk_cfg.identity_init_scale,
+                    gradient_checkpointing=trunk_cfg.gradient_checkpointing,
+                )
+            else:
+                raise ValueError(f"unknown trunk.kind: {trunk_kind!r}")
+
+        self.axial = (
+            AxialCpGAttention(
+                width=width, n_heads=axial_cfg.n_heads, window=axial_cfg.window,
+                n_distance_buckets=axial_cfg.n_distance_buckets, dropout=axial_cfg.dropout,
+            )
+            if axial_cfg.enabled
+            else None
+        )
+        self.fusion = nn.Linear(width, 1)
+        self.concentration_head = nn.Linear(width, 1) if config.beta_likelihood_head else None
+
+        # Same convention as FeatureFusionLocusCLSModel: fusion_init_std=0.0
+        # reproduces a hard-zero start (every prediction exactly 0.5), the
+        # default 0.01 avoids starving the raw/trunk parameters of gradient at
+        # step 0 (measured empirically on that model -- see its docstring).
+        if fusion_init_std > 0:
+            nn.init.normal_(self.fusion.weight, std=fusion_init_std)
+        else:
+            nn.init.zeros_(self.fusion.weight)
+        nn.init.zeros_(self.fusion.bias)
+
+    @property
+    def requires_cpg_positions(self) -> bool:
+        return self.axial is not None
+
+    def diagnostics(self) -> dict[str, float]:
+        if self.trunk is None or not hasattr(self.trunk, "composite_gain"):
+            return {}
+        return self.trunk.composite_gain()
+
+    def forward(
+        self, rna: torch.Tensor, cpg_embedding: torch.Tensor, cpg_positions: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
+        representation = self.rna_encoder(rna)
+        batch = rna.shape[0]
+        n_loci = cpg_embedding.shape[0]
+        if self.locus_conditioned:
+            assert representation.program_tokens is not None
+            rna_pair = self.rna_encoder.attend(representation.program_tokens, cpg_embedding)
+        else:
+            rna_pair = representation.global_vector[:, None, :].expand(batch, n_loci, -1)
+
+        product = self.rna_product(rna_pair) * self.locus_product(cpg_embedding)[None, :, :]
+        joint = torch.cat([rna_pair, cpg_embedding[None, :, :].expand(batch, n_loci, -1), product], dim=-1)
+        h_raw = self.raw_branch(joint)  # (batch, n_loci, raw_hidden_dim)
+        residual_logit = self.residual_head(h_raw).squeeze(-1)  # auxiliary probe only
+
+        if self.use_mean_branch:
+            h_mean = self.trunk_cpg(cpg_embedding)  # (n_loci, bottleneck_dim)
+            mu_logit = self.mean_head(h_mean).squeeze(-1)  # auxiliary probe only
+            h_mean_b = h_mean[None, :, :].expand(batch, n_loci, -1)
+        else:
+            mu_logit = None
+            h_mean_b = None
+
+        if self.trunk is None:
+            pieces = [h_mean_b, h_raw] if self.use_mean_branch else [h_raw]
+            if self.use_fusion_product:
+                fusion_product = self.mean_fusion_proj(h_mean)[None, :, :] * self.raw_fusion_proj(h_raw)
+                pieces.append(fusion_product)
+            hidden = torch.cat(pieces, dim=-1)
+        elif self.stream_semantics:
+            mean_stream = self.mean_stream_proj(h_mean_b)
+            raw_stream = self.raw_stream_proj(h_raw)
+            streams = torch.stack([mean_stream, raw_stream], dim=2)  # (batch, n_loci, 2, width)
+            hidden = self.trunk(streams)
+        else:
+            pieces = [h_mean_b, h_raw] if self.use_mean_branch else [h_raw]
+            hidden = self.combine_stage(torch.cat(pieces, dim=-1))
+            if self.trunk.n_streams > 1:
+                hidden = hidden[:, :, None, :].expand(-1, -1, self.trunk.n_streams, -1)
+            hidden = self.trunk(hidden)
+
+        if self.axial is not None:
+            hidden = self.axial(hidden, positions=cpg_positions)
+
+        prediction_logit = self.fusion(hidden).squeeze(-1)
+        beta = torch.sigmoid(prediction_logit)
+        outputs = {
+            "beta": beta,
+            "delta_logit": prediction_logit,
+            "raw_delta": prediction_logit,
+            "prediction_logit": prediction_logit,
+            "mu_logit": mu_logit,
+            "residual_logit": residual_logit,
+            "h_cpg": h_mean if self.use_mean_branch else None,
+        }
+        if self.concentration_head is not None:
+            outputs["concentration"] = torch.nn.functional.softplus(self.concentration_head(hidden).squeeze(-1))
+        return outputs
+
+
+def feature_fusion_variant_label(config: ModelConfig) -> str:
+    """Compact, checkpoint-safe description of a shared-backbone variant's
+    topology -- mirrors ``architecture_variant_label`` for the two-stage suite."""
+    parts = [f"enc-{config.encoder.kind}"]
+    if config.encoder.kind == "locus_attention":
+        parts.append(f"k{config.encoder.n_programs}h{config.encoder.n_heads}d{config.encoder.program_dim}")
+    if config.trunk.kind != "none":
+        parts.append(f"trunk-{config.trunk.kind}d{config.trunk.depth}w{config.trunk.width}")
+        if config.trunk.kind in {"hc", "mhc"}:
+            parts.append(f"n{config.trunk.n_streams}" + ("sem" if config.trunk.stream_semantics else ""))
+    if config.axial.enabled:
+        parts.append(f"axial-w{config.axial.window}h{config.axial.n_heads}")
+    if config.beta_likelihood_head:
+        parts.append("betahead")
+    return "_".join(parts)
