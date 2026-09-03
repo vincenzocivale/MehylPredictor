@@ -1,0 +1,16 @@
+# Baseline (paper comparison, see docs/PAPER_EXPERIMENTS.md): "CpG Prior".
+# Documentation-only stub -- this baseline has NO trainable parameters and no
+# training config. It predicts methylation using only the locus-specific
+# baseline (mu) from the frozen CpG-statistics prior/sigma cache, without any
+# patient RNA information, measuring how much performance is explained by the
+# intrinsic methylation tendency of each CpG alone.
+#
+# There is nothing to train: run evaluation directly against
+# --feature-cache/--registry for the target scope, e.g.
+#
+#   python scripts/evaluate.py --model cpg_prior --eval-scope chr1 \
+#     --canonical-root ... --feature-cache ... --registry ... --output ...
+#
+# See src/methylation_predictor/rna_training/evaluator.py::CpGPriorEvaluator.
+model: null
+training: null

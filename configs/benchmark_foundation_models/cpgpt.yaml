@@ -1,0 +1,33 @@
+# CpGPT (lucascamillomd/CpGPT) readiness/evaluation config.
+# See docs/PAPER_EXPERIMENTS.md's foundation-model section and
+# scripts/benchmark_foundation_models/setup.sh for how these paths are populated.
+
+vendored_repo: external/CpGPT
+env: external/cpgpt-env          # isolated venv -- run this model's scripts with its python
+
+checkpoints_dir: external/checkpoints/cpgpt
+human_dependencies_dir: external/checkpoints/cpgpt_human_dependencies
+
+# Only the two released *pretrained masked* sizes -- see adapters/cpgpt_adapter.py's
+# docstring for why the other named checkpoints (age/cancer/mortality/...) are
+# excluded (task-finetuned, not masked-recovery models).
+variants:
+  small:                          # CpGPT-2M
+    checkpoint: weights/small.ckpt
+    config: config/small.yaml
+    vocab: vocab/small.json
+  large:                          # CpGPT-100M
+    checkpoint: weights/large.ckpt
+    config: config/large.yaml
+    vocab: vocab/large.json
+
+scopes:
+  chr1:
+    table5_protocol_root: ${TCGA_CANONICAL_DERIVED_ROOT}/methylprophet_table5_tcga_chr1/table5_protocol
+    array_cpg_registry: ${TCGA_CANONICAL_ROOT}/cpg/registries/array_cpg_map.parquet
+    view: val_cpg_x_train_sample   # unseen CpGs, seen patients
+    status: ready                  # matched_chr1 cache exists + split verified (PAPER_EXPERIMENTS.md)
+  chr123:
+    status: usable_unverified      # split verification pending, same caveat as rna_methylation/chr123
+  encode:
+    status: blocked                # no atlas coverage yet, see PLANNING_NTV3_GENOMEWIDE_EXPANSION.md

@@ -156,8 +156,20 @@ def _eval_group_mapping(root: Path) -> dict[str, int]:
     }
 
 
-def _array_ids_from_mp_eval(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, object]]:
-    """Extract exact Array ID sets from released MethylProphet prediction rows."""
+def _array_ids_from_mp_eval(
+    path: Path,
+    expected_counts: dict[str, int] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, object]]:
+    """Extract exact Array ID sets from released MethylProphet prediction rows.
+
+    ``expected_counts`` (keys ``array_train_samples``/``array_val_samples``/
+    ``array_train_cpgs``/``array_val_cpgs``) validates the extracted ID counts
+    against a specific scope's published numbers before returning them --
+    defaults to the chr1 ``TABLE5_EXPECTED`` values for backward compatibility.
+    Pass a chr123 (or other scope) count dict to reuse this same extraction
+    logic for a different released evaluation artifact.
+    """
+    expected_counts = expected_counts or TABLE5_EXPECTED
     mapping = _eval_group_mapping(path)
     by_group = {gid: {"samples": set(), "cpgs": set()} for gid in mapping.values()}
     parquet_candidates = sorted(path.rglob("*.parquet")) if path.is_dir() else ([path] if path.suffix == ".parquet" else [])
@@ -207,14 +219,14 @@ def _array_ids_from_mp_eval(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndar
     if set(g2["samples"]) != set(val_s.tolist()) or set(g2["cpgs"]) != set(val_c.tolist()):
         raise RuntimeError("released MethylProphet eval groups disagree on validation IDs")
     expected = (
-        TABLE5_EXPECTED["array_train_samples"],
-        TABLE5_EXPECTED["array_val_samples"],
-        TABLE5_EXPECTED["array_train_cpgs"],
-        TABLE5_EXPECTED["array_val_cpgs"],
+        expected_counts["array_train_samples"],
+        expected_counts["array_val_samples"],
+        expected_counts["array_train_cpgs"],
+        expected_counts["array_val_cpgs"],
     )
     actual = (len(train_s), len(val_s), len(train_c), len(val_c))
     if actual != expected:
-        raise RuntimeError(f"released MethylProphet eval ID counts {actual} != Table-5 {expected}")
+        raise RuntimeError(f"released MethylProphet eval ID counts {actual} != expected {expected}")
     return train_s, val_s, train_c, val_c, {
         "method": "IDs extracted directly from released MethylProphet evaluation rows",
         "path": str(path),

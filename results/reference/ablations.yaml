@@ -120,3 +120,92 @@ fusion_mechanism_2026_08:
     unchanged. FiLMInteraction/CrossAttentionInteraction/BilinearInteraction and
     InteractionConfig.kind={film,cross_attention,bilinear} remain available in
     models.py/config.py for any future re-run of this study.
+shared_backbone_locus_cls_2026_09:
+  # STATUS: ladder (rungs a-f) complete 2026-09-02; rung_b confirmed on the true
+  # official split 2026-09-03 (see rung_b_official_final below). PROMOTED
+  # 2026-09-03: rung_b's configuration (FeatureFusionLocusCLSModel,
+  # use_mean_branch=true, use_fusion_product=false, aux_weight=0.15,
+  # residual_aux_weight=0.0, raw_lr_multiplier=1.0) is now the repo's primary/
+  # reference RNA-methylation architecture -- see docs/RNA_METHYLATION.md,
+  # CLAUDE.md, and results/reference/rna_methylation/chr1.yaml. Kept here for
+  # the selection methodology/history; no longer just an internal ablation.
+  # scope=chr1, matched_chr1 data via rna_training/locus_cls_trainer.py
+  # (LocusCLSJointTrainer, models.py::FeatureFusionLocusCLSModel), schedule_policy=
+  # pair_complete (configs/models/rna_methylation_ablation_pair_complete.yaml, same
+  # batching as the canonical 0.5613 run), mode=development, early_stop_patience=6
+  # for rungs a-f below.
+  #
+  # IMPORTANT -- rungs a-f are inner_double_ood_mas_pcc numbers (an inner train/val
+  # split carved OUT OF the official array_train_sample_idx/array_train_cpg_idx pool
+  # via stratified_sample_split/blocked_cpg_split, LocusCLSJointTrainer._build_pools),
+  # NOT val_cpg_x_val_sample_mas_pcc (the true official MethylProphet Table5 held-out
+  # split, array_val_sample_idx/array_val_cpg_idx, used everywhere else in this file
+  # for the 0.5613 canonical number). Same view name ("val_cpg_x_val_sample") is
+  # reused for both by convention but they are evaluated on DIFFERENT data -- see
+  # fusion_mechanism_2026_08's note above for the same caveat pattern. The proxy
+  # split UNDERESTIMATED rung_b's real performance (see rung_b_official_final) --
+  # treat proxy numbers as relative ranking evidence between rungs only, never as an
+  # absolute estimate of the true official-split number.
+  # Origin motivation: postdoc-proposed single-stage shared-backbone architecture
+  # (mean-prediction proxy task + RNA-conditioned prediction, late-fused instead of
+  # summed) as a more elegant alternative to the current frozen-prior two-stage
+  # pipeline; ladder isolates each added piece of complexity one at a time.
+  canonical_official_split_context_only: {val_cpg_x_val_sample_mas_pcc: 0.5613}
+  rung_a_no_mean_branch: {stopped_epoch: 16, inner_double_ood_mas_pcc: 0.5322}  # plateaued epoch ~6-16, stopped manually (pre-dates early_stop_patience)
+  rung_b_mean_branch_concat: {best_epoch: 12, stopped_epoch: 18, inner_double_ood_mas_pcc: 0.5365}  # +mean branch (trunk+aux probe), concat fusion, aux_weight=0.15
+  rung_c_add_residual_probe: {best_epoch: 12, stopped_epoch: 18, inner_double_ood_mas_pcc: 0.5372}  # +residual_aux_weight=0.15 (symmetric probe on h_raw)
+  rung_d_add_lr_mult: {best_epoch: 6, stopped_epoch: 12, inner_double_ood_mas_pcc: 0.5369}  # +raw_lr_multiplier=4.0 -- converges faster (12 vs 18 ep) but same ceiling
+  rung_e_zero_init_isolated: {best_epoch: 3, stopped_epoch: 9, inner_double_ood_mas_pcc: 0.5370}  # rung_d config with fusion_init_std=0.0
+  rung_f_fusion_product: {best_epoch: 2, stopped_epoch: 8, inner_double_ood_mas_pcc: 0.5359}  # rung_d config + use_fusion_product=true -- worst of the five, no benefit
+  # rung_b re-run in mode=final (trained on the FULL official train pool, no inner
+  # split), evaluated on the TRUE official split (array_val_sample_idx x
+  # array_val_cpg_idx) -- this IS directly comparable to the canonical 0.5613.
+  # Training was stopped by user request at epoch 47/80 (still improving, loss
+  # relative improvement ~0.3-0.8%/epoch at stop, well above the 0.1% early-stop
+  # threshold) -- this number is a lower bound on rung_b's true ceiling, not its
+  # converged value. run_id: locus-cls-rung_b_final-chr1-2026-09-03.
+  rung_b_official_final:
+    checkpoint_epoch: 47
+    epochs_planned: 80
+    stopped_early_by_user_request: true
+    val_cpg_x_val_sample_mas_pcc: 0.5627
+    mse: 0.01702
+    mae: 0.08086
+    skill_vs_prior: 0.3747
+    rows: 6129992  # matches TABLE5_EXPECTED val_cpg_x_val_sample_observed exactly -- confirms true official split
+  conclusion: >
+    Ladder (rungs a-f, proxy split) shows the mean branch is the only piece that
+    matters: rung_a -> rung_b (+mean branch, concat fusion) is the one real jump
+    (+0.0043); every subsequent addition (residual probe, LR multiplier, zero-init,
+    fusion product) lands within a 0.0013 band of each other and of rung_b -- noise,
+    not signal, so none of them earn a place in the final architecture per the
+    project's own complexity-must-be-justified rule. rung_d/rung_e do converge
+    faster (12/9 epochs vs rung_b/c's 18) without hurting the ceiling, useful only if
+    training wall-clock is a real constraint. Per-locus analysis (rung_b checkpoint,
+    epoch 12, proxy split): the mean branch predicts the per-locus mean well
+    precisely on the CpGs where the model struggles most on the sample-specific value
+    (bottom-25% by across-sample correlation: mu MAE 0.042, corr(mu_pred, mu_true)
+    0.968, vs top-25%: MAE 0.073, corr 0.931) -- driven by those low-correlation loci
+    having very low across-sample variance (median std 0.023 vs 0.184,
+    corr(std, rc)=0.65), not by any mean-branch
+    deficiency -- consistent with rungs c-f (all targeting the RNA-conditioned/
+    residual branch) failing to move the proxy-split number either.
+
+    CONFIRMED ON THE TRUE OFFICIAL SPLIT (2026-09-03): rung_b re-trained in
+    mode=final (full official train pool, no inner split) and evaluated on the real
+    array_val_sample_idx x array_val_cpg_idx held-out set scores **0.5627**,
+    *above* the canonical two-stage model's 0.5613 (+0.0014) -- and this is a lower
+    bound, since training was stopped by user request at epoch 47/80 while still
+    improving. The proxy split had UNDERESTIMATED rung_b's true performance (0.5365
+    proxy vs 0.5627 official) -- a caution for reading any inner_double_ood number
+    here as an absolute performance estimate rather than a relative ranking signal.
+    PAPER STATUS: this is citable as a real, official-split result for rung_b (the
+    simplest configuration: mean branch + concat fusion, no residual probe, no LR
+    multiplier, no fusion product) -- a single-stage shared-backbone architecture
+    matching/slightly exceeding the canonical frozen-prior two-stage pipeline, with
+    a simpler training procedure (one stage instead of two). Still single-seed,
+    chr1 only, and not yet run to convergence (epoch 47/80) -- a full-budget rerun
+    (or at least a second seed) is worth doing before treating 0.5627 as this
+    architecture's final number, but the qualitative conclusion (elegant single-
+    stage design is competitive with, not worse than, the two-stage canonical
+    pipeline) is already well-supported.

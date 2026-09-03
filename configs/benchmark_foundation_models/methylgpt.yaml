@@ -1,0 +1,48 @@
+# MethylGPT (albert-ying/MethylGPT) readiness/evaluation config.
+# See docs/PAPER_EXPERIMENTS.md's foundation-model section and
+# scripts/benchmark_foundation_models/setup.sh for how these paths are populated.
+
+vendored_repo: external/MethylGPT
+env: external/methylgpt-env      # isolated venv (torch==2.3.1 / torchtext==0.18.0 --
+                                  # NOT the main repo's torch install, see setup.sh)
+
+checkpoints_dir: external/checkpoints/methylgpt
+
+# All three released sizes. NOTE: internal .pt filenames don't match the folder
+# name (leftover training-run naming) -- the adapter's check_variant_identity()
+# cross-checks args.json's layer_size against the README table instead of trusting
+# folder/file names.
+variants:
+  base:                            # methylGPT-base, 64-dim, 3M params
+    dir: base
+  medium:                          # methylGPT-medium, 128-dim, 7M params (README's "recommended")
+    dir: medium
+  large:                           # methylGPT-large, 256-dim, 15M params
+    dir: large
+
+# KNOWN BLOCKER (confirmed 2026-09-02, see check_readiness.py's mismatch_diagnosis):
+# all three released checkpoints were trained with fast_transformer=True
+# (flash-attn's fused Wqkv projection). Without flash-attn installed, the model
+# falls back to a plain nn.MultiheadAttention -- a different parameterization, so
+# 16/100 tensors (6 layers' self-attention QKV + 2 decoder layers) cannot load.
+# Needs flash-attn on a GPU host before an exact-checkpoint forward pass is possible.
+requires_flash_attn_for_exact_load: true
+
+# Fixed 49,156-site Illumina-probe-ID vocabulary (confirmed from the downloaded
+# vocab.json: 49,159 tokens = 49,156 sites + <pad>/<cls>/<eoc>; 49,135 are
+# cgXXXXXXXX-style, the rest are Illumina `ch.`-prefixed probes). Computing overlap
+# against this repo's chr1/chr123 val-CpGs needs an external probe-id -> hg38-
+# position crosswalk this repo does not build yet (our own registry only has
+# (chrom, pos), no Illumina probe IDs) -- see verify.vocabulary_overlap().
+vocabulary_crosswalk: null  # TODO: path to an Illumina manifest once sourced
+
+scopes:
+  chr1:
+    table5_protocol_root: ${TCGA_CANONICAL_DERIVED_ROOT}/methylprophet_table5_tcga_chr1/table5_protocol
+    array_cpg_registry: ${TCGA_CANONICAL_ROOT}/cpg/registries/array_cpg_map.parquet
+    view: val_cpg_x_train_sample
+    status: blocked_pending_flash_attn_and_crosswalk
+  chr123:
+    status: blocked_pending_flash_attn_and_crosswalk
+  encode:
+    status: blocked

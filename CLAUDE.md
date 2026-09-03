@@ -7,18 +7,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Research framework for reconstructing DNA methylation from bulk RNA using frozen NTv3 CpG
 representations. Two canonical trainable models share one genomic-scope axis:
 
-- `CpGStatisticsPredictor` (`src/methylation_predictor/cpg_statistics/`): frozen NTv3 CpG embedding -> locus mean `mu` and logit-scale `sigma`.
-- `RNAMethylationPredictor` (`src/methylation_predictor/models.py`, trained via `rna_training/`): RNA + CpG embedding + `(mu, sigma)` -> sample-specific methylation.
+- `CpGStatisticsPredictor` (`src/methylation_predictor/cpg_statistics/`): frozen NTv3 CpG embedding -> locus mean `mu` and logit-scale `sigma`. Its `target_mu` output also feeds the RNA model's mean-branch proxy task below.
+- `FeatureFusionLocusCLSModel` (`src/methylation_predictor/models.py`, trained via `rna_training/locus_cls_trainer.py`, `scripts/train.py --engine matched_chr1_shared_backbone`): the **primary/reference RNA-methylation architecture** as of 2026-09-03 — a single-stage shared backbone: RNA + CpG embedding -> two late-fused branches (a locus-only mean-prediction branch, an RNA-conditioned branch) -> `beta_hat` directly, no explicit prior/residual composition. Selected over the earlier two-stage design via the `shared_backbone_locus_cls_2026_09` ablation ladder (`results/reference/ablations.yaml`); see `docs/RNA_METHYLATION.md`. `RNAMethylationPredictor` (`models.py`, trained via `rna_training/trainer.py`/`joint_trainer.py`, `benchmark/methylprophet/`): the earlier two-stage frozen-prior + residual architecture — RNA + CpG embedding + `(mu, sigma)` -> sample-specific methylation via `logit(mu) + sigma*residual`. Kept frozen for old-checkpoint compatibility (see "Model compatibility note" below), not the recommended architecture for new work.
 - Scopes: `chr1`, `chr123` (`chr1 ∪ chr2 ∪ chr3`), `genomewide`. `chr1` is the MethylProphet-matched
   comparison scope (official Array split independently verified against the released MethylProphet
   evaluation artifact, see `docs/BENCHMARK_METHYLPROPHET.md`); `genomewide` is the primary general
-  benchmark, and the roadmap goes chr1 → genomewide directly. `chr123` remains a usable general
-  scope but is not currently a verified MethylProphet comparison (its CpG-split provenance is
-  unverified; access to a verification source is still being pursued).
+  benchmark, and the roadmap goes chr1 → genomewide directly. `chr123`'s CpG split is now verified
+  exact against the released MethylProphet chr123 evaluation artifact (2026-09-02); its Array
+  sample split remains a reconstruction (chr1's split, reused) rather than a literal release-ID
+  match — the release's own sample_idx values don't fully overlap this repo's canonical Array
+  bundle (306 IDs absent either way, a genuine snapshot/content difference), so the release split
+  can't be applied here. No retrain was needed — the existing `cpg_statistics/chr123` and
+  `rna_methylation/chr123` checkpoints already use the (unchanged) chr1-reused split. See
+  `docs/BENCHMARK_METHYLPROPHET.md`'s "chr123: verified" section.
 
-Read `README.md`, `docs/WORKFLOWS.md`, `docs/RNA_METHYLATION.md`, `docs/CPG_STATISTICS.md`, and
-`docs/BENCHMARKS.md` before making architectural changes — they hold the current design rationale
-and frozen reference numbers, not just usage instructions.
+**The paper reports exactly three MethylProphet-matched settings — TCGA chr1 (done, verified),
+TCGA chr1-3 (in progress, split verification pending), and ENCODE all-chromosome (not yet
+built) — plus one further-out, not-yet-formalized TCGA-whole-genome+ENCODE-merged setting that is
+explicitly not a paper-comparison result. `docs/PAPER_EXPERIMENTS.md` is the authoritative,
+single source of truth for this: read it before adding any new baseline model or reporting a new
+"vs MethylProphet" number — every new baseline must be trained/optimized independently in each of
+the three settings, not tuned once and reused.**
+
+Read `README.md`, `docs/WORKFLOWS.md`, `docs/RNA_METHYLATION.md`, `docs/CPG_STATISTICS.md`,
+`docs/BENCHMARKS.md`, and `docs/PAPER_EXPERIMENTS.md` before making architectural changes — they
+hold the current design rationale and frozen reference numbers, not just usage instructions.
 
 ## Commands
 
@@ -72,7 +85,22 @@ python scripts/explain.py --checkpoint /path/to/best.pt --canonical-root ... --f
   --rna-cache ... --sample-idx 1234 --cpg-idx-file candidate_cpg_ids.npy --auto-top-loci 20
 ```
 
-Exact MethylProphet chr1 reproduction path (frozen, pair-complete):
+Reference shared-backbone architecture, chr1 matched MethylProphet (primary architecture, see
+`docs/RNA_METHYLATION.md`):
+
+```bash
+python scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+  --prepared-root ... --canonical-root ... --feature-cache ... --rna-cache ... \
+  --registry ... --cpg-targets-dir ... --recipe configs/models/rna_methylation_shared_backbone.yaml \
+  --mode final --output-root ...
+
+python scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_backbone \
+  --checkpoint /path/to/last.pt --eval-scope chr1 --prepared-root ... --canonical-root ... \
+  --feature-cache ... --rna-cache ... --registry ... --cpg-targets-dir ... --output ...
+```
+
+Exact MethylProphet chr1 reproduction path for the earlier two-stage architecture (frozen,
+pair-complete — kept for old-checkpoint compatibility, see "Model compatibility note" below):
 
 ```bash
 python scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1 \
@@ -80,7 +108,7 @@ python scripts/train.py --model rna_methylation --scope chr1 --engine matched_ch
   --registry ... --recipe configs/models/rna_methylation.yaml --output-root ...
 ```
 
-which consumes caches built by `scripts/benchmark_methylprophet/prepare.py` (see
+Both consume caches built by `scripts/benchmark_methylprophet/prepare.py` (see
 `docs/BENCHMARK_METHYLPROPHET.md`).
 
 ## Architecture
@@ -121,6 +149,25 @@ validation, not as the repo's main architecture. It has its own `cache.py`/`feat
 change. `MethylProphetTrainer` (`benchmark/methylprophet/trainer.py`) is a complete, self-contained
 Cartesian-block trainer — don't route generic-pipeline changes through it.
 
+### The foundation-model masked-CpG comparison is isolated too
+
+`benchmark/foundation_models/` (+ `scripts/benchmark_foundation_models/` +
+`configs/benchmark_foundation_models/`) feeds the same `val_cpg_x_train_sample` view
+to external pretrained masked-methylation models (CpGPT, MethylGPT, DeepCpG) — see
+`docs/PAPER_EXPERIMENTS.md`'s foundation-model section for status/known blockers,
+including a correction of an earlier (wrong) assumption about how DeepCpG was used
+as a baseline in the reference papers — read that section before assuming any of
+this pipeline's numbers reproduce a specific published comparison.
+Vendored external repos + their checkpoints live in `external/` (gitignored,
+`scripts/benchmark_foundation_models/setup.sh` recreates it) — each model gets its
+own isolated environment there rather than adding its framework deps
+(hydra/lightning/torchtext/legacy tensorflow+keras/...) to this repo's own
+`requirements*.txt`; the three models' dependency stacks are themselves mutually
+incompatible (MethylGPT's `torchtext` has no build compatible with this repo's main
+torch install; DeepCpG needs a legacy `python=3.7`/`tensorflow==1.13.1` conda env,
+not a venv), which is
+exactly the kind of divergence this isolation pattern exists to contain.
+
 ### Run/search output layout
 
 `runs/<model>/<train-scope>/<run-id>/` and `searches/<model>/<scope>/<search-id>/` are the only
@@ -128,18 +175,25 @@ places training/tuning write to; both are gitignored (along with `artifacts/`, `
 `wandb/`, `logs/`). Layout and provenance fields are defined in `run_store.py`. Only small
 machine-readable reference numbers are version-controlled, under `results/reference/`, split by
 role: `{cpg_statistics,rna_methylation}/{chr1,chr123,genomewide}.yaml` are the two models' own
-headline results; `methylprophet_comparison/` holds head-to-head comparisons against the published
-MethylProphet paper (Table 5 mixed-source, Table 7 per-source rows) — a paper-comparison claim, not
-an internal ablation; `ablations.yaml` holds internal design/hyperparameter ablations only (prior
-choice, training search, architecture-simplification sweeps). `docs/BENCHMARKS.md` is the narrative
-index into all three.
+headline results; `baselines/<name>/{chr1,chr123,genomewide}.yaml` (`cpg_prior`, `global_rna_shift`,
+`bilinear_rna_cpg`, `mlp_rna_cpg` — see `docs/PAPER_EXPERIMENTS.md`'s "Baseline models" section)
+are simplified-architecture baselines trained/tuned independently per setting, schema-compatible
+with the `rna_methylation/` files; `methylprophet_comparison/` holds head-to-head comparisons
+against the published MethylProphet paper (Table 5 mixed-source, Table 7 per-source rows, and the
+baseline comparison tables) — a paper-comparison claim, not an internal ablation; `ablations.yaml`
+holds internal design/hyperparameter ablations only (prior choice, training search,
+architecture-simplification sweeps). `docs/BENCHMARKS.md` is the narrative index into all four.
 
 ### Model compatibility note
 
-`RNAMethylationPredictor` (in `models.py`) is a zero-diff subclass of `VarianceNormalizedResidualModel`,
-kept so historical checkpoints load with identical state-dict keys — don't rename or add parameters
-to it without checking checkpoint compatibility. `RNA2DNAmModel` (the flat, non-variance-normalized
-residual model) is still live production code for `MethylProphetTrainer`, not dead/legacy.
+`FeatureFusionLocusCLSModel` is the reference RNA-methylation architecture going forward (see "What
+this repo is" above) — new work should target it, not the models below. `RNAMethylationPredictor`
+(in `models.py`) is a zero-diff subclass of `VarianceNormalizedResidualModel`, kept so historical
+checkpoints load with identical state-dict keys — don't rename or add parameters to it without
+checking checkpoint compatibility. `RNA2DNAmModel` (the flat, non-variance-normalized residual
+model) is still live production code for `MethylProphetTrainer`, not dead/legacy. Both remain fully
+supported for reproducing/extending existing chr1/chr123/genomewide checkpoints and the frozen
+MethylProphet benchmark path — they are not deprecated, just no longer the primary architecture.
 
 ### No legacy fallback path
 

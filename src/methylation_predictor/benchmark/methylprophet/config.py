@@ -14,7 +14,16 @@ from typing import Any
 
 import yaml
 
-from ...config import EncoderConfig, InteractionConfig, LossConfig, ModelConfig, TrainingConfig, TrackingConfig
+from ...config import (
+    AxialConfig,
+    EncoderConfig,
+    InteractionConfig,
+    LossConfig,
+    ModelConfig,
+    TrackingConfig,
+    TrainingConfig,
+    TrunkConfig,
+)
 
 
 @dataclass(slots=True)
@@ -96,22 +105,46 @@ def load_config(path: str | Path) -> RunConfig:
     model_raw = dict(raw.get("model", {}))
     retired = sorted(set(model_raw) & {"gate", "anchor_to_mean_rna", "prediction_mode"})
     interaction_raw = dict(model_raw.get("interaction", {}))
-    if "include_product" in interaction_raw:
-        retired.append("interaction.include_product")
+    # interaction.include_product was retired here after the
+    # interaction_concat_and_latent_dim_2026_08 ablation (chr1, generic engine,
+    # inner double-OOD dev split) concluded with no permanent architecture
+    # change adopted -- see results/reference/ablations.yaml. It is
+    # re-permitted as of the "MLP RNA-CpG" baseline
+    # (configs/models/baselines/baseline_mlp_rna_cpg.yaml,
+    # docs/PAPER_EXPERIMENTS.md), which deliberately trains that exact
+    # architecture-simplification arm on this frozen matched_chr1 path for a
+    # formal, permanent paper-comparison number, not a casual re-run.
     if retired:
         raise ValueError(
             "retired architecture-ablation fields are not accepted by the canonical model: "
             + ", ".join(retired)
         )
+    # ModelConfig is built field by field on purpose (no **model_raw): an unknown
+    # or misspelled key must fail here rather than silently train a different
+    # architecture. New architecture-novelty blocks are threaded through the same
+    # way -- see docs/RNA_METHYLATION.md and
+    # results/reference/ablations/architecture_novelty_2026_09/README.md.
     model = ModelConfig(
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
         interaction=InteractionConfig(**interaction_raw),
+        trunk=TrunkConfig(**model_raw.get("trunk", {})),
+        axial=AxialConfig(**model_raw.get("axial", {})),
+        beta_likelihood_head=model_raw.get("beta_likelihood_head", False),
         zero_init_residual=model_raw.get("zero_init_residual", True),
         variance_normalized_residual=model_raw.get(
             "variance_normalized_residual", False
         ),
         use_prior_anchor=model_raw.get("use_prior_anchor", True),
     )
+    unknown_model_keys = sorted(
+        set(model_raw)
+        - {
+            "encoder", "interaction", "trunk", "axial", "beta_likelihood_head",
+            "zero_init_residual", "variance_normalized_residual", "use_prior_anchor",
+        }
+    )
+    if unknown_model_keys:
+        raise ValueError(f"unknown model configuration keys: {', '.join(unknown_model_keys)}")
     if not model.use_prior_anchor:
         if model.variance_normalized_residual:
             raise ValueError(
@@ -124,10 +157,21 @@ def load_config(path: str | Path) -> RunConfig:
                 "(there is no anchor to start safely 'at zero' relative to)"
             )
 
+    loss = LossConfig(**raw.get("loss", {}))
+    if loss.beta_nll_weight != 0.0 and not model.beta_likelihood_head:
+        raise ValueError(
+            "loss.beta_nll_weight is nonzero but model.beta_likelihood_head is false, so no concentration "
+            "would be predicted and the term would silently be a no-op"
+        )
+    if model.beta_likelihood_head and loss.beta_nll_weight == 0.0:
+        raise ValueError(
+            "model.beta_likelihood_head is true but loss.beta_nll_weight is zero, which trains an unused head"
+        )
+
     return RunConfig(
         data=data,
         model=model,
-        loss=LossConfig(**raw.get("loss", {})),
+        loss=loss,
         training=TrainingConfig(**raw.get("training", {})),
         tracking=TrackingConfig(**raw.get("tracking", {})),
         output_dir=raw.get("output_dir", "artifacts/train/default"),

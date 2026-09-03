@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
+import socket
 import subprocess
 from typing import Any
 
@@ -112,6 +114,11 @@ class RunStore:
             "run_id": self.run_id,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
             "git_commit": git_commit(),
+            # Which machine produced this run. Studies are routinely spread across
+            # hosts that share an output root, and a run directory has to stay
+            # interpretable without the machine that wrote it.
+            "host": socket.gethostname(),
+            "platform": platform.platform(),
             **metadata,
         }
         write_json(self.path / "metadata.json", payload)

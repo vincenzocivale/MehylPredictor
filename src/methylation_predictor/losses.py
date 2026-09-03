@@ -156,6 +156,30 @@ def residual_loss(
         standardized_huber = prediction.sum() * 0.0
         standardized_shrinkage = prediction.sum() * 0.0
 
+    # Beta log-likelihood (architecture-novelty ablation, opt-in). Methylation
+    # beta values live in [0, 1] with variance that collapses towards both
+    # boundaries, which a plain MSE treats as homoscedastic. Parameterized by the
+    # anchored mean and a predicted concentration: mu*phi and (1-mu)*phi are the
+    # two Beta shape parameters. Additive rather than replacing beta_mse, so the
+    # headline MAS-PCC of this arm stays comparable to every other arm.
+    if config.beta_nll_weight != 0.0 and outputs.get("concentration") is not None:
+        concentration = outputs["concentration"].float().clamp_min(config.concentration_min)
+        mu = prediction.float().clamp(config.beta_nll_epsilon, 1.0 - config.beta_nll_epsilon)
+        # WGBS beta values hit exactly 0 and 1, where the density diverges.
+        observation = safe_target.float().clamp(config.beta_nll_epsilon, 1.0 - config.beta_nll_epsilon)
+        alpha = mu * concentration
+        beta_shape = (1.0 - mu) * concentration
+        log_likelihood = (
+            torch.lgamma(concentration)
+            - torch.lgamma(alpha)
+            - torch.lgamma(beta_shape)
+            + (alpha - 1.0) * torch.log(observation)
+            + (beta_shape - 1.0) * torch.log1p(-observation)
+        )
+        beta_nll = masked_mean(-log_likelihood, mask)
+    else:
+        beta_nll = prediction.sum() * 0.0
+
     if config.locus_pearson_weight != 0.0:
         pearson_loss, valid_loci = locus_correlation_loss(prediction, safe_target, mask, config)
     else:
@@ -169,6 +193,7 @@ def residual_loss(
         + config.standardized_residual_huber_weight * standardized_huber
         + config.standardized_shrinkage_weight * standardized_shrinkage
         + config.locus_pearson_weight * pearson_loss
+        + config.beta_nll_weight * beta_nll
     )
     return total, {
         "loss": float(total.detach().cpu()),
@@ -178,6 +203,7 @@ def residual_loss(
         "standardized_residual_huber": float(standardized_huber.detach().cpu()),
         "standardized_shrinkage": float(standardized_shrinkage.detach().cpu()),
         "locus_pearson_loss": float(pearson_loss.detach().cpu()),
+        "beta_nll": float(beta_nll.detach().cpu()),
         "valid_correlation_loci": valid_loci,
         "observed": int(mask.sum().detach().cpu()),
     }

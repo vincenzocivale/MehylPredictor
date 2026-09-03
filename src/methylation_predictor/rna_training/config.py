@@ -7,7 +7,16 @@ from typing import Any
 
 import yaml
 
-from ..config import EncoderConfig, InteractionConfig, LossConfig, ModelConfig, TrainingConfig, TrackingConfig
+from ..config import (
+    AxialConfig,
+    EncoderConfig,
+    InteractionConfig,
+    LossConfig,
+    ModelConfig,
+    TrackingConfig,
+    TrainingConfig,
+    TrunkConfig,
+)
 
 
 @dataclass(slots=True)
@@ -27,9 +36,16 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     model_raw = dict(raw.get("model", {}))
     interaction_raw = dict(model_raw.get("interaction", {}))
+    # The architecture-novelty blocks are parsed here too -- not because this
+    # engine can run them (ScopedRNATrainer refuses, see its constructor), but so
+    # that pointing the generic engine at an arch recipe fails loudly instead of
+    # silently dropping the blocks and training the canonical model.
     model = ModelConfig(
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
         interaction=InteractionConfig(**interaction_raw),
+        trunk=TrunkConfig(**model_raw.get("trunk", {})),
+        axial=AxialConfig(**model_raw.get("axial", {})),
+        beta_likelihood_head=bool(model_raw.get("beta_likelihood_head", False)),
         zero_init_residual=bool(model_raw.get("zero_init_residual", True)),
         variance_normalized_residual=bool(model_raw.get("variance_normalized_residual", True)),
     )

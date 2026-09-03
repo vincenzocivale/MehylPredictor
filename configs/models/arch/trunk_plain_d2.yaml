@@ -1,0 +1,70 @@
+# arch suite (architecture_novelty_2026_09): trunk depth control.
+# The canonical fusion head is ONE hidden layer. Hyper-Connections and mHC are
+# macro-design mechanisms for deep residual stacks, so they have nothing to act on
+# until a real trunk exists. This ladder (depth 2/4/8, plain pre-norm residual,
+# single stream) is what separates 'depth helped' from 'stream mixing helped';
+# without it any HC/mHC gain is confounded with simply having added layers.
+model:
+  encoder:
+    kind: linear
+    latent_dim: 256
+    layer_norm: true
+  interaction:
+    kind: concat
+    hidden_dim: 128
+    dropout: 0.1
+  trunk:
+    kind: plain
+    depth: 2
+    width: 128
+    expansion: 2
+    dropout: 0.1
+    gradient_checkpointing: false
+  zero_init_residual: true
+  variance_normalized_residual: true
+
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.1
+  standardized_residual_huber_delta: 1.0
+  standardized_shrinkage_weight: 1.0e-4
+  sigma_min: 0.05
+  locus_pearson_weight: 0.15
+  locus_min_observed_samples: 8
+
+training:
+  seed: 17
+  epochs: 80
+  learning_rate: 5.0e-5
+  weight_decay: 1.0e-4
+  scheduler: constant
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 0.0
+  min_lr_ratio: 0.1
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+
+structured_loss_sources: [array, epic, wgbs]
+
+batching:
+  array: {sample_size: 512, cpg_size: 512}
+  epic: {sample_size: 128, cpg_size: 4096}
+  wgbs: {sample_size: 32, cpg_size: 16384}
+
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  group: null
+  name: null
+  job_type: train
+  tags: [arch-novelty, trunk, plain, d2]
+  mode: online
+  log_every_steps: 25
+  watch_model: false
+  log_checkpoint: false

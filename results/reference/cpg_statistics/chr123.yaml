@@ -12,6 +12,15 @@ note: >
   Joint mu/sigma ensemble model (retrained 2026-08-31, same fix/architecture as the 2026-08-28
   chr1/genomewide retrains). Replaces the 2026-08-19 checkpoint, which was lost -- only its derived
   prior/sigma arrays baked into the (now also regenerated) rna_feature_cache/chr123/ had survived.
+  2026-09-02: chr123's CpG split (note1 union note4) is now verified exact against the released
+  MethylProphet chr123 evaluation artifact -- confirms this run's CpG universe as-is. The Array
+  sample split used to build target_mu/target_sigma (reused from chr1: 8,260 train/918 val) could
+  not be verified the same way: the release's own sample_idx values include 306 samples absent
+  from this repo's canonical Array HDF5 entirely (release sample_idx range extends to 10,915, our
+  bundle's only to 10,702 -- a real content difference, not an indexing bug). The chr1-reused
+  split remains the best available reconstruction and is unchanged. See
+  results/reference/methylprophet_comparison/chr1_official_split_verification.md and
+  PROVENANCE.md's "chr123 Array sample split investigation" section.
 evaluation:
   chr123:
     mu_beta_mse: 0.008726506029996826

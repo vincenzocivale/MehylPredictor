@@ -25,7 +25,14 @@ from .cache import RNACache
 from .feature_store import SortedIndex
 from ...optim import build_lr_scheduler
 from ...losses import residual_loss
-from ...models import DirectPredictionModel, RNA2DNAmModel, VarianceNormalizedResidualModel
+from ...models import (
+    ArchitectureVariantModel,
+    DirectPredictionModel,
+    RNA2DNAmModel,
+    VarianceNormalizedResidualModel,
+    architecture_variant_label,
+    is_architecture_variant,
+)
 from .protocol import (
     ARRAY_VIEW_EXPECTED_OBSERVED,
     SOURCE_EXPECTED_OBSERVED,
@@ -375,13 +382,26 @@ class MethylProphetTrainer:
         # Distinct label so a variance-normalized (V1) / no-anchor run can
         # never silently resume from -- or be resumed into -- a mismatched
         # architecture's checkpoint.
-        if not self.use_prior_anchor:
+        # An architecture-novelty recipe (a non-default encoder kind, trunk or
+        # axial block) routes to ArchitectureVariantModel instead of the frozen
+        # canonical classes, and carries its topology in the label so two
+        # variants can never resume from each other's latest.pt.
+        self.architecture_variant = is_architecture_variant(self.cfg.model)
+        if self.architecture_variant:
+            self.architecture_label = (
+                FINAL_ARCHITECTURE + "_arch_" + architecture_variant_label(self.cfg.model)
+            )
+        elif not self.use_prior_anchor:
             self.architecture_label = FINAL_ARCHITECTURE + "_ablation_no_prior_anchor"
         elif self.variance_normalized:
             self.architecture_label = FINAL_ARCHITECTURE + "_v1_variance_normalized_residual"
         else:
             self.architecture_label = FINAL_ARCHITECTURE
-        if not self.use_prior_anchor:
+        if self.architecture_variant:
+            self.model = ArchitectureVariantModel(
+                25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon
+            ).to(self.device)
+        elif not self.use_prior_anchor:
             self.model = DirectPredictionModel(
                 25_017, 1536, self.cfg.model, epsilon=self.cfg.data.clip_beta_epsilon
             ).to(self.device)
@@ -439,6 +459,18 @@ class MethylProphetTrainer:
         self.features.index.positions_of(required)
         return pools
 
+    def _position_kwargs(self, cpg_ids: np.ndarray) -> dict[str, torch.Tensor]:
+        """CpG ordinals for the axial arm, empty for every other architecture.
+
+        Cartesian blocks are contiguous slices of a source's CpG index array, so
+        these ordinals are monotone in genomic coordinate within the chromosome
+        -- a proxy for base-pair distance, which is all the axial attention's
+        distance decay needs.
+        """
+        if not getattr(self.model, "requires_cpg_positions", False):
+            return {}
+        return {"cpg_positions": torch.from_numpy(np.asarray(cpg_ids, dtype=np.int64)).to(self.device)}
+
     def _autocast(self):
         if not self.cfg.training.amp:
             return nullcontext()
@@ -479,7 +511,7 @@ class MethylProphetTrainer:
         if has_signal:
             rna_np = self.rna.rows(sample_ids, dtype=np.float16)
             emb_np, prior_np, sigma_np = self.features.get(cpg_ids, embedding_dtype=np.float16)
-        return pool, beta_np, has_signal, rna_np, emb_np, prior_np, sigma_np
+        return pool, cpg_ids, beta_np, has_signal, rna_np, emb_np, prior_np, sigma_np
 
     def _schedules(self, epoch: int):
         schedules = [
@@ -634,7 +666,7 @@ class MethylProphetTrainer:
 
                 pending = prefetch.submit(self._prepare_step, schedules, *plan[0])
                 for step_idx in range(len(plan)):
-                    pool, beta_np, has_signal, rna_np, emb_np, prior_np, sigma_np = pending.result()
+                    pool, cpg_ids, beta_np, has_signal, rna_np, emb_np, prior_np, sigma_np = pending.result()
                     if step_idx + 1 < len(plan):
                         pending = prefetch.submit(self._prepare_step, schedules, *plan[step_idx + 1])
                     # Source schedule coverage counts physical Cartesian blocks, not
@@ -652,7 +684,7 @@ class MethylProphetTrainer:
                     with self._autocast():
                         if self.variance_normalized:
                             sigma = torch.from_numpy(sigma_np).to(self.device)
-                            outputs = self.model(rna, emb, prior, sigma=sigma)
+                            outputs = self.model(rna, emb, prior, sigma=sigma, **self._position_kwargs(cpg_ids))
                         else:
                             sigma = None
                             outputs = self.model(rna, emb, prior)
@@ -726,6 +758,13 @@ class MethylProphetTrainer:
                     "grad_norm_mean": float(np.mean(grad_norms)),
                     "gpu_max_memory_gb": float(torch.cuda.max_memory_allocated(self.device) / 2**30),
                 }
+                # mHC's Amax Gain Magnitude of the composite residual mapping:
+                # exactly 1 under the doubly stochastic constraint, unbounded for
+                # plain HC. This is the stability evidence, independent of whether
+                # the headline metric moves.
+                diagnostics = self.model.diagnostics() if hasattr(self.model, "diagnostics") else {}
+                if diagnostics:
+                    row["architecture_diagnostics"] = diagnostics
                 history.append(row)
                 (self.metrics_dir / "history.json").write_text(json.dumps(history, indent=2) + "\n")
                 self._save(latest, optimizer, scheduler, epoch, history, scaler)
@@ -766,7 +805,7 @@ class MethylProphetTrainer:
                 with self._autocast():
                     if self.variance_normalized:
                         sigma = torch.from_numpy(sigma_np).to(self.device)
-                        pred = self.model(rna, emb, prior, sigma=sigma)["beta"]
+                        pred = self.model(rna, emb, prior, sigma=sigma, **self._position_kwargs(local_c))["beta"]
                     else:
                         pred = self.model(rna, emb, prior)["beta"]
                 target = compact.block(local_rows, local_c)

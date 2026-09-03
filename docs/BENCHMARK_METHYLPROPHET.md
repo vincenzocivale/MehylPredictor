@@ -1,5 +1,9 @@
 # Exact TCGA benchmark corresponding to MethylProphet Table 5
 
+See [`PAPER_EXPERIMENTS.md`](PAPER_EXPERIMENTS.md) for how this chr1 setting fits into the three
+canonical MethylProphet-matched paper settings (chr1 done, chr123 in progress, ENCODE not yet
+built).
+
 ## Scope
 
 The published TCGA experiment behind MethylProphet Table 5 is **chromosome 1**,
@@ -43,17 +47,43 @@ stronger audit path when the artifact is available -- preparation requires
 the two to agree and fails rather than silently reconciling any future
 disagreement.
 
-### chr123: not verified
+### chr123: verified 2026-09-02 (CpG axis exact; sample axis not reproducible from our data)
 
-The chr1-3 CpG split (`note1 ∪ note4`, see
-[`METHYLPROPHET_PROTOCOLS.md`](data/METHYLPROPHET_PROTOCOLS.md)) has **not**
-been through the same direct verification -- no released chr1-3 evaluation
-artifact has been found publicly, and access to a candidate source
-(`MethylProphet/tcga-mix-chr123-bs_512-32xl40s-aws`, a model checkpoint, not
-an eval-rows dataset) is still being pursued. Do not present chr123 as a
-verified MethylProphet-matched comparison scope until this is resolved; see
-`results/reference/methylprophet_comparison/chr1_official_split_verification.md`'s
-final section.
+Access to the exhaustive parallel artifact
+(`MethylProphet/eval-tcga-mix-chr123-bs_512-32xl40s-aws-eval_on_tcga_chr123`)
+was approved, downloaded, and checked ID-for-ID the same way as chr1.
+
+- **CpG axis (`note1 ∪ note4`): exact match**, resolving the item that was
+  open since 2026-09-01.
+- **Sample axis: release IDs don't fully overlap our canonical bundle.**
+  The earlier code-reading argument (MethylProphet's split algorithm has no
+  chromosome dependency, so chr123 "should" reuse chr1's exact 8,260/918
+  split) turned out to be an oversimplification: the release's real chr123
+  sample split is **8,258/920**, and 306 of its sample_idx values don't
+  exist anywhere in this repo's canonical Array HDF5 at all (release
+  sample_idx range extends to 10,915, our bundle's only to 10,702) -- a
+  genuine content difference, not an indexing bug (the CpG axis, extracted
+  via the same code path from the same rows, matched exactly). Attempting to
+  apply the release's sample IDs broke `scripts/prepare.py --model
+  cpg_statistics` outright (`KeyError`, missing row). Reverted to the
+  chr1-reused 8,260/918 split -- the only one internally consistent with
+  this repo's own data, and identical to what the existing
+  `derived/cpg_statistics/chr123/` cache and `cpg_statistics/chr123.yaml` /
+  `rna_methylation/chr123.yaml` checkpoints already use.
+
+Full record, ID-set diff, and reasoning:
+[`results/reference/methylprophet_comparison/chr1_official_split_verification.md`](../results/reference/methylprophet_comparison/chr1_official_split_verification.md)'s
+"chr123: verified 2026-09-02" section. A regression test
+(`tests/test_methylprophet_official_split_verification.py::test_chr123_cpg_axis_matches_released_evaluation_artifact_exactly`,
+opt-in via `MP_EVAL_DIR_CHR123`) re-runs the CpG-axis check.
+
+chr123's CpG-axis provenance is now on the same footing as chr1's (exact
+ID-for-ID match). The Array sample axis remains a *reconstruction* (chr1's
+algorithm/split, reused) rather than a literal release-ID match -- the
+release's own IDs don't fully overlap our canonical bundle's Array universe,
+so a literal match isn't currently achievable. No retrain is needed: the
+existing 2026-08-31 `cpg_statistics`/`rna_methylation` chr123 checkpoints
+already use the (unchanged) chr1-reused split.
 
 ## Data contract (this repo's reproducible split)
 

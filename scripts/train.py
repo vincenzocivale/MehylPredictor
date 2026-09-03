@@ -1,12 +1,51 @@
 #!/usr/bin/env python3
-"""Single training entrypoint for CpGStatisticsPredictor and RNAMethylationPredictor."""
+"""Single training entrypoint for CpGStatisticsPredictor and RNAMethylationPredictor.
+
+RNA-methylation prediction has two architectures: the reference shared-backbone
+model (FeatureFusionLocusCLSModel, --engine matched_chr1_shared_backbone -- see
+docs/RNA_METHYLATION.md) and the earlier two-stage frozen-prior + residual model
+(VarianceNormalizedResidualModel/RNAMethylationPredictor, --engine generic or
+matched_chr1, kept for old-checkpoint compatibility, see CLAUDE.md's "Model
+compatibility note").
+"""
 from __future__ import annotations
 import argparse, copy, json
 from pathlib import Path
 import yaml
 
 
+def _rna_shared_backbone(args):
+    from methylation_predictor.rna_training.locus_cls_trainer import LocusCLSJointTrainer
+    if args.scope != "chr1":
+        raise ValueError("matched_chr1_shared_backbone engine is currently chr1-only")
+    if not args.prepared_root:
+        raise ValueError("matched_chr1_shared_backbone requires --prepared-root (matched_chr1 data root)")
+    if not args.cpg_targets_dir:
+        raise ValueError("matched_chr1_shared_backbone requires --cpg-targets-dir (cpg_statistics targets, for the mean-branch proxy task)")
+    recipe_raw = yaml.safe_load(Path(args.recipe).read_text()) or {}
+    lc = recipe_raw.get("locus_cls", {})
+    overrides = {k: v for k, v in {"learning_rate": args.lr, "epochs": args.epochs, "scheduler": args.scheduler, "seed": args.seed}.items() if v is not None}
+    trainer = LocusCLSJointTrainer(
+        canonical_root=args.canonical_root, scope=args.scope, recipe_path=args.recipe,
+        feature_cache=args.feature_cache, rna_cache=args.rna_cache, registry=args.registry,
+        cpg_targets_dir=args.cpg_targets_dir, output_root=args.output_root,
+        matched_chr1_root=args.prepared_root,
+        trunk_hidden_dim=lc.get("trunk_hidden_dim", 256), bottleneck_dim=lc.get("bottleneck_dim", 64),
+        trunk_dropout=lc.get("trunk_dropout", 0.1),
+        use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
+        fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
+        residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
+        mode=args.mode, early_stop_patience=args.early_stop_patience, run_id=args.run_id, overrides=overrides or None,
+    )
+    try:
+        return trainer.run()
+    finally:
+        trainer.close()
+
+
 def _rna(args):
+    if args.engine=="matched_chr1_shared_backbone":
+        return _rna_shared_backbone(args)
     from methylation_predictor.rna_training.trainer import ScopedRNATrainer
     overrides={k:v for k,v in {"learning_rate":args.lr,"epochs":args.epochs,"scheduler":args.scheduler,"seed":args.seed}.items() if v is not None}
     if args.engine=="matched_chr1":
@@ -56,7 +95,7 @@ def _stats(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["generic","matched_chr1"],default="generic"); p.add_argument("--prepared-root"); p.add_argument("--matched-base-config",default="configs/benchmark_methylprophet/reference.yaml"); p.add_argument("--targets"); p.add_argument("--embeddings"); args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["generic","matched_chr1","matched_chr1_shared_backbone"],default="generic"); p.add_argument("--prepared-root"); p.add_argument("--matched-base-config",default="configs/benchmark_methylprophet/reference.yaml"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="matched_chr1_shared_backbone only: cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="matched_chr1_shared_backbone only: stop once the training signal (dev score, or training-loss plateau in mode=final) hasn't improved for this many epochs"); args=p.parse_args()
     if args.model=="rna_methylation":
         for name in ("canonical_root","feature_cache","rna_cache"):
             if getattr(args,name) is None: p.error(f"--{name.replace('_','-')} is required for RNA training")

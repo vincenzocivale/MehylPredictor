@@ -1,0 +1,71 @@
+# arch suite (architecture_novelty_2026_09): locus-conditioned RNA encoder.
+# The flagship arm. Canonically z_s is IDENTICAL for every CpG of a sample, so all
+# locus specificity has to pass through the 256-dim product term. Here the
+# transcriptome becomes 128 gene-program tokens and the per-pair RNA vector comes
+# from multi-head softmax cross attention with the CpG embedding as the query --
+# the RNA representation itself becomes locus-specific.
+# NOT a re-run of fusion_mechanism_2026_08's losing cross_attention arm (0.5329):
+# that arm was a single sigmoid-gated scalar precisely because it had no token axis
+# to pool over. The token axis is what this encoder adds.
+# program_dim is 256 so joint_dim stays 2048, identical to canonical.
+model:
+  encoder:
+    kind: locus_attention
+    latent_dim: 256
+    n_programs: 128
+    program_dim: 256
+    n_heads: 4
+    dropout: 0.1
+    layer_norm: true
+  interaction:
+    kind: concat
+    hidden_dim: 128
+    dropout: 0.1
+  zero_init_residual: true
+  variance_normalized_residual: true
+
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.1
+  standardized_residual_huber_delta: 1.0
+  standardized_shrinkage_weight: 1.0e-4
+  sigma_min: 0.05
+  locus_pearson_weight: 0.15
+  locus_min_observed_samples: 8
+
+training:
+  seed: 17
+  epochs: 80
+  learning_rate: 5.0e-5
+  weight_decay: 1.0e-4
+  scheduler: constant
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 0.0
+  min_lr_ratio: 0.1
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+
+structured_loss_sources: [array, epic, wgbs]
+
+batching:
+  array: {sample_size: 512, cpg_size: 512}
+  epic: {sample_size: 128, cpg_size: 4096}
+  wgbs: {sample_size: 32, cpg_size: 16384}
+
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  group: null
+  name: null
+  job_type: train
+  tags: [arch-novelty, encoder, locus-attention, k128]
+  mode: online
+  log_every_steps: 25
+  watch_model: false
+  log_checkpoint: false

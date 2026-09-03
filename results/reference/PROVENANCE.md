@@ -23,6 +23,19 @@ entries are updated to `experiments/runs/...` as each is redone.
 | `rna_methylation/genomewide.yaml` | `experiments/_legacy_pre_refactor/e7_v1_array_genomewide_seed17/checkpoints/final.pt` | `f2d7aae2...142e627` | **provenance flag open** — pre-refactor trainer, chr1-labeled embeddings path in its resolved config despite genome-wide-looking eval; not yet re-derived under the current pipeline. Roadmap priority: redo under `scripts/train.py --scope genomewide` once `cpg_statistics` genomewide is retrained (below), then replace this row. |
 | `rna_methylation/chr123.yaml` | `experiments/runs/rna_methylation/chr123/rna-methylation-chr123-retrain-2026-08-31/checkpoints/best.pt` | `d07dd24f...3851818f` | **live**, first completed run for this scope (2026-08-31), generic engine over the full tcga_mix_chr123 auxiliary universe (see `derived/rna_feature_cache/chr123/` note below); not a verified MethylProphet comparison (see `methylprophet_comparison/`) |
 
+## `baselines/`
+
+| file | run path | checkpoint sha256 | status |
+|---|---|---|---|
+| `baselines/cpg_prior/chr1.yaml` | n/a (zero-parameter, `CpGPriorEvaluator`, no checkpoint) | n/a | **live**, evaluated 2026-09-01 via `scripts/evaluate.py --model cpg_prior` against `derived/methylprophet_table5_tcga_chr1/features` |
+| `baselines/global_rna_shift/chr1.yaml` | `experiments/runs/rna_methylation/chr1/baseline-global-rna-shift-chr1-2026-09-01/checkpoints/final.pt` | `e108fd49...fdb76fd` | **live**, first completed run (2026-09-01), `--engine matched_chr1`, 80 epochs |
+| `baselines/bilinear_rna_cpg/chr1.yaml` | `experiments/runs/rna_methylation/chr1/baseline-bilinear-rna-cpg-chr1-2026-09-01/checkpoints/final.pt` | `06e69775...cffc03` | **live**, first completed run (2026-09-01), `--engine matched_chr1`, 80 epochs |
+| `baselines/mlp_rna_cpg/chr1.yaml` | `experiments/runs/rna_methylation/chr1/baseline-mlp-rna-cpg-chr1-2026-09-01/checkpoints/final.pt` | `6a98e1ce...ce9f965` | **live**, completed 2026-09-01, `--engine matched_chr1`, 80 epochs. First attempt failed (`interaction.include_product` rejected as a retired field by `benchmark/methylprophet/config.py::load_config`; fixed by re-permitting that field specifically for this baseline). Retry was killed mid-run at epoch 7 by an external process (not a code/data error; GPU/process state showed no OOM) and resumed via `--resume` from `checkpoints/latest.pt` to completion |
+
+Add a row per `<name>/<scope>.yaml` as each baseline's training/eval run completes, per
+`docs/PAPER_EXPERIMENTS.md`'s "Baseline models" section (chr1 first; chr123/genomewide follow once
+those settings are themselves verified/built).
+
 ## `cpg_statistics`
 
 | file | run path | checkpoint sha256 | status |
@@ -68,6 +81,27 @@ are unaffected — those are still computed from the pure-Array `derived/cpg_sta
 `derived/cpg_statistics/chr123/` dir, or training will hit the same missing-IDs crash. Consider
 promoting this padding step into `scripts/prepare.py` if chr123 `rna_methylation` becomes a recurring
 retrain target.
+
+### chr123 Array sample split investigation (2026-09-02) — CpG axis verified, sample axis not reproducible from our data
+
+Attempted the same released-artifact ID verification used for chr1, against
+`MethylProphet/eval-tcga-mix-chr123-bs_512-32xl40s-aws-eval_on_tcga_chr123`. The CpG axis
+(`note1 ∪ note4`) matched exactly, confirming `protocols/tcga_mix_chr123`'s existing CpG split as-is
+(no change). The Array *sample* split does not: the release's own sample_idx values include 306
+samples that don't exist anywhere in this repo's canonical Array HDF5 (`tcga_array_official_full.h5`,
+241231 snapshot) — a real content difference, not an ID-extraction bug (the release's sample_idx
+range extends to 10,915; our bundle's only to 10,702, and the CpG axis extracted via the exact same
+code path from the exact same rows matched exactly). The release's chr123 sample split is therefore
+**not reproducible** against our current canonical bundle. `array_train_sample_idx.npy`/
+`array_val_sample_idx.npy` were briefly overwritten with the release IDs, found to break
+`cpg_statistics/targets.py` (`KeyError: sample_idx value not found`) on the very first CpG,
+and reverted to the chr1-reused 8,260/918 split — the only one internally consistent with our own
+data, and numerically identical to what `derived/cpg_statistics/chr123/` and
+`derived/rna_feature_cache/chr123/` were already built from. **No retrain is needed**: the existing
+`cpg_statistics/chr123.yaml` and `rna_methylation/chr123.yaml` checkpoints/caches are unaffected by
+this investigation. See
+`results/reference/methylprophet_comparison/chr1_official_split_verification.md`'s "chr123:
+verified 2026-09-02" section for the full record, including the missing/extra sample_idx ranges.
 
 ## `ablations.yaml`
 

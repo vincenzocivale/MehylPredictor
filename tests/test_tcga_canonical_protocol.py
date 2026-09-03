@@ -55,7 +55,13 @@ def test_chr123_array_total_train_heldout(chr123_protocol):
 
 
 def test_chr123_sample_split_matches_chr1(chr1_protocol, chr123_protocol):
-    """Sample-axis (patient) split is genome-wide, not chromosome-specific."""
+    """Sample-axis (patient) split is reused unchanged from chr1's reconstruction. Checked
+    2026-09-02 against the released chr123 evaluation artifact's own sample_idx values and found
+    NOT reproducible from our canonical bundle (306 released IDs don't exist in our Array HDF5 at
+    all, and vice versa -- a real content difference, release max sample_idx 10915 vs our bundle's
+    max 10702, not an indexing bug: the CpG axis extracted from the same file matched exactly).
+    Kept the chr1-reused split as the only one internally consistent with our own data; see
+    results/reference/methylprophet_comparison/chr1_official_split_verification.md."""
     assert np.array_equal(
         np.sort(chr1_protocol.array_train_sample_idx), np.sort(chr123_protocol.array_train_sample_idx)
     )

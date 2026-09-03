@@ -20,7 +20,7 @@ import pandas as pd
 import torch
 
 from ..losses import residual_loss
-from ..models import RNAMethylationPredictor
+from ..models import RNAMethylationPredictor, is_architecture_variant
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
@@ -117,6 +117,10 @@ class ScopedRNATrainer:
         self.features=LocusFeatureCache(feature_cache); self.rna=RNACache(rna_cache)
         required=np.unique(np.concatenate([self.protocol.array_train_cpg_idx,self.protocol.array_val_cpg_idx,*self.protocol.auxiliary_cpg_idx.values()]))
         self.features.index.positions_of(required)
+        # Architecture-novelty recipes are matched_chr1-only: this engine builds the frozen
+        # canonical class, so silently ignoring model.trunk/axial/encoder.kind here would train
+        # the wrong architecture under the arm's name.
+        if is_architecture_variant(self.recipe.model): raise ValueError("architecture-novelty recipes (model.encoder.kind != 'linear', model.trunk, model.axial, model.beta_likelihood_head) run only on the matched_chr1 engine: use scripts/train.py --engine matched_chr1")
         self.model=RNAMethylationPredictor(25_017,1536,self.recipe.model,epsilon=1e-4).to(self.device)
         self.inner_views=None
         self.pools=self._build_pools()

@@ -12,12 +12,29 @@ from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class EncoderConfig:
+    # "linear" is the canonical single Linear(25017 -> latent_dim) projection and the
+    # only kind the frozen canonical model classes accept. "mlp"/"program_bottleneck"/
+    # "locus_attention" are architecture-novelty ablations reachable only through
+    # ``models.ArchitectureVariantModel`` -- see docs/RNA_METHYLATION.md and
+    # results/reference/ablations/architecture_novelty_2026_09/README.md.
     kind: str = "linear"
     # Canonical width of the RNA latent (LinearRNAEncoder output / ProductInteraction
     # rna_dim). A wider value is an architecture-scaling ablation only -- see
     # docs/RNA_METHYLATION.md ablation note before flipping this in a non-experimental recipe.
     latent_dim: int = 256
     layer_norm: bool = True
+    # Ablation-only (kind != "linear"): hidden width of the "mlp" encoder.
+    hidden_dim: int = 1024
+    dropout: float = 0.0
+    # Ablation-only: number of gene-program units -- the bottleneck width for
+    # "program_bottleneck", and the number of program *tokens* for
+    # "locus_attention" (where the RNA representation becomes a K-token set that
+    # the CpG embedding queries, instead of one locus-invariant vector).
+    n_programs: int = 64
+    # Ablation-only ("locus_attention"): per-token width and head count of the
+    # locus -> gene-program cross attention.
+    program_dim: int = 128
+    n_heads: int = 4
 
 
 @dataclass(slots=True)
@@ -25,6 +42,16 @@ class InteractionConfig:
     kind: str = "concat"
     hidden_dim: int = 128
     dropout: float = 0.1
+    # Ablation-only: rank of BilinearInteraction's low-rank factorization. This was a
+    # hardcoded 64 throughout fusion_mechanism_2026_08, which left that arm capacity-
+    # starved next to the canonical product term (rank min(rna_dim, locus_dim) = 256).
+    # Exposed so that arm can be retested at matched capacity.
+    rank: int = 64
+    # Ablation-only: heads for CrossAttentionInteraction. The 2026-08 arm was
+    # single-head with a sigmoid gate because there was no token axis to pool over
+    # (see CrossAttentionInteraction's docstring); kept configurable so the fusion
+    # claim can be defended at matched capacity.
+    attn_heads: int = 1
     # Canonical (all True): joint MLP input is [rna, cpg, projected_rna * projected_cpg].
     # Each flag is an independent architecture-simplification ablation switch -- setting
     # one to False drops that piece from the MLP's joint input (the product term, when
@@ -38,11 +65,101 @@ class InteractionConfig:
 
 
 @dataclass(slots=True)
+class TrunkConfig:
+    """Depth/topology of the post-fusion trunk (architecture-novelty ablation).
+
+    The canonical model has *no* trunk (``kind="none"``): the joint
+    ``[rna, cpg, product]`` vector goes straight through one hidden layer to a
+    scalar, i.e. depth 1. Hyper-Connections and mHC are macro-design mechanisms
+    for deep residual stacks, so they only have something to act on once a real
+    trunk exists -- ``kind="plain"`` at several depths is the mandatory control
+    that separates "depth helped" from "stream mixing helped".
+
+    - ``plain``: pre-norm residual blocks, single residual stream.
+    - ``hc``:    Hyper-Connections (Zhu et al., ICLR 2025, arXiv:2409.19606) --
+                 ``n_streams`` parallel residual streams with unconstrained
+                 learnable mixing.
+    - ``mhc``:   Manifold-Constrained Hyper-Connections (DeepSeek,
+                 arXiv:2512.24880) -- the same, with the residual mapping
+                 projected onto the Birkhoff polytope (doubly stochastic) by
+                 Sinkhorn-Knopp, restoring the identity-mapping/conservation
+                 property that plain HC loses.
+
+    Only the *static* (input-independent) mappings are learned. mHC's dynamic,
+    input-dependent mappings would need one n x n matrix per (sample, locus)
+    pair -- 262k matrices per array block, each Sinkhorn-normalized -- which is
+    not affordable on Cartesian blocks. The paper's own component ablation
+    (its Table 1) attributes -0.022 of the -0.027 total loss gap to the
+    residual mapping alone, which is exactly the piece kept here.
+    """
+
+    kind: str = "none"  # none|plain|hc|mhc
+    depth: int = 0
+    width: int = 128
+    dropout: float = 0.1
+    expansion: int = 2
+    # HC/mHC only: residual stream width (expansion rate n in the papers).
+    n_streams: int = 4
+    # mHC only: Sinkhorn-Knopp iterations for the doubly stochastic projection.
+    # 20 is the value used in the mHC paper.
+    sinkhorn_iters: int = 20
+    # mHC/HC only: how strongly the residual mapping is initialized towards the
+    # identity (logit scale before the exponent/Sinkhorn). At the default 4.0 with
+    # n_streams=4 the projected matrix is ~0.948 on the diagonal and ~0.017 off
+    # it -- near-independent streams, but not a hard identity, which would leave
+    # the residual mapping with no gradient to move away from.
+    identity_init_scale: float = 4.0
+    # The novelty arm: instead of n anonymous copies of the residual width, give
+    # each stream a modality identity (rna / cpg / product / prior), so the
+    # doubly stochastic residual mapping is a mass-conserving *cross-modal
+    # exchange* operator that can be read off per depth. Requires n_streams == 4.
+    stream_semantics: bool = False
+    gradient_checkpointing: bool = False
+
+
+@dataclass(slots=True)
+class AxialConfig:
+    """Windowed attention along the CpG axis of the Cartesian block.
+
+    The trainer's Cartesian blocks are contiguous slices of the source's CpG
+    index array, so a block's CpG axis is already a locally ordered stretch of
+    the chromosome: attending within it lets a locus borrow evidence from its
+    genomic neighbours (co-methylation), which a strictly per-pair model cannot
+    represent. Methodological precedent is CpG Transformer (Bioinformatics
+    2022), which uses axial attention for single-cell methylome *imputation*;
+    here there is no measured methylation in the input at all.
+
+    The sample axis is deliberately not attended over: cross-sample attention
+    is transductive and would make the held-out evaluation contestable.
+    """
+
+    enabled: bool = False
+    n_heads: int = 4
+    # Attention is computed inside non-overlapping windows of this many CpGs;
+    # full attention over a 16,384-CpG WGBS block is not affordable.
+    window: int = 128
+    # Learned relative-position bias over log-spaced |i - j| buckets.
+    n_distance_buckets: int = 16
+    dropout: float = 0.0
+
+
+@dataclass(slots=True)
 class ModelConfig:
     """RNA methylation architecture configuration."""
 
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     interaction: InteractionConfig = field(default_factory=InteractionConfig)
+    # Architecture-novelty ablation blocks. Both default to inert, and any
+    # non-default value routes the run to ``models.ArchitectureVariantModel``
+    # instead of the frozen canonical classes (whose parameters must not change
+    # -- see CLAUDE.md's model-compatibility note).
+    trunk: TrunkConfig = field(default_factory=TrunkConfig)
+    axial: AxialConfig = field(default_factory=AxialConfig)
+    # Emit a per-pair Beta concentration alongside the anchored mean, so
+    # LossConfig.beta_nll_weight has something to score. Kept separate from the
+    # loss weight so a misconfigured recipe fails loudly instead of silently
+    # training with a no-op likelihood term.
+    beta_likelihood_head: bool = False
     zero_init_residual: bool = True
     # Canonical model: logit(beta_hat) = logit(mu_i) + sigma_i * raw_delta.
     # False retains only the historical flat-residual compatibility baseline.
@@ -84,6 +201,20 @@ class LossConfig:
     locus_pearson_epsilon: float = 1e-8
     # Optional target-std eligibility floor for the Pearson objective.
     locus_pearson_min_target_std: float = 0.0
+    # Beta log-likelihood head (architecture-novelty ablation, opt-in). Methylation
+    # beta values are bounded in [0, 1] and heteroscedastic -- their variance
+    # collapses towards both boundaries -- which a plain MSE ignores. With a
+    # nonzero weight the model additionally emits a per-pair concentration
+    # ``phi`` and the objective gains ``-log Beta(y | mu*phi, (1-mu)*phi)``,
+    # where ``mu`` is the existing anchored prediction. Additive on purpose: the
+    # headline MAS-PCC stays comparable to every other arm.
+    beta_nll_weight: float = 0.0
+    # Targets are clamped into (eps, 1-eps) before the log-likelihood: WGBS beta
+    # values hit exactly 0 and 1, where the Beta density diverges.
+    beta_nll_epsilon: float = 1e-3
+    # Floor on the predicted concentration; below ~2 the Beta density becomes
+    # U-shaped and the NLL gradient destabilizes.
+    concentration_min: float = 2.0
 
 
 @dataclass(slots=True)

@@ -107,19 +107,44 @@ originally-released train pool and the CpGs added by a later note):
 | held-out (val) | 14,893 |
 
 Provenance: `official_training_data/protocols/tcga_mix_chr123/`
-(`array_train_cpg_idx.parquet`, `array_val_cpg_idx.parquet`,
-`status: exact_array_split_source_revision_compatible_auxiliary` in
-`protocol.json`). The sample axis is exact -- it's the same genome-wide Array
-sample split verified for chr1 above (see §1: the sample split is
-chromosome-independent). **The CpG axis (`note1 ∪ note4`) has not been
-through the same direct verification** as chr1's: no released chr1-3
-evaluation artifact (parallel to `eval-tcga_mix_chr1-bs_512-c2b2`) has been
-found publicly, and access to a candidate source
-(`MethylProphet/tcga-mix-chr123-bs_512-32xl40s-aws`, a model checkpoint, not
-an eval-rows dataset) is still being pursued as of 2026-08-28. Until that
-access succeeds, treat chr123's CpG split as **documented but unverified**,
-not "exact" in the same sense chr1 now is -- EPIC/WGBS CpG pools for this
-protocol additionally fall under source-revision drift (§3).
+(`array_train_cpg_idx.npy`, `array_val_cpg_idx.npy`, `array_train_sample_idx.npy`,
+`array_val_sample_idx.npy`; `status:
+cpg_axis_exact_verified_sample_axis_reverted_pending_investigation` in `protocol.json`).
+
+**CpG axis verified 2026-09-02** against the exhaustive released evaluation artifact
+(`MethylProphet/eval-tcga-mix-chr123-bs_512-32xl40s-aws-eval_on_tcga_chr123`), the same method
+used for chr1 in §1: **exact match** -- 78,211 train / 14,893 val, identical ID sets to the
+released rows. This was the item flagged unverified before this date; it is now resolved, and the
+CpG split files are unchanged (already correct).
+
+**Sample axis: investigated, found not reproducible against our own canonical bundle, kept
+unchanged.** The earlier assumption in this section (through 2026-09-01) -- that chr123 reuses
+chr1's exact 8,260/918 sample split, because MethylProphet's split-generating code
+(`split_sample_tcga.py`'s `create_ind_cancer_split`) has no chromosome dependency -- doesn't
+survive contact with the actual release: the release's chr123 sample split is 8,258 train / 920
+val, and critically, **306 of its sample_idx values don't exist anywhere in this repo's canonical
+Array HDF5 at all** (release sample_idx range extends to 10,915; our bundle's only to 10,702) --
+a genuine content difference between whatever raw snapshot produced the release and this repo's
+`241231` bundle, not an ID-extraction bug (the CpG axis, extracted via the identical code path
+from the identical rows, matched exactly). Applying the release's sample IDs to this repo's
+protocol broke `scripts/prepare.py --model cpg_statistics` outright (`KeyError: sample_idx value
+not found`), confirming they are not valid keys into this repo's data. The sample idx files were
+reverted to the chr1-reused 8,260/918 split -- the only one internally consistent with this repo's
+own data (backup of the investigation kept at
+`tcga_mix_chr123/_pre_release_verification_backup_2026-09-02/`, now identical to the live files
+again).
+
+Full record: `results/reference/methylprophet_comparison/chr1_official_split_verification.md`'s
+"chr123: verified 2026-09-02" section. `tests/test_methylprophet_official_split_verification.py::
+test_chr123_cpg_axis_matches_released_evaluation_artifact_exactly` (opt-in, `MP_EVAL_DIR_CHR123`)
+regression-tests the CpG axis; `tests/test_tcga_canonical_protocol.py::
+test_chr123_sample_split_matches_chr1` still pins the unchanged chr1-reused sample split.
+
+**No retrain is needed** as a result of this investigation: `derived/cpg_statistics/chr123/` and
+`derived/rna_feature_cache/chr123/` were already built from (and still match) the chr1-reused
+sample split, and the existing `cpg_statistics/chr123.yaml`/`rna_methylation/chr123.yaml`
+checkpoints are unaffected. EPIC/WGBS CpG pools for this protocol still fall under source-revision
+drift (§3).
 
 ## 3. Source-revision drift: 241213 vs. 241231
 

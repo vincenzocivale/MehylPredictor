@@ -1,16 +1,46 @@
 status: reference
 model: rna_methylation
+architecture: feature_fusion_locus_cls  # shared-backbone (primary architecture as of 2026-09-03,
+  # see docs/RNA_METHYLATION.md); supersedes the two-stage frozen-prior + residual
+  # architecture (variance_normalized_residual) previously recorded here -- see
+  # legacy_two_stage below for that number, kept for reference/comparison.
 training_scope: chr1
 seed: 17
+run_id: locus-cls-rung_b_final-chr1-2026-09-03
+checkpoint_epoch: 47
+epochs_planned: 80
+stopped_early_by_user_request: true  # still improving (training-loss rel. improvement
+  # ~0.3-0.8%/epoch) when stopped -- this is a lower bound, not a converged number.
 training:
   learning_rate: 5.0e-5
   scheduler: constant
   epochs: 80
-  array_batch: [512, 512]
+  schedule_policy: pair_complete
   sources: [array, epic, wgbs]
+  locus_cls: {use_mean_branch: true, use_fusion_product: false, aux_weight: 0.15, residual_aux_weight: 0.0, raw_lr_multiplier: 1.0}
 evaluation:
   chr1:
+    train_cpg_x_val_sample: {mas_pcc: 0.6431, mse: 0.01351}
+    val_cpg_x_train_sample: {mas_pcc: 0.6081, mse: 0.01613}
+    val_cpg_x_val_sample: {mas_pcc: 0.5627, mse: 0.01702}
+benchmark_role: matched MethylProphet chromosome-1 comparison
+caveats: >
+  Single seed, chr1 only, not yet run to convergence (stopped at epoch 47/80 by user
+  request -- see stopped_early_by_user_request). A full-budget rerun (or a second seed)
+  is worth doing before treating these numbers as this architecture's final ceiling; the
+  qualitative result (matches/slightly exceeds the legacy two-stage architecture on all
+  three official views) is well-supported. See
+  results/reference/ablations.yaml::shared_backbone_locus_cls_2026_09 for the full
+  ablation ladder that selected this configuration.
+legacy_two_stage:
+  # Previous architecture's own reference number (VarianceNormalizedResidualModel /
+  # RNAMethylationPredictor, model.variance_normalized_residual=true,
+  # logit(mu) + sigma*residual composition) -- kept for comparison, not superseded
+  # numerically (all three views were already at or slightly below the new
+  # architecture's), but that model remains fully supported for old-checkpoint
+  # compatibility (see CLAUDE.md's "Model compatibility note").
+  run: {learning_rate: 5.0e-5, scheduler: constant, epochs: 80, array_batch: [512, 512], sources: [array, epic, wgbs]}
+  evaluation:
     train_cpg_x_val_sample: {mas_pcc: 0.6327, mse: 0.01278}
     val_cpg_x_train_sample: {mas_pcc: 0.5984, mse: 0.01874}
     val_cpg_x_val_sample: {mas_pcc: 0.5613, mse: 0.01941}
-benchmark_role: matched MethylProphet chromosome-1 comparison

@@ -34,6 +34,26 @@ SOURCE_FILES = {
 }
 RNA_FILE = "rna/tcga_rna_official_full.h5"
 
+# h5py's default raw-chunk cache (rdcc_nbytes=1MiB, rdcc_nslots=521) is sized for
+# small, mostly-sequential access. WGBS's "beta" dataset is chunked (32, 8192)
+# float32 = exactly 1MiB/chunk (2,814 chunks, ~3.1GB file total) -- with the
+# default 1MiB cache, a scattered multi-CpG read touching more than one chunk
+# evicts and re-fetches on almost every access, even within a single training
+# epoch that revisits the same auxiliary-CpG universe repeatedly (measured: tens
+# of GB of network re-reads for a single epoch of scattered WGBS blocks). Array/
+# EPIC chunks are much smaller (one-row, 8192-col, ~0.03MiB) but a single block
+# can still span more distinct chunks than the default 521 hash slots. A larger
+# cache is cheap (bounded, released on close) and lets a source small enough to
+# fit in RAM (WGBS) become fully cached after its first pass instead of re-read
+# every epoch.
+# 1.5GiB/source (<=6GiB across rna+array+epic+wgbs) -- this machine has been
+# observed with as little as ~17GiB of free/available host RAM under normal
+# load, so this stays well short of a system-wide OOM risk while still being
+# ~1500x the 1MiB default. Comfortably covers all of WGBS (~3.1GB) after its
+# first pass; array (~15GB) and EPIC (~5GB) still benefit from the block()
+# column-banding fix above, which needs no persistent cache to be effective.
+_H5_CACHE_KWARGS = {"rdcc_nbytes": 1536 * 1024**2, "rdcc_nslots": 100_003}
+
 EXPECTED_SHAPES = {
     "rna": (10916, 25017),
     "array": (9178, 408399),
@@ -169,12 +189,18 @@ class MethylationSource:
             data = _read_cols(dataset, cols)
             return data[rows, :]
 
-        # Array/EPIC are one-row-per-chunk. Reading a complete 408k/740k-column
-        # row for every 512-CpG SGD block causes extreme read amplification.
-        # h5py cannot fancy-index both axes simultaneously, so use one sorted
-        # column selection per unique row and restore the caller's exact row/
-        # column order afterwards. Contiguous column bands retain the faster
-        # one-call path.
+        # h5py cannot fancy-index both axes in one call. Array/EPIC are strictly
+        # one-row-per-chunk (chunk shape (1, chunk_width)): each physical chunk
+        # belongs to exactly one row, so grouping scattered columns into chunk
+        # "bands" and reading all queried rows per band in one fancy-row-selection
+        # call does NOT reduce the number of underlying per-row chunk touches --
+        # h5py's fancy multi-row point-selection has enough of its own overhead
+        # that it measured *slower* than the row loop below for a few-hundred-row
+        # block (see git history / joint-training-ablation investigation notes).
+        # WGBS's chunk shape (32, chunk_width) is different: one physical chunk
+        # already covers many rows, so grouping by band there is a genuine win
+        # (one call reads data for all rows from a chunk instead of one call per
+        # row re-reading the same chunk). Branch on chunks[0] accordingly.
         unique_rows, row_inverse = np.unique(rows, return_inverse=True)
         unique_cols, col_inverse = np.unique(cols, return_inverse=True)
         if len(unique_cols) == 0:
@@ -185,6 +211,18 @@ class MethylationSource:
                 dataset[unique_rows, unique_cols[0] : unique_cols[-1] + 1],
                 dtype=np.float32,
             )
+        elif dataset.chunks[0] > 1:
+            chunk_width = dataset.chunks[1]
+            band_of_col = unique_cols // chunk_width
+            band_ids, band_start = np.unique(band_of_col, return_index=True)
+            band_bounds = np.append(band_start, len(unique_cols))
+            selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
+            for b, band_id in enumerate(band_ids.tolist()):
+                lo, hi = int(band_bounds[b]), int(band_bounds[b + 1])
+                band_lo = band_id * chunk_width
+                band_hi = min(band_lo + chunk_width, dataset.shape[1])
+                band_data = np.asarray(dataset[unique_rows, band_lo:band_hi], dtype=np.float32)
+                selected[:, lo:hi] = band_data[:, unique_cols[lo:hi] - band_lo]
         else:
             selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
             for i, row in enumerate(unique_rows.tolist()):
@@ -234,7 +272,7 @@ class TCGACanonicalBundle:
             raise FileNotFoundError(f"canonical bundle root does not exist: {root}")
 
         rna_path = root / RNA_FILE
-        rna_h5 = h5py.File(rna_path, "r")
+        rna_h5 = h5py.File(rna_path, "r", **_H5_CACHE_KWARGS)
         rna = RNASource(
             path=rna_path,
             h5=rna_h5,
@@ -245,7 +283,7 @@ class TCGACanonicalBundle:
         sources: dict[str, MethylationSource] = {}
         for name, relative_path in SOURCE_FILES.items():
             path = root / relative_path
-            h5f = h5py.File(path, "r")
+            h5f = h5py.File(path, "r", **_H5_CACHE_KWARGS)
             sample_idx = np.asarray(h5f["sample_idx"][...], dtype=np.int64)
             measurement_idx = np.asarray(h5f["measurement_idx"][...], dtype=np.int64)
             sample_split = _decode(h5f["sample_split"][...]) if "sample_split" in h5f else None

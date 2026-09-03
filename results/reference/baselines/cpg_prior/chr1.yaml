@@ -1,0 +1,25 @@
+status: reference
+model: cpg_prior
+architecture: zero-parameter — prediction is the cached CpGStatisticsPredictor prior mu directly (CpGPriorEvaluator, no RNA input, no training)
+training_scope: chr1
+seed: null
+training: null
+evaluation:
+  chr1:
+    train_cpg_x_val_sample: {mas_pcc: null, mse: 0.02384, mac_pcc: 0.9245}
+    val_cpg_x_train_sample: {mas_pcc: null, mse: 0.02734, mac_pcc: 0.9104}
+    val_cpg_x_val_sample: {mas_pcc: null, mse: 0.02779, mac_pcc: 0.9101}
+benchmark_role: baseline vs. MethylProphet-matched chromosome-1 comparison
+note: >
+  "CpG Prior" baseline (docs/PAPER_EXPERIMENTS.md): predicts methylation using
+  only the locus-specific baseline (mu, from the frozen CpG-statistics prior
+  cache), with no patient RNA information at all -- measures how much
+  performance is explained by the intrinsic methylation tendency of each CpG
+  alone. mas_pcc is mathematically undefined (null) for this baseline: the
+  prediction is constant across samples for a given CpG, so the
+  within-CpG-across-sample Pearson correlation has zero predictor variance
+  (0/0), not a genuine "no skill" score -- MSE/MAE and MAC-PCC (well-defined,
+  since mu varies across CpGs) are the meaningful comparison metrics here. MSE
+  is close to but slightly worse than MethylProphet's published numbers
+  (0.02779 vs 0.0271 on val-CpG x val-sample) and substantially worse than the
+  canonical model (0.01941, results/reference/rna_methylation/chr1.yaml).

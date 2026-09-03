@@ -1,0 +1,60 @@
+# DeepCpG (cangermueller/deepcpg, Angermueller et al. 2017) readiness/evaluation
+# config -- DNA-only submodel, used zero-shot (no retraining). See
+# docs/PAPER_EXPERIMENTS.md's foundation-model section for why (no paper precedent
+# for this exact setting -- corrected 2026-09-02, see that section) and
+# scripts/benchmark_foundation_models/setup.sh for how these paths are populated.
+
+vendored_repo: external/deepcpg
+env: deepcpg-env                 # CONDA env (not a venv -- no python3.7 available
+                                  # for venv to wrap), python=3.7/tensorflow==1.13.1/
+                                  # keras==1.2.2 (Kipoi's own pin)
+
+checkpoints_dir: external/checkpoints/deepcpg
+# Official download host (and DeepCpG's own dcpg_download.py) is dead
+# (http://www.ebi.ac.uk/~angermue/deepcpg/alias/..., confirmed HTTP 500,
+# 2026-09-02). Mirror used instead: Kipoi (kipoi.org) -> Zenodo record 1466079.
+weights_source: https://zenodo.org/record/1466079
+
+# Only the DNA-sequence-only submodel, human variants (Hou et al. 2016 scRRBS-seq).
+# The CpG-neighbor and Joint modules are NOT used -- hard-wired to the exact
+# number/identity of cells in their original training dataset, so they don't
+# transfer to arbitrary new samples the way the DNA-only module does.
+variants:
+  hou2016_hcc_dna:      # 25-cell human hepatocellular carcinoma line
+    arch: hou2016_hcc_dna/arch.json
+    weights: hou2016_hcc_dna/weights.h5
+  hou2016_hepg2_dna:    # 6-cell human HepG2 line
+    arch: hou2016_hepg2_dna/arch.json
+    weights: hou2016_hepg2_dna/weights.h5
+
+# CpG positions for both variants were already lifted GRCh37 -> GRCh38 by the
+# original authors (per Kipoi's model.yaml doc) -- matches this repo's own hg38
+# canonical bundle, no liftover needed.
+genome_build: GRCh38
+dna_window_len: 1001
+
+# The model only ever sees a CpG's local DNA sequence -- never any per-sample
+# input (RNA, other CpGs, ...) -- so its prediction is identical for every
+# patient at a given CpG. Report it like this repo's own CpG Prior baseline
+# (rna_training/evaluator.py's CpGPriorEvaluator), not as a like-for-like
+# comparison against CpGPT/MethylGPT's per-patient masked-recovery framing.
+patient_agnostic: true
+
+# Trained on single-cell data (scRRBS-seq); zero-shot transfer to bulk TCGA array
+# methylation may simply score poorly -- a legitimate result, not a pipeline bug.
+trained_on_single_cell_data: true
+
+# NOT a reproduction of any paper's own DeepCpG numbers -- verified 2026-09-02
+# neither MethylProphet's nor CpGPT's paper reports DeepCpG results in this
+# setting (bulk, continuous, val-CpG-recovery); see PAPER_EXPERIMENTS.md.
+paper_precedent: none
+
+scopes:
+  chr1:
+    array_cpg_registry: ${TCGA_CANONICAL_ROOT}/cpg/registries/array_cpg_map.parquet
+    hg38_fasta: null   # TODO: set once available on this machine
+    status: ready_pending_fasta_path
+  chr123:
+    status: usable_unverified
+  encode:
+    status: blocked

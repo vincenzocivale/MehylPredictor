@@ -8,6 +8,14 @@ checkpoints/
 *.hdf5
 *.npz
 
+# Vendored external foundation-model repos + their checkpoints + per-model
+# isolated venvs (benchmark/foundation_models/, see docs/PAPER_EXPERIMENTS.md)
+external/
+
+# Vendored clone of the MethylProphet repo itself (reference/comparison only,
+# has its own nested .git -- never commit as an embedded repo)
+MethylProphet/
+
 # Python and test state
 __pycache__/
 *.py[cod]

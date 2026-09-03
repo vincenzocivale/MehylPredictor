@@ -229,7 +229,7 @@ def test_rna2dnam_still_rejects_nonstandard_latent_dim():
         RNA2DNAmModel(input_dim=5, locus_dim=3, config=cfg)
 
 
-@pytest.mark.parametrize("kind", ["film", "cross_attention", "bilinear"])
+@pytest.mark.parametrize("kind", ["film", "cross_attention", "bilinear", "global_shift"])
 def test_fusion_mechanism_ablation_forward_shapes_and_zero_init(kind):
     torch.manual_seed(9)
     cfg = _config()
@@ -254,6 +254,58 @@ def test_fusion_mechanism_ablation_forward_shapes_and_zero_init(kind):
     out["beta"].sum().backward()
     grads = [p.grad for p in model.interaction.parameters() if p.requires_grad]
     assert grads and all(g is not None for g in grads)
+
+
+def test_global_shift_baseline_ignores_cpg_embedding():
+    # "Global RNA Shift" baseline (docs/PAPER_EXPERIMENTS.md): a single
+    # per-patient correction, constant across every locus, with no
+    # CpG-specific modeling of the RNA effect.
+    torch.manual_seed(11)
+    cfg = _config()
+    cfg.interaction.kind = "global_shift"
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.interaction.network[-1].weight.data.normal_()
+    model.interaction.network[-1].bias.data.normal_()
+    model.eval()
+
+    rna = torch.randn(3, 13)
+    loci_a = torch.randn(4, 7)
+    loci_b = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+
+    out_a = model(rna, loci_a, prior, sigma)
+    out_b = model(rna, loci_b, prior, sigma)
+
+    # delta_logit is invariant to the CpG embedding entirely...
+    assert torch.allclose(out_a["delta_logit"], out_b["delta_logit"], atol=1e-6)
+    # ...and the raw (pre-sigma-scale) correction is constant across loci for a
+    # given sample (delta_logit itself still varies with sigma_i, which is
+    # locus-specific even though raw_delta is not).
+    assert torch.allclose(out_a["raw_delta"], out_a["raw_delta"][:, :1].expand(3, 4), atol=1e-6)
+
+
+def test_bilinear_pure_baseline_drops_raw_rna_and_cpg():
+    # "Bilinear RNA-CpG" baseline (docs/PAPER_EXPERIMENTS.md): shared-latent
+    # dot product only, no raw rna/cpg concatenation alongside it.
+    torch.manual_seed(12)
+    cfg = _config()
+    cfg.interaction.kind = "bilinear"
+    cfg.interaction.include_rna = False
+    cfg.interaction.include_cpg = False
+    model = VarianceNormalizedResidualModel(input_dim=13, locus_dim=7, config=cfg)
+    model.eval()
+
+    assert model.interaction.network[1].in_features == model.interaction.rank
+
+    rna = torch.randn(3, 13)
+    loci = torch.randn(4, 7)
+    prior = torch.rand(4).clamp(0.05, 0.95)
+    sigma = torch.rand(4).clamp(0.05, 1.0)
+    out = model(rna, loci, prior, sigma)
+
+    assert out["beta"].shape == (3, 4)
+    assert torch.allclose(out["beta"], prior.unsqueeze(0).expand(3, -1), atol=1e-6)
 
 
 def test_rna2dnam_still_rejects_fusion_mechanism_kinds():

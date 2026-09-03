@@ -1,0 +1,69 @@
+# arch suite (architecture_novelty_2026_09): interaction-rank sweep above canonical.
+# Recorded finding, no GPU time needed: BilinearInteraction at rank == min(rna_dim,
+# locus_dim) == 256 is BIT-IDENTICAL to the canonical ProductInteraction -- same
+# parameter count, zero output difference under transplanted weights (see
+# tests/test_architecture_variants.py::test_bilinear_at_canonical_rank_is_the_product_term).
+# So fusion_mechanism_2026_08's bilinear arm (0.5460, -0.0153 vs canonical) measured a
+# HARDCODED rank-64 restriction, not a different fusion mechanism at all.
+# This arm therefore tests the only remaining open question on that axis: whether
+# interaction rank ABOVE the canonical 256 helps. The earlier latent-dim sweep
+# (256/512/1024) widened the RNA latent, which changes the encoder too; this changes
+# only the interaction rank. Still the canonical model class.
+model:
+  encoder:
+    kind: linear
+    latent_dim: 256
+    layer_norm: true
+  interaction:
+    kind: bilinear
+    hidden_dim: 128
+    dropout: 0.1
+    rank: 512
+  zero_init_residual: true
+  variance_normalized_residual: true
+
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.1
+  standardized_residual_huber_delta: 1.0
+  standardized_shrinkage_weight: 1.0e-4
+  sigma_min: 0.05
+  locus_pearson_weight: 0.15
+  locus_min_observed_samples: 8
+
+training:
+  seed: 17
+  epochs: 80
+  learning_rate: 5.0e-5
+  weight_decay: 1.0e-4
+  scheduler: constant
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 0.0
+  min_lr_ratio: 0.1
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+
+structured_loss_sources: [array, epic, wgbs]
+
+batching:
+  array: {sample_size: 512, cpg_size: 512}
+  epic: {sample_size: 128, cpg_size: 4096}
+  wgbs: {sample_size: 32, cpg_size: 16384}
+
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  group: null
+  name: null
+  job_type: train
+  tags: [arch-novelty, fusion-retest, bilinear, rank256]
+  mode: online
+  log_every_steps: 25
+  watch_model: false
+  log_checkpoint: false
