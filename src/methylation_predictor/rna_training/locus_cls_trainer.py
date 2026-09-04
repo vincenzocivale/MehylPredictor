@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from dataclasses import asdict
+import json
 import os
 import queue
 import threading
@@ -38,6 +39,7 @@ import torch
 from torch.nn import functional as F
 
 from ..losses import beta_nll_term, locus_correlation_loss, masked_mean
+from ..config import TrainingConfig
 from ..models import (
     FeatureFusionArchitectureVariantModel,
     FeatureFusionLocusCLSModel,
@@ -81,12 +83,14 @@ def _direct_beta_loss(outputs: dict, target_beta: torch.Tensor, loss_cfg) -> tup
         + loss_cfg.locus_pearson_weight * pearson_loss
         + loss_cfg.beta_nll_weight * beta_nll
     )
+    # Keep diagnostic scalars on-device. Converting every value to a Python
+    # scalar here serialized the CUDA stream several times per optimizer step.
     return total, {
-        "beta_mse": float(beta_mse.detach().cpu()),
-        "locus_pearson_loss": float(pearson_loss.detach().cpu()),
-        "beta_nll": float(beta_nll.detach().cpu()),
+        "beta_mse": beta_mse.detach(),
+        "locus_pearson_loss": pearson_loss.detach(),
+        "beta_nll": beta_nll.detach(),
         "valid_correlation_loci": valid_loci,
-        "observed": int(mask.sum().detach().cpu()),
+        "observed": mask.sum().detach(),
     }
 
 
@@ -121,6 +125,7 @@ class LocusCLSJointTrainer:
         run_id: str | None = None,
         overrides: dict | None = None,
         track: bool = True,
+        resume: bool = False,
     ):
         # >1.0 gives the raw/RNA branch (raw_branch, fusion, residual_head --
         # everything that only ever gets gradient through the fusion layer,
@@ -164,10 +169,10 @@ class LocusCLSJointTrainer:
                 raise ValueError("matched_chr1_root is only valid for scope='chr1'")
             self.bundle = None
             self.protocol, self._sources = load_matched_chr1_protocol_and_sources(
-                self.matched_chr1_root, self.root,
+                self.matched_chr1_root, self.root, hdf5_cache_mb=cfg.hdf5_cache_mb,
             )
         else:
-            self.bundle = TCGACanonicalBundle.from_root(self.root)
+            self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
             self.protocol = scope_protocol(scope, self.bundle, canonical_root=self.root)
             self._sources = self.bundle.sources
         self.features = LocusFeatureCache(feature_cache)
@@ -206,22 +211,37 @@ class LocusCLSJointTrainer:
             trunk_hidden_dim=trunk_hidden_dim, bottleneck_dim=bottleneck_dim, trunk_dropout=trunk_dropout,
             use_mean_branch=use_mean_branch, use_fusion_product=use_fusion_product, fusion_init_std=fusion_init_std,
         ).to(self.device)
+        self.train_model = (
+            torch.compile(self.model, mode=cfg.compile_mode) if cfg.compile else self.model
+        )
 
         self.inner_views = None
         self.pools = self._build_pools()
         self.store = RunStore.create(
             output_root, model="locus_cls_joint", train_scope=scope, seed=self.seed,
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
+            resume=resume,
         )
-        self.store.save_resolved_config({
+        resolved_config = {
             **self.recipe.raw,
+            "training": asdict(cfg),
             "locus_cls": {
                 "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
                 "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
                 "trunk_hidden_dim": trunk_hidden_dim, "bottleneck_dim": bottleneck_dim,
             },
-        })
+        }
+        if self.store.is_new:
+            self.store.save_resolved_config(resolved_config)
+        else:
+            import yaml as _yaml
+            existing = _yaml.safe_load((self.store.path / "config.resolved.yaml").read_text()) or {}
+            existing = {**existing, "training": asdict(TrainingConfig(**existing.get("training", {})))}
+            if existing != resolved_config:
+                raise RuntimeError("resume requested with a different resolved shared-backbone recipe")
+            if not self.store.checkpoint("last.pt").is_file():
+                raise RuntimeError("resume requested but checkpoints/last.pt is missing")
 
         # wandb: one run per training call, resumed later by evaluate_official_split
         # so the official-split numbers land as `val/*` in the same run instead of a
@@ -232,6 +252,10 @@ class LocusCLSJointTrainer:
         # spurious training run.
         self.wandb_run = None
         tracking = self.recipe.tracking
+        resume_wandb_id = None
+        if not self.store.is_new:
+            existing_meta = json.loads((self.store.path / "metadata.json").read_text())
+            resume_wandb_id = (existing_meta.get("wandb") or {}).get("run_id")
         if track and tracking.backend == "wandb" and tracking.mode != "disabled":
             import wandb
             kwargs = {
@@ -250,14 +274,18 @@ class LocusCLSJointTrainer:
                     },
                     "scope": scope, "mode": mode, "seed": self.seed, "architecture": self.architecture_label,
                 },
+                "id": resume_wandb_id,
+                "resume": "allow" if resume_wandb_id else None,
             }
             self.wandb_run = wandb.init(**{k: v for k, v in kwargs.items() if v is not None})
-        self.store.save_metadata({
-            "architecture": self.architecture_label, "seed": self.seed,
-            "wandb": None if self.wandb_run is None else {
-                "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
-            },
-        })
+        if self.store.is_new:
+            self.store.save_metadata({
+                "architecture": self.architecture_label, "seed": self.seed,
+                "training": asdict(cfg),
+                "wandb": None if self.wandb_run is None else {
+                    "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
+                },
+            })
 
     def close(self) -> None:
         if self.bundle is not None:
@@ -317,7 +345,7 @@ class LocusCLSJointTrainer:
             batch = self.recipe.batching[pool.name]
             schedules.append(SourceSchedule(
                 len(pool.row_positions), len(pool.cpg_idx), int(batch["sample_size"]), int(batch["cpg_size"]),
-                epoch, self.seed + 1009 * i, self.recipe.schedule_policy,
+                epoch, self.seed + 1009 * i, self.recipe.schedule_policy, self.recipe.training.schedule_layout,
             ))
         return schedules, interleave(schedules, seed=self.seed, epoch=epoch)
 
@@ -327,6 +355,26 @@ class LocusCLSJointTrainer:
         source = self._sources[pool.name]
         beta = source.block(rows, cpg)
         return pool.sample_idx[row_slots], cpg, beta
+
+    @staticmethod
+    def _pinned(array: np.ndarray) -> torch.Tensor:
+        tensor = torch.from_numpy(np.ascontiguousarray(array))
+        return tensor.pin_memory() if torch.cuda.is_available() else tensor
+
+    def _prepare_step(self, source_i: int, row_slots, cpg_slots):
+        """Read and stage one complete CPU batch in the prefetch thread."""
+        started = time.perf_counter()
+        pool = self.pools[source_i]
+        sample_ids, cpg_ids, beta_np = self._read_block(pool, row_slots, cpg_slots)
+        finite_count = int(np.isfinite(beta_np).sum())
+        pair_slots = int(beta_np.size)
+        if finite_count == 0:
+            return source_i, sample_ids, cpg_ids, None, None, None, finite_count, pair_slots, time.perf_counter() - started
+        rna = self._pinned(self.rna.rows(sample_ids, dtype=np.float16))
+        emb_np, _, _ = self.features.get(cpg_ids, embedding_dtype=np.float16)
+        emb = self._pinned(emb_np)
+        beta = self._pinned(beta_np)
+        return source_i, sample_ids, cpg_ids, rna, emb, beta, finite_count, pair_slots, time.perf_counter() - started
 
     def _mean_aux_loss(self, cpg_ids: np.ndarray, mu_logit: torch.Tensor) -> torch.Tensor:
         present = self.cpg_target_index.contains(cpg_ids)
@@ -369,20 +417,24 @@ class LocusCLSJointTrainer:
             F.huber_loss(residual_logit, target_residual, reduction="none", delta=1.0), mask,
         )
 
-    def _step(self, pool: TrainingPool, sample_ids, cpg_ids, beta_np):
-        finite = np.isfinite(beta_np)
-        if not finite.any():
+    def _step(self, pool: TrainingPool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count):
+        if finite_count == 0:
             return None
-        rna_x = torch.from_numpy(self.rna.rows(sample_ids, dtype=np.float16)).to(self.device).float()
-        emb_np, _, _ = self.features.get(cpg_ids, embedding_dtype=np.float16)
-        emb = torch.from_numpy(emb_np).to(self.device).float()
-        beta = torch.from_numpy(beta_np).to(self.device)
+        h2d_start = torch.cuda.Event(enable_timing=True)
+        h2d_end = torch.cuda.Event(enable_timing=True)
+        compute_start = torch.cuda.Event(enable_timing=True)
+        h2d_start.record()
+        rna_x = rna_cpu.to(self.device, non_blocking=True).float()
+        emb = emb_cpu.to(self.device, non_blocking=True).float()
+        beta = beta_cpu.to(self.device, non_blocking=True)
         position_kwargs = self._position_kwargs(cpg_ids)
+        h2d_end.record()
+        compute_start.record()
         with self._autocast():
-            out = self.model(rna_x, emb, **position_kwargs)
+            out = self.train_model(rna_x, emb, **position_kwargs)
             loss_cfg = loss_config_for_source(self.recipe.loss, pool.name, self.recipe.structured_loss_sources)
             main_loss, pieces = _direct_beta_loss(out, beta, loss_cfg)
-            main_loss = main_loss * (float(finite.sum()) / max(float(finite.size), 1.0))
+            main_loss = main_loss * (float(finite_count) / max(float(beta.numel()), 1.0))
             total = main_loss
             aux_loss = None
             if self.use_mean_branch and self.aux_weight != 0.0:
@@ -392,12 +444,12 @@ class LocusCLSJointTrainer:
             if self.residual_aux_weight != 0.0:
                 residual_aux_loss = self._residual_aux_loss(cpg_ids, beta, out["residual_logit"])
                 total = total + self.residual_aux_weight * residual_aux_loss
-        pieces = {**pieces, "main_loss": float(main_loss.detach().cpu()), "total_loss": float(total.detach().cpu())}
+        pieces = {**pieces, "main_loss": main_loss.detach(), "total_loss": total.detach(), "observed": finite_count}
         if aux_loss is not None:
-            pieces["aux_loss"] = float(aux_loss.detach().cpu())
+            pieces["aux_loss"] = aux_loss.detach()
         if residual_aux_loss is not None:
-            pieces["residual_aux_loss"] = float(residual_aux_loss.detach().cpu())
-        return total, pieces
+            pieces["residual_aux_loss"] = residual_aux_loss.detach()
+        return total, pieces, h2d_start, h2d_end, compute_start
 
     def _position_kwargs(self, cpg_ids: np.ndarray) -> dict[str, torch.Tensor]:
         """CpG ordinals for the axial arm, empty for every other architecture.
@@ -455,6 +507,10 @@ class LocusCLSJointTrainer:
             "wandb": None if self.wandb_run is None else {
                 "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
             },
+            "rng_state": {
+                "numpy": np.random.get_state(), "torch_cpu": torch.get_rng_state(),
+                "torch_cuda": torch.cuda.get_rng_state_all(),
+            },
         }
         tmp = Path(str(path) + ".tmp")
         torch.save(payload, tmp)
@@ -462,6 +518,9 @@ class LocusCLSJointTrainer:
 
     def run(self) -> dict[str, object]:
         cfg = self.recipe.training
+        opt_kwargs = {"weight_decay": cfg.weight_decay}
+        if cfg.fused_adamw:
+            opt_kwargs["fused"] = True
         if self.raw_lr_multiplier != 1.0:
             raw_params = [
                 *self.model.raw_branch.parameters(), *self.model.fusion.parameters(),
@@ -470,15 +529,18 @@ class LocusCLSJointTrainer:
             ]
             raw_param_ids = {id(p) for p in raw_params}
             other_params = [p for p in self.model.parameters() if id(p) not in raw_param_ids]
-            optimizer = torch.optim.AdamW(
-                [
-                    {"params": other_params, "lr": cfg.learning_rate},
-                    {"params": raw_params, "lr": cfg.learning_rate * self.raw_lr_multiplier},
-                ],
-                weight_decay=cfg.weight_decay,
-            )
+            groups = [
+                {"params": other_params, "lr": cfg.learning_rate},
+                {"params": raw_params, "lr": cfg.learning_rate * self.raw_lr_multiplier},
+            ]
         else:
-            optimizer = torch.optim.AdamW(self.model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+            groups = list(self.model.parameters())
+            opt_kwargs["lr"] = cfg.learning_rate
+        try:
+            optimizer = torch.optim.AdamW(groups, **opt_kwargs)
+        except (TypeError, RuntimeError):
+            opt_kwargs.pop("fused", None)
+            optimizer = torch.optim.AdamW(groups, **opt_kwargs)
         schedules0, plan0 = self._schedules(1)
         steps_per_epoch = len(plan0)
         horizon = int(cfg.scheduler_horizon_epochs or self.epochs)
@@ -499,14 +561,46 @@ class LocusCLSJointTrainer:
         best_loss_epoch = 0
         loss_improve_rel = 1e-3  # ignore floating noise smaller than 0.1% relative
         last_epoch = 0
+        start_epoch = 1
+        if latest.is_file():
+            state = torch.load(latest, map_location=self.device, weights_only=False)
+            if state.get("scope") != self.scope or state.get("mode") != self.mode:
+                raise RuntimeError("resume checkpoint scope/mode mismatch")
+            if int(state.get("epochs_planned", -1)) != self.epochs:
+                raise RuntimeError("resume checkpoint epoch-budget mismatch")
+            self.model.load_state_dict(state["model_state"])
+            optimizer.load_state_dict(state["optimizer_state"])
+            scheduler.load_state_dict(state["scheduler_state"])
+            history = list(state.get("history", []))
+            start_epoch = int(state["epoch"]) + 1
+            last_epoch = int(state["epoch"])
+            rng = state.get("rng_state") or {}
+            if rng.get("numpy") is not None:
+                np.random.set_state(rng["numpy"])
+            if rng.get("torch_cpu") is not None:
+                torch.set_rng_state(rng["torch_cpu"].cpu())
+            if rng.get("torch_cuda") is not None:
+                torch.cuda.set_rng_state_all([x.cpu() for x in rng["torch_cuda"]])
+            if self.mode == "development" and history:
+                scores = [x.get("development", {}).get("val_cpg_x_val_sample", {}).get("mas_pcc", -np.inf) for x in history]
+                best_score = float(np.nanmax(scores)); best_epoch = int(history[int(np.nanargmax(scores))]["epoch"])
+            finite_losses = [(float(x["loss"]), int(x["epoch"])) for x in history if np.isfinite(x.get("loss", np.nan))]
+            if finite_losses:
+                best_loss, best_loss_epoch = min(finite_losses)
         started_all = time.time()
-        for epoch in range(1, self.epochs + 1):
+        for epoch in range(start_epoch, self.epochs + 1):
             started = time.time()
             self.model.train()
             schedules, plan = self._schedules(epoch)
-            losses = []
-            piece_sums: dict[str, list[float]] = {}
+            loss_sum = None
+            piece_sums: dict[str, torch.Tensor | float] = {}
+            piece_counts: dict[str, int] = {}
             optimizer_steps = 0
+            data_wait_seconds = 0.0
+            cpu_prepare_seconds = 0.0
+            cuda_timings = []
+            observed_pairs = 0
+            pair_slots = 0
             # Block reads (self._read_block -> self._sources[...], HDF5) and the GPU
             # step were fully serial: the GPU sat idle while the next block was being
             # read/decoded on CPU. A single background thread now reads blocks one
@@ -516,13 +610,13 @@ class LocusCLSJointTrainer:
             # to training numerics, just overlap. Measured ~7% GPU utilization before
             # this change (mostly CPU-bound, un-overlapped block prep).
             items = [(source_i, *schedules[source_i][local_step]) for source_i, local_step in plan]
-            block_queue: queue.Queue = queue.Queue(maxsize=2)
+            block_queue: queue.Queue = queue.Queue(maxsize=cfg.prefetch_depth)
             done = object()
 
             def _prefetch(items=items, out=block_queue, done=done):
                 for source_i, row_slots, cpg_slots in items:
                     try:
-                        block = self._read_block(self.pools[source_i], row_slots, cpg_slots)
+                        block = self._prepare_step(source_i, row_slots, cpg_slots)
                         out.put((source_i, block, None))
                     except Exception as exc:  # noqa: BLE001 - re-raised on the main thread below
                         out.put((source_i, None, exc))
@@ -532,36 +626,62 @@ class LocusCLSJointTrainer:
             prefetch_thread = threading.Thread(target=_prefetch, daemon=True)
             prefetch_thread.start()
             while True:
+                wait_started = time.perf_counter()
                 item = block_queue.get()
+                data_wait_seconds += time.perf_counter() - wait_started
                 if item is done:
                     break
                 source_i, block, exc = item
                 if exc is not None:
                     prefetch_thread.join()
                     raise exc
+                source_i, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count, batch_pair_slots, prepare_seconds = block
+                cpu_prepare_seconds += prepare_seconds
+                observed_pairs += finite_count
+                pair_slots += batch_pair_slots
                 pool = self.pools[source_i]
-                sample_ids, cpg_ids, beta_np = block
-                result = self._step(pool, sample_ids, cpg_ids, beta_np)
+                result = self._step(pool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count)
                 if result is None:
                     continue
-                loss, pieces = result
+                loss, pieces, h2d_start, h2d_end, compute_start = result
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.gradient_clip_norm)
                 optimizer.step()
                 scheduler.step()
+                compute_end = torch.cuda.Event(enable_timing=True)
+                compute_end.record()
+                cuda_timings.append((h2d_start, h2d_end, compute_start, compute_end))
                 optimizer_steps += 1
-                losses.append(float(loss.detach()))
+                loss_sum = loss.detach() if loss_sum is None else loss_sum + loss.detach()
                 for key, value in pieces.items():
-                    piece_sums.setdefault(key, []).append(value)
+                    if isinstance(value, torch.Tensor):
+                        piece_sums[key] = value if key not in piece_sums else piece_sums[key] + value
+                    else:
+                        piece_sums[key] = float(piece_sums.get(key, 0.0)) + float(value)
+                    piece_counts[key] = piece_counts.get(key, 0) + 1
             prefetch_thread.join()
+            torch.cuda.synchronize(self.device)
+            training_seconds = time.time() - started
+            h2d_seconds = sum(a.elapsed_time(b) for a, b, _, _ in cuda_timings) / 1000.0
+            compute_seconds = sum(c.elapsed_time(d) for _, _, c, d in cuda_timings) / 1000.0
+            mean_loss = float((loss_sum / optimizer_steps).cpu()) if optimizer_steps else float("nan")
             row = {
-                "epoch": epoch, "seconds": time.time() - started, "optimizer_steps": optimizer_steps,
-                "loss": float(np.mean(losses)) if losses else float("nan"),
+                "epoch": epoch, "seconds": training_seconds, "training_seconds": training_seconds,
+                "data_wait_seconds": data_wait_seconds, "cpu_prepare_seconds": cpu_prepare_seconds,
+                "h2d_seconds": h2d_seconds, "compute_seconds": compute_seconds,
+                "observed_pairs": observed_pairs, "pair_slots": pair_slots,
+                "pair_slots_per_second": pair_slots / training_seconds if training_seconds else float("nan"),
+                "optimizer_steps": optimizer_steps, "loss": mean_loss,
                 "lr": optimizer.param_groups[0]["lr"],
             }
-            piece_means = {k: float(np.mean(v)) for k, v in piece_sums.items() if v}
-            if self.mode == "development":
+            piece_means = {
+                k: float((v / piece_counts[k]).cpu()) if isinstance(v, torch.Tensor) else float(v / piece_counts[k])
+                for k, v in piece_sums.items() if piece_counts[k]
+            }
+            validation_started = time.time()
+            validated = self.mode == "development" and (epoch % cfg.validation_every == 0 or epoch == self.epochs)
+            if validated:
                 dev = self.evaluate_development()
                 row["development"] = dev
                 score = float(dev["val_cpg_x_val_sample"]["mas_pcc"])
@@ -574,12 +694,16 @@ class LocusCLSJointTrainer:
                 if np.isfinite(loss_val) and loss_val < best_loss * (1 - loss_improve_rel):
                     best_loss = loss_val
                     best_loss_epoch = epoch
+            row["validation_seconds"] = time.time() - validation_started if validated else 0.0
             diagnostics = self.model.diagnostics() if hasattr(self.model, "diagnostics") else {}
             if diagnostics:
                 row["architecture_diagnostics"] = diagnostics
             history.append(row)
             last_epoch = epoch
-            self._save_checkpoint(latest, optimizer, scheduler, epoch, history)
+            checkpoint_started = time.time()
+            if epoch % cfg.checkpoint_every == 0 or epoch == self.epochs:
+                self._save_checkpoint(latest, optimizer, scheduler, epoch, history)
+            row["checkpoint_seconds"] = time.time() - checkpoint_started
             write_json(self.store.training_file("history.json"), history)
             print(f"[locus-cls-joint:{self.scope}:{self.mode}:{epoch}/{self.epochs}] loss={row['loss']:.6g}", flush=True)
             if self.wandb_run is not None:
@@ -589,12 +713,14 @@ class LocusCLSJointTrainer:
                     **{f"train/{k}": v for k, v in piece_means.items()},
                     **{f"diagnostics/{k}": v for k, v in diagnostics.items()},
                 }
-                if self.mode == "development":
+                if validated:
                     for view_name, view_metrics in row["development"].items():
                         wandb_log.update({f"val/{view_name}/{k}": v for k, v in view_metrics.items()})
                 self.wandb_run.log(wandb_log, step=epoch)
             if self.early_stop_patience is not None:
                 if self.mode == "development":
+                    if not validated:
+                        continue
                     stalled = epoch - best_epoch >= self.early_stop_patience
                     ref_msg = f"no val_cpg_x_val_sample.mas_pcc improvement for {self.early_stop_patience} epochs (best={best_score:.4f} @ epoch {best_epoch})"
                 else:
@@ -603,6 +729,10 @@ class LocusCLSJointTrainer:
                 if stalled:
                     print(f"[locus-cls-joint:{self.scope}:{self.mode}] early stop at epoch {epoch}: {ref_msg}", flush=True)
                     break
+        if last_epoch and last_epoch % cfg.checkpoint_every != 0:
+            # Early stopping may occur between periodic checkpoints; always
+            # leave a resumable snapshot at the actual terminal epoch.
+            self._save_checkpoint(latest, optimizer, scheduler, last_epoch, history)
         if self.mode == "final":
             self._save_checkpoint(best, optimizer, scheduler, last_epoch, history)
             best_epoch = last_epoch
@@ -639,11 +769,13 @@ def evaluate_official_split(
     sample_chunk: int = 128,
     cpg_chunk: int = 2048,
 ) -> dict:
-    """Evaluate a FeatureFusionLocusCLSModel checkpoint on the TRUE official
-    MethylProphet split (protocol.array_val_sample_idx x array_val_cpg_idx) --
-    the number this is directly comparable to the canonical model's own
-    val_cpg_x_val_sample_mas_pcc (see docs/PAPER_EXPERIMENTS.md's methodology
-    note on mode=development's inner proxy split vs. this true split)."""
+    """Evaluate a checkpoint on all three TRUE official MethylProphet views.
+
+    The headline ``metrics`` field remains the double-OOD
+    ``val_cpg_x_val_sample`` view for backwards compatibility.  The complete
+    result is also available under ``views`` and is logged to W&B with one
+    namespace per view.
+    """
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     lc = ckpt.get("locus_cls") or {}
     # LocusCLSJointTrainer always wants its own run-store scratch dir (distinct
@@ -668,11 +800,21 @@ def evaluate_official_split(
         trainer.model.load_state_dict(ckpt["model_state"])
         trainer.model.eval()
         p = trainer.protocol
+        views = {
+            "train_cpg_x_val_sample": (p.array_val_sample_idx, p.array_train_cpg_idx),
+            "val_cpg_x_train_sample": (p.array_train_sample_idx, p.array_val_cpg_idx),
+            "val_cpg_x_val_sample": (p.array_val_sample_idx, p.array_val_cpg_idx),
+        }
         with torch.no_grad():
-            result = trainer.evaluate_view(p.array_val_sample_idx, p.array_val_cpg_idx, sample_chunk=sample_chunk, cpg_chunk=cpg_chunk)
+            view_results = {
+                name: trainer.evaluate_view(sample_ids, cpg_ids, sample_chunk=sample_chunk, cpg_chunk=cpg_chunk)
+                for name, (sample_ids, cpg_ids) in views.items()
+            }
+        result = view_results["val_cpg_x_val_sample"]
         summary = {
             "model": "feature_fusion_locus_cls", "checkpoint": str(checkpoint), "checkpoint_epoch": ckpt.get("epoch"),
-            "eval_scope": "chr1", "view": "official_val_cpg_x_val_sample", "metrics": result,
+            "eval_scope": "chr1", "view": "val_cpg_x_val_sample", "metrics": result,
+            "views": view_results,
         }
         write_json(Path(output), summary)
         wandb_info = ckpt.get("wandb")
@@ -682,9 +824,15 @@ def evaluate_official_split(
                 project=wandb_info.get("project"), entity=wandb_info.get("entity"),
                 id=wandb_info["run_id"], resume="must",
             )
-            run.log({f"val/official_{k}": v for k, v in result.items()})
-            run.summary.update({f"val/official_{k}": v for k, v in result.items()})
-            run.summary.update({"val/official_view": summary["view"], "val/official_checkpoint_epoch": ckpt.get("epoch")})
+            headline = {f"val/{k}": v for k, v in result.items()}
+            per_view = {
+                f"val/{view_name}/{key}": value
+                for view_name, metrics in view_results.items()
+                for key, value in metrics.items()
+            }
+            run.log({**headline, **per_view})
+            run.summary.update({**headline, **per_view})
+            run.summary.update({"val/view": summary["view"], "val/checkpoint_epoch": ckpt.get("epoch")})
             run.finish()
         return summary
     finally:

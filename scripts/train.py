@@ -35,7 +35,8 @@ def _rna_shared_backbone(args):
         use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
         fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
-        mode=args.mode, early_stop_patience=args.early_stop_patience, run_id=args.run_id, overrides=overrides or None,
+        mode=args.mode, early_stop_patience=args.early_stop_patience, run_id=args.run_id,
+        overrides=overrides or None, resume=args.resume,
     )
     try:
         return trainer.run()

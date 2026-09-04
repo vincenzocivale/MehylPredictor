@@ -62,6 +62,16 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
     schedule_policy = str(raw.get("schedule_policy", "axis_full_coverage"))
     if schedule_policy not in {"pair_complete", "axis_full_coverage"}:
         raise ValueError("schedule_policy must be pair_complete or axis_full_coverage")
+    if training.schedule_layout not in {"legacy_scattered", "contiguous_blocks"}:
+        raise ValueError("training.schedule_layout must be legacy_scattered or contiguous_blocks")
+    if training.prefetch_depth < 1:
+        raise ValueError("training.prefetch_depth must be positive")
+    if training.hdf5_cache_mb < 1:
+        raise ValueError("training.hdf5_cache_mb must be positive")
+    if training.checkpoint_every < 1:
+        raise ValueError("training.checkpoint_every must be positive")
+    if training.validation_every < 1:
+        raise ValueError("training.validation_every must be positive")
     return RNARecipe(
         raw=raw,
         model=model,

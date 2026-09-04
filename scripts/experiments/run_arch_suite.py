@@ -14,10 +14,9 @@ how ``matched_chr1_shared_backbone`` works:
     ``scripts/evaluate.py --engine matched_chr1_shared_backbone`` call against
     the checkpoint it produced). Each unit of work is therefore two subprocess
     calls, run back to back.
-  * ``LocusCLSJointTrainer`` has NO resume support (its ``RunStore.create`` is
-    never called with ``resume=True``) -- a run directory left behind by a
-    killed process is a dead end, not something a re-invocation can continue.
-    This runner never attempts to resume; it reports a blocked unit and moves on.
+  * incomplete runs with a valid ``checkpoints/last.pt`` are resumed by passing
+    ``--resume`` to the shared-backbone trainer. Completed runs can optionally
+    have their evaluation refreshed with ``--refresh-evaluation``.
 
     # preflight, no GPU: build every arm on CPU and check its shapes/finiteness
     python scripts/experiments/run_arch_suite.py --dry-run
@@ -85,8 +84,8 @@ def _eval_output(run_dir: Path) -> Path:
     return run_dir / "evaluation" / "chr1" / "metrics.json"
 
 
-def _train_command(arm: Arm, seed: int, paths: dict[str, str]) -> list[str]:
-    return [
+def _train_command(arm: Arm, seed: int, paths: dict[str, str], *, resume: bool = False) -> list[str]:
+    command = [
         sys.executable, "scripts/train.py",
         "--model", "rna_methylation", "--scope", "chr1", "--engine", ENGINE, "--mode", "final",
         "--recipe", arm.recipe, "--seed", str(seed), "--run-id", run_id(arm, seed),
@@ -95,6 +94,9 @@ def _train_command(arm: Arm, seed: int, paths: dict[str, str]) -> list[str]:
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
         "--output-root", paths["output_root"], *arm.extra_args,
     ]
+    if resume:
+        command.append("--resume")
+    return command
 
 
 def _eval_command(arm: Arm, seed: int, paths: dict[str, str], run_dir: Path) -> list[str]:
@@ -263,6 +265,8 @@ def main() -> int:
     ap.add_argument("--smoke-samples", type=int, default=8)
     ap.add_argument("--smoke-loci", type=int, default=256)
     ap.add_argument("--print-commands", action="store_true")
+    ap.add_argument("--refresh-evaluation", action="store_true",
+                    help="rerun evaluation for completed units and log all official views")
     args = ap.parse_args()
 
     os.chdir(REPO_ROOT)
@@ -294,17 +298,15 @@ def main() -> int:
     for arm, seed in units:
         unit = run_id(arm, seed)
         run_dir = _run_dir(paths, arm, seed)
-        if _is_complete(run_dir):
+        if _is_complete(run_dir) and not args.refresh_evaluation:
             print(f"[arch-suite] {unit}: already complete, skipping", flush=True)
             state[unit] = {**state.get(unit, {}), "status": "already_complete", "run_dir": str(run_dir)}
             state_path.write_text(json.dumps(state, indent=2) + "\n")
             continue
-        if run_dir.is_dir():
-            # No resume support on this engine (see module docstring). A pre-
-            # existing, incomplete run directory is a dead end -- report it and
-            # move on rather than deleting or fighting over someone's partial run.
-            print(f"[arch-suite] {unit}: run directory exists but is incomplete, and this engine has no "
-                  f"resume support. Remove {run_dir} to retry (or pick a new --run-id); skipping.", flush=True)
+        refresh_only = _is_complete(run_dir) and args.refresh_evaluation
+        resume_train = run_dir.is_dir() and not refresh_only
+        if resume_train and not (run_dir / "checkpoints" / "last.pt").is_file():
+            print(f"[arch-suite] {unit}: incomplete run has no checkpoints/last.pt; skipping", flush=True)
             state[unit] = {**state.get(unit, {}), "status": "blocked_incomplete_run_dir",
                            "run_dir": str(run_dir), "host": host}
             state_path.write_text(json.dumps(state, indent=2) + "\n")
@@ -319,25 +321,27 @@ def main() -> int:
         env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(args.gpu), "PYTHONPATH": str(REPO_ROOT / "src")}
         started = datetime.now(timezone.utc)
         state[unit] = {
-            "status": "training", "host": host, "platform": platform.platform(), "gpu": args.gpu,
+            "status": "training" if not refresh_only else "evaluating", "host": host, "platform": platform.platform(), "gpu": args.gpu,
             "arm": arm.name, "stage": arm.stage, "seed": seed, "recipe": arm.recipe,
             "run_dir": str(run_dir), "started_at_utc": started.isoformat(),
         }
         state_path.write_text(json.dumps(state, indent=2) + "\n")
 
-        train_log = log_dir / f"{unit}.train.log"
-        print(f"[arch-suite] {unit}: training -> {train_log}", flush=True)
-        with train_log.open("a") as handle:
-            handle.write(f"\n=== {started.isoformat()} {host} :: {shlex.join(_train_command(arm, seed, paths))}\n")
-            handle.flush()
-            train_result = subprocess.run(
-                _train_command(arm, seed, paths), stdout=handle, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT,
-            )
-        if train_result.returncode != 0:
-            state[unit].update({"status": "train_failed", "train_returncode": train_result.returncode})
-            state_path.write_text(json.dumps(state, indent=2) + "\n")
-            print(f"[arch-suite] {unit}: training FAILED (rc={train_result.returncode}), see {train_log}", flush=True)
-            continue
+        if not refresh_only:
+            train_log = log_dir / f"{unit}.train.log"
+            print(f"[arch-suite] {unit}: {'resuming' if resume_train else 'training'} -> {train_log}", flush=True)
+            train_cmd = _train_command(arm, seed, paths, resume=resume_train)
+            with train_log.open("a") as handle:
+                handle.write(f"\n=== {started.isoformat()} {host} :: {shlex.join(train_cmd)}\n")
+                handle.flush()
+                train_result = subprocess.run(
+                    train_cmd, stdout=handle, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT,
+                )
+            if train_result.returncode != 0:
+                state[unit].update({"status": "train_failed", "train_returncode": train_result.returncode})
+                state_path.write_text(json.dumps(state, indent=2) + "\n")
+                print(f"[arch-suite] {unit}: training FAILED (rc={train_result.returncode}), see {train_log}", flush=True)
+                continue
 
         eval_log = log_dir / f"{unit}.eval.log"
         print(f"[arch-suite] {unit}: evaluating -> {eval_log}", flush=True)

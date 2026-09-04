@@ -240,6 +240,15 @@ class TrainingConfig:
     patience: int = 15
     min_delta: float = 1e-5
     num_workers: int = 0
+    # CPU/HDF5 input-pipeline controls. ``legacy_scattered`` preserves the
+    # historical element-wise shuffled minibatches; ``contiguous_blocks``
+    # shuffles whole blocks while retaining physical locality inside them.
+    schedule_layout: str = "legacy_scattered"  # legacy_scattered|contiguous_blocks
+    prefetch_depth: int = 2
+    hdf5_cache_mb: int = 256
+    checkpoint_every: int = 1
+    compile: bool = False
+    compile_mode: str = "default"
     validation_sample_split: str = "validation"
     validation_cpg_split: str = "validation"
     train_sample_split: str = "train"

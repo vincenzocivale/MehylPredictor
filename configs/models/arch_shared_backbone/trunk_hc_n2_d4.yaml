@@ -52,11 +52,11 @@ loss:
 training:
   seed: 17
   epochs: 80
-  learning_rate: 5.0e-5
+  learning_rate: 2.0e-4
   weight_decay: 1.0e-4
-  scheduler: constant
+  scheduler: cosine_warmup
   scheduler_horizon_epochs: 80
-  warmup_epochs: 0.0
+  warmup_epochs: 1.0
   min_lr_ratio: 0.1
   gradient_clip_norm: 1.0
   amp: true
@@ -64,6 +64,11 @@ training:
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 2
+  hdf5_cache_mb: 256
+  checkpoint_every: 1
+  compile: false
 
 schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true

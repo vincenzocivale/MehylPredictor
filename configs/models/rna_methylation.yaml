@@ -37,6 +37,11 @@ training:
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 2
+  hdf5_cache_mb: 256
+  checkpoint_every: 1
+  compile: false
 
 # Scalable default. Use --engine matched_chr1 for the exact pair-complete chr1
 # E1 reproduction. For a pair-complete chr123 study, set this explicitly to

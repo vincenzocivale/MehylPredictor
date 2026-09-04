@@ -11,15 +11,18 @@ from contextlib import nullcontext
 from dataclasses import asdict, dataclass, replace
 import json
 import os
+import queue
 from pathlib import Path
 import random
 import time
+import threading
 
 import numpy as np
 import pandas as pd
 import torch
 
 from ..losses import residual_loss
+from ..config import TrainingConfig
 from ..models import RNAMethylationPredictor, is_architecture_variant
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
@@ -112,7 +115,7 @@ class ScopedRNATrainer:
         if self.device.type!="cuda": raise RuntimeError("RNA training requires CUDA")
         torch.set_float32_matmul_precision(cfg.matmul_precision)
         torch.backends.cuda.matmul.allow_tf32=cfg.allow_tf32; torch.backends.cudnn.allow_tf32=cfg.allow_tf32
-        self.bundle=TCGACanonicalBundle.from_root(self.root)
+        self.bundle=TCGACanonicalBundle.from_root(self.root,hdf5_cache_mb=cfg.hdf5_cache_mb)
         self.protocol=scope_protocol(scope,self.bundle,canonical_root=self.root)
         self.features=LocusFeatureCache(feature_cache); self.rna=RNACache(rna_cache)
         required=np.unique(np.concatenate([self.protocol.array_train_cpg_idx,self.protocol.array_val_cpg_idx,*self.protocol.auxiliary_cpg_idx.values()]))
@@ -122,16 +125,19 @@ class ScopedRNATrainer:
         # the wrong architecture under the arm's name.
         if is_architecture_variant(self.recipe.model): raise ValueError("architecture-novelty recipes (model.encoder.kind != 'linear', model.trunk, model.axial, model.beta_likelihood_head) run only on the matched_chr1 engine: use scripts/train.py --engine matched_chr1")
         self.model=RNAMethylationPredictor(25_017,1536,self.recipe.model,epsilon=1e-4).to(self.device)
+        self.train_model=torch.compile(self.model,mode=cfg.compile_mode) if cfg.compile else self.model
         self.inner_views=None
         self.pools=self._build_pools()
         self.store=RunStore.create(output_root,model="rna_methylation",train_scope=scope,seed=self.seed,learning_rate=cfg.learning_rate,scheduler=cfg.scheduler,epochs=self.epochs,run_id=run_id,nested=nested_run_store,resume=resume)
         resolved_path=self.store.path/"config.resolved.yaml"
+        resolved_recipe={**self.recipe.raw,"training":asdict(cfg)}
         if self.store.is_new:
-            self.store.save_resolved_config(self.recipe.raw)
+            self.store.save_resolved_config(resolved_recipe)
         else:
             import yaml as _yaml
             existing=_yaml.safe_load(resolved_path.read_text()) or {}
-            if existing != self.recipe.raw:
+            existing={**existing,"training":asdict(TrainingConfig(**existing.get("training",{})))}
+            if existing != resolved_recipe:
                 raise RuntimeError("resume requested with a different resolved recipe")
         resume_wandb_id = None
         if not self.store.is_new:
@@ -199,7 +205,7 @@ class ScopedRNATrainer:
         schedules=[]
         for i,pool in enumerate(self.pools):
             batch=self.recipe.batching[pool.name]
-            schedules.append(SourceSchedule(len(pool.row_positions),len(pool.cpg_idx),int(batch["sample_size"]),int(batch["cpg_size"]),epoch,self.seed+1009*i,self.recipe.schedule_policy))
+            schedules.append(SourceSchedule(len(pool.row_positions),len(pool.cpg_idx),int(batch["sample_size"]),int(batch["cpg_size"]),epoch,self.seed+1009*i,self.recipe.schedule_policy,self.recipe.training.schedule_layout))
         return schedules,interleave(schedules,seed=self.seed,epoch=epoch)
 
     def _read_block(self,pool:TrainingPool,row_slots,cpg_slots):
@@ -208,19 +214,37 @@ class ScopedRNATrainer:
         beta=source.block(rows,cpg)
         return pool.sample_idx[row_slots],cpg,beta
 
-    def _step(self,pool,sample_ids,cpg_ids,beta_np):
-        finite=np.isfinite(beta_np)
-        if not finite.any(): return None
-        rna=torch.from_numpy(self.rna.rows(sample_ids,dtype=np.float16)).to(self.device).float()
+    @staticmethod
+    def _pinned(array):
+        tensor=torch.from_numpy(np.ascontiguousarray(array))
+        return tensor.pin_memory() if torch.cuda.is_available() else tensor
+
+    def _prepare_step(self,source_i,row_slots,cpg_slots):
+        started=time.perf_counter(); pool=self.pools[source_i]
+        sample_ids,cpg_ids,beta_np=self._read_block(pool,row_slots,cpg_slots)
+        finite_count=int(np.isfinite(beta_np).sum())
+        pair_slots=int(beta_np.size)
+        if finite_count==0:
+            return source_i,sample_ids,cpg_ids,None,None,None,None,None,finite_count,pair_slots,time.perf_counter()-started
+        rna=self._pinned(self.rna.rows(sample_ids,dtype=np.float16))
         emb_np,prior_np,sigma_np=self.features.get(cpg_ids,embedding_dtype=np.float16)
-        emb=torch.from_numpy(emb_np).to(self.device).float(); prior=torch.from_numpy(prior_np).to(self.device); sigma=torch.from_numpy(sigma_np).to(self.device); beta=torch.from_numpy(beta_np).to(self.device)
+        return (source_i,sample_ids,cpg_ids,rna,self._pinned(emb_np),self._pinned(prior_np),
+                self._pinned(sigma_np),self._pinned(beta_np),finite_count,pair_slots,time.perf_counter()-started)
+
+    def _step(self,pool,sample_ids,cpg_ids,rna_cpu,emb_cpu,prior_cpu,sigma_cpu,beta_cpu,finite_count):
+        if finite_count==0: return None
+        h2d_start=torch.cuda.Event(enable_timing=True); h2d_end=torch.cuda.Event(enable_timing=True); compute_start=torch.cuda.Event(enable_timing=True)
+        h2d_start.record()
+        rna=rna_cpu.to(self.device,non_blocking=True).float(); emb=emb_cpu.to(self.device,non_blocking=True).float()
+        prior=prior_cpu.to(self.device,non_blocking=True); sigma=sigma_cpu.to(self.device,non_blocking=True); beta=beta_cpu.to(self.device,non_blocking=True)
+        h2d_end.record(); compute_start.record()
         with self._autocast():
-            out=self.model(rna,emb,prior,sigma=sigma)
+            out=self.train_model(rna,emb,prior,sigma=sigma)
             cfg=loss_config_for_source(self.recipe.loss,pool.name,self.recipe.structured_loss_sources)
-            loss,pieces=residual_loss(out,beta,prior,cfg,epsilon=1e-4,sigma=sigma)
+            loss,pieces=residual_loss(out,beta,prior,cfg,epsilon=1e-4,sigma=sigma,return_metrics=False)
             # Normalize sparse technologies by the fraction of finite pair slots.
-            loss=loss*(float(finite.sum())/max(float(finite.size),1.0))
-        return loss,pieces
+            loss=loss*(float(finite_count)/max(float(beta.numel()),1.0))
+        return loss,pieces,h2d_start,h2d_end,compute_start
 
     @torch.no_grad()
     def evaluate_view(self,sample_ids,cpg_ids,*,sample_chunk=128,cpg_chunk=2048):
@@ -248,11 +272,15 @@ class ScopedRNATrainer:
 
     def run(self) -> dict[str,object]:
         cfg=self.recipe.training
-        optimizer=torch.optim.AdamW(self.model.parameters(),lr=cfg.learning_rate,weight_decay=cfg.weight_decay)
+        opt_kwargs={"lr":cfg.learning_rate,"weight_decay":cfg.weight_decay}
+        if cfg.fused_adamw: opt_kwargs["fused"]=True
+        try: optimizer=torch.optim.AdamW(self.model.parameters(),**opt_kwargs)
+        except (TypeError,RuntimeError):
+            opt_kwargs.pop("fused",None); optimizer=torch.optim.AdamW(self.model.parameters(),**opt_kwargs)
         schedules0,plan0=self._schedules(1); steps_per_epoch=len(plan0)
         horizon=int(cfg.scheduler_horizon_epochs or self.epochs)
         scheduler=build_lr_scheduler(optimizer,name=cfg.scheduler,total_steps=max(1,horizon*steps_per_epoch),warmup_steps=int(round(cfg.warmup_epochs*steps_per_epoch)),min_lr_ratio=cfg.min_lr_ratio)
-        use_scaler=cfg.amp and cfg.amp_dtype.lower()=="float16"; scaler=torch.cuda.amp.GradScaler(enabled=use_scaler)
+        use_scaler=cfg.amp and (cfg.amp_dtype.lower()=="float16" or not torch.cuda.is_bf16_supported()); scaler=torch.cuda.amp.GradScaler(enabled=use_scaler)
         history=[]; latest=self.store.checkpoint("last.pt"); best=self.store.checkpoint("best.pt"); start_epoch=1; best_score=-np.inf; best_epoch=0; global_step=0
         if latest.is_file():
             state=torch.load(latest,map_location=self.device,weights_only=False)
@@ -264,26 +292,50 @@ class ScopedRNATrainer:
                 scores=[x.get("development",{}).get("val_cpg_x_val_sample",{}).get("mas_pcc",-np.inf) for x in history]; best_score=float(np.nanmax(scores)); best_epoch=int(history[int(np.nanargmax(scores))]["epoch"])
         started_all=time.time()
         for epoch in range(start_epoch,self.epochs+1):
-            started=time.time(); self.model.train(); schedules,plan=self._schedules(epoch); source_steps={p.name:0 for p in self.pools}; losses=[]; optimizer_steps=0
-            for source_i,local_step in plan:
-                pool=self.pools[source_i]; row_slots,cpg_slots=schedules[source_i][local_step]; sample_ids,cpg_ids,beta_np=self._read_block(pool,row_slots,cpg_slots); source_steps[pool.name]+=1
-                result=self._step(pool,sample_ids,cpg_ids,beta_np)
+            started=time.time(); self.model.train(); schedules,plan=self._schedules(epoch); source_steps={p.name:0 for p in self.pools}; loss_sum=None; optimizer_steps=0
+            data_wait_seconds=0.0; cpu_prepare_seconds=0.0; cuda_timings=[]; observed_pairs=0; pair_slots=0
+            items=[(source_i,*schedules[source_i][local_step]) for source_i,local_step in plan]
+            block_queue:queue.Queue=queue.Queue(maxsize=cfg.prefetch_depth); done=object()
+            def _prefetch(items=items,out=block_queue,done=done):
+                for source_i,row_slots,cpg_slots in items:
+                    try: out.put((self._prepare_step(source_i,row_slots,cpg_slots),None))
+                    except Exception as exc:
+                        out.put((None,exc)); return
+                out.put((done,None))
+            prefetch_thread=threading.Thread(target=_prefetch,daemon=True); prefetch_thread.start()
+            while True:
+                wait_started=time.perf_counter(); block,exc=block_queue.get(); data_wait_seconds+=time.perf_counter()-wait_started
+                if block is done: break
+                if exc is not None:
+                    prefetch_thread.join(); raise exc
+                source_i,sample_ids,cpg_ids,rna_cpu,emb_cpu,prior_cpu,sigma_cpu,beta_cpu,finite_count,batch_pair_slots,prepare_seconds=block
+                cpu_prepare_seconds+=prepare_seconds; observed_pairs+=finite_count; pair_slots+=batch_pair_slots; pool=self.pools[source_i]; source_steps[pool.name]+=1
+                result=self._step(pool,sample_ids,cpg_ids,rna_cpu,emb_cpu,prior_cpu,sigma_cpu,beta_cpu,finite_count)
                 if result is None: continue
-                loss,pieces=result; optimizer.zero_grad(set_to_none=True)
+                loss,pieces,h2d_start,h2d_end,compute_start=result; optimizer.zero_grad(set_to_none=True)
                 if scaler.is_enabled():
                     old_scale=scaler.get_scale(); scaler.scale(loss).backward(); scaler.unscale_(optimizer); torch.nn.utils.clip_grad_norm_(self.model.parameters(),cfg.gradient_clip_norm); scaler.step(optimizer); scaler.update(); stepped=scaler.get_scale()>=old_scale
                 else:
                     loss.backward(); torch.nn.utils.clip_grad_norm_(self.model.parameters(),cfg.gradient_clip_norm); optimizer.step(); stepped=True
                 if stepped: scheduler.step()
-                global_step+=1; optimizer_steps+=1; losses.append(float(loss.detach()))
+                compute_end=torch.cuda.Event(enable_timing=True); compute_end.record(); cuda_timings.append((h2d_start,h2d_end,compute_start,compute_end))
+                global_step+=1; optimizer_steps+=1; loss_sum=loss.detach() if loss_sum is None else loss_sum+loss.detach()
                 if global_step%max(1,self.recipe.tracking.log_every_steps)==0: self.wandb.log({"train/loss":float(loss.detach()),"train/lr":optimizer.param_groups[0]["lr"],"train/source":pool.name,"train/epoch":epoch},step=global_step)
-            row={"epoch":epoch,"seconds":time.time()-started,"optimizer_steps":optimizer_steps,"source_steps":source_steps,"loss":float(np.mean(losses)) if losses else float("nan"),"lr":optimizer.param_groups[0]["lr"]}
-            if self.mode=="development":
+            prefetch_thread.join(); torch.cuda.synchronize(self.device)
+            training_seconds=time.time()-started; mean_loss=float((loss_sum/optimizer_steps).cpu()) if optimizer_steps else float("nan")
+            h2d_seconds=sum(a.elapsed_time(b) for a,b,_,_ in cuda_timings)/1000.0; compute_seconds=sum(c.elapsed_time(d) for _,_,c,d in cuda_timings)/1000.0
+            row={"epoch":epoch,"seconds":training_seconds,"training_seconds":training_seconds,"data_wait_seconds":data_wait_seconds,"cpu_prepare_seconds":cpu_prepare_seconds,"h2d_seconds":h2d_seconds,"compute_seconds":compute_seconds,"observed_pairs":observed_pairs,"pair_slots":pair_slots,"pair_slots_per_second":pair_slots/training_seconds if training_seconds else float("nan"),"optimizer_steps":optimizer_steps,"source_steps":source_steps,"loss":mean_loss,"lr":optimizer.param_groups[0]["lr"]}
+            validation_started=time.time(); validated=self.mode=="development" and (epoch%cfg.validation_every==0 or epoch==self.epochs)
+            if validated:
                 dev=self.evaluate_development(); row["development"]=dev; score=float(dev["val_cpg_x_val_sample"]["mas_pcc"])
                 self.wandb.log({f"development/{view}/{k}":v for view,m in dev.items() for k,v in m.items() if isinstance(v,(int,float))},step=global_step)
                 if np.isfinite(score) and score>best_score:
                     best_score=score; best_epoch=epoch; self._save_checkpoint(best,optimizer,scheduler,scaler,epoch,[*history,row])
-            history.append(row); self._save_checkpoint(latest,optimizer,scheduler,scaler,epoch,history); write_json(self.store.training_file("history.json"),history); print(f"[rna:{self.scope}:{self.mode}:{epoch}/{self.epochs}] loss={row['loss']:.6g}",flush=True)
+            row["validation_seconds"]=time.time()-validation_started if validated else 0.0
+            history.append(row); checkpoint_started=time.time()
+            if epoch%cfg.checkpoint_every==0 or epoch==self.epochs: self._save_checkpoint(latest,optimizer,scheduler,scaler,epoch,history)
+            row["checkpoint_seconds"]=time.time()-checkpoint_started
+            write_json(self.store.training_file("history.json"),history); print(f"[rna:{self.scope}:{self.mode}:{epoch}/{self.epochs}] loss={row['loss']:.6g}",flush=True)
         if self.mode=="final":
             self._save_checkpoint(best,optimizer,scheduler,scaler,self.epochs,history); best_epoch=self.epochs
         summary={"scope":self.scope,"mode":self.mode,"best_epoch":best_epoch,"best_inner_double_ood_mas_pcc":None if self.mode=="final" else best_score,"epochs":self.epochs,"elapsed_seconds":time.time()-started_all,"run_dir":str(self.store.path)}

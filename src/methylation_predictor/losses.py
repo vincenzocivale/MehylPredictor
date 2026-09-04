@@ -151,6 +151,7 @@ def residual_loss(
     config: LossConfig,
     epsilon: float = 1e-4,
     sigma: torch.Tensor | None = None,
+    return_metrics: bool = True,
 ) -> tuple[torch.Tensor, dict[str, float | int]]:
     mask = torch.isfinite(target_beta)
     prediction = outputs["beta"]
@@ -211,6 +212,8 @@ def residual_loss(
         + config.locus_pearson_weight * pearson_loss
         + config.beta_nll_weight * beta_nll
     )
+    if not return_metrics:
+        return total, {}
     return total, {
         "loss": float(total.detach().cpu()),
         "beta_mse": float(beta_mse.detach().cpu()),

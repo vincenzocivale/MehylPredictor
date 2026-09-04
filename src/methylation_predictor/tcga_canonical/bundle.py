@@ -43,16 +43,20 @@ RNA_FILE = "rna/tcga_rna_official_full.h5"
 # of GB of network re-reads for a single epoch of scattered WGBS blocks). Array/
 # EPIC chunks are much smaller (one-row, 8192-col, ~0.03MiB) but a single block
 # can still span more distinct chunks than the default 521 hash slots. A larger
-# cache is cheap (bounded, released on close) and lets a source small enough to
-# fit in RAM (WGBS) become fully cached after its first pass instead of re-read
-# every epoch.
-# 1.5GiB/source (<=6GiB across rna+array+epic+wgbs) -- this machine has been
-# observed with as little as ~17GiB of free/available host RAM under normal
-# load, so this stays well short of a system-wide OOM risk while still being
-# ~1500x the 1MiB default. Comfortably covers all of WGBS (~3.1GB) after its
-# first pass; array (~15GB) and EPIC (~5GB) still benefit from the block()
-# column-banding fix above, which needs no persistent cache to be effective.
-_H5_CACHE_KWARGS = {"rdcc_nbytes": 1536 * 1024**2, "rdcc_nslots": 100_003}
+# cache is bounded and released on close. With contiguous schedules it only
+# needs to retain the small working set around the current block.
+# Contiguous-block schedules do not need multi-GiB per-file caches. The old
+# 1.5GiB value also could not, despite its comment, hold the ~3.1GiB WGBS file.
+_DEFAULT_H5_CACHE_MB = 256
+
+
+def h5_cache_kwargs(cache_mb: int = _DEFAULT_H5_CACHE_MB) -> dict[str, int]:
+    if cache_mb < 1:
+        raise ValueError("HDF5 cache size must be positive")
+    return {"rdcc_nbytes": int(cache_mb) * 1024**2, "rdcc_nslots": 100_003}
+
+
+_H5_CACHE_KWARGS = h5_cache_kwargs()
 
 EXPECTED_SHAPES = {
     "rna": (10916, 25017),
@@ -88,7 +92,11 @@ def _read_cols(dataset: "h5py.Dataset", positions: np.ndarray) -> np.ndarray:
     if positions.size == 0:
         return np.empty((dataset.shape[0], 0), dtype=np.float32)
     unique_pos, inverse = np.unique(positions, return_inverse=True)
-    data = np.asarray(dataset[:, unique_pos], dtype=np.float32)
+    contiguous = len(unique_pos) == 1 or np.all(np.diff(unique_pos) == 1)
+    if contiguous:
+        data = np.asarray(dataset[:, unique_pos[0] : unique_pos[-1] + 1], dtype=np.float32)
+    else:
+        data = np.asarray(dataset[:, unique_pos], dtype=np.float32)
     return data[:, inverse]
 
 
@@ -184,6 +192,8 @@ class MethylationSource:
         """Dense (len(rows), len(cpgs)) float32 block, NaNs preserved."""
         cols = self._cpg_index.positions_of(cpg_idx_query)
         rows = np.asarray(row_positions, dtype=np.int64)
+        if rows.size == 0 or cols.size == 0:
+            return np.empty((len(rows), len(cols)), dtype=np.float32)
         dataset = self.h5["beta"]
         if self._column_major():
             data = _read_cols(dataset, cols)
@@ -207,23 +217,48 @@ class MethylationSource:
         # selection when chunks[0] > 1, the plain loop only when chunks[0] == 1)
         # on the assumption that grouping columns into chunk-width bands would
         # help chunks[0] > 1 layouts; measurement showed that banded path was
-        # actually the slow one on this repo's real array cache -- the loop
-        # below is now unconditional whenever the column selection isn't a
-        # single contiguous run.
+        # actually the slow one on this repo's real array cache. The fallback
+        # below therefore prefers a bounded dense rectangle for nearly-local
+        # selections and otherwise uses the faster per-row path.
         unique_rows, row_inverse = np.unique(rows, return_inverse=True)
         unique_cols, col_inverse = np.unique(cols, return_inverse=True)
         if len(unique_cols) == 0:
             return np.empty((len(rows), 0), dtype=np.float32)
         contiguous = len(unique_cols) == 1 or np.all(np.diff(unique_cols) == 1)
-        if contiguous:
+        rows_contiguous = len(unique_rows) == 1 or np.all(np.diff(unique_rows) == 1)
+        if contiguous and rows_contiguous:
             selected = np.asarray(
-                dataset[unique_rows, unique_cols[0] : unique_cols[-1] + 1],
+                dataset[
+                    unique_rows[0] : unique_rows[-1] + 1,
+                    unique_cols[0] : unique_cols[-1] + 1,
+                ],
                 dtype=np.float32,
             )
         else:
-            selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
-            for i, row in enumerate(unique_rows.tolist()):
-                selected[i] = np.asarray(dataset[row, unique_cols], dtype=np.float32)
+            # Development splits leave sparse holes in otherwise local ranges.
+            # A bounded bounding-box read avoids slow HDF5 point selection.
+            row_span = int(unique_rows[-1] - unique_rows[0] + 1)
+            col_span = int(unique_cols[-1] - unique_cols[0] + 1)
+            selected_cells = len(unique_rows) * len(unique_cols)
+            bounding_cells = row_span * col_span
+            if bounding_cells <= 2 * selected_cells and bounding_cells <= 16_000_000:
+                dense = np.asarray(
+                    dataset[
+                        unique_rows[0] : unique_rows[-1] + 1,
+                        unique_cols[0] : unique_cols[-1] + 1,
+                    ],
+                    dtype=np.float32,
+                )
+                selected = dense[unique_rows - unique_rows[0]][:, unique_cols - unique_cols[0]]
+            elif contiguous:
+                selected = np.asarray(
+                    dataset[unique_rows, unique_cols[0] : unique_cols[-1] + 1],
+                    dtype=np.float32,
+                )
+            else:
+                selected = np.empty((len(unique_rows), len(unique_cols)), dtype=np.float32)
+                for i, row in enumerate(unique_rows.tolist()):
+                    selected[i] = np.asarray(dataset[row, unique_cols], dtype=np.float32)
         return selected[row_inverse][:, col_inverse]
 
     def finite_count(
@@ -263,13 +298,20 @@ class TCGACanonicalBundle:
     sources: dict[str, MethylationSource]
 
     @classmethod
-    def from_root(cls, root: str | Path, validate_shapes: bool = True) -> "TCGACanonicalBundle":
+    def from_root(
+        cls,
+        root: str | Path,
+        validate_shapes: bool = True,
+        *,
+        hdf5_cache_mb: int = _DEFAULT_H5_CACHE_MB,
+    ) -> "TCGACanonicalBundle":
         root = Path(root)
         if not root.is_dir():
             raise FileNotFoundError(f"canonical bundle root does not exist: {root}")
 
         rna_path = root / RNA_FILE
-        rna_h5 = h5py.File(rna_path, "r", **_H5_CACHE_KWARGS)
+        cache_kwargs = h5_cache_kwargs(hdf5_cache_mb)
+        rna_h5 = h5py.File(rna_path, "r", **cache_kwargs)
         rna = RNASource(
             path=rna_path,
             h5=rna_h5,
@@ -280,7 +322,7 @@ class TCGACanonicalBundle:
         sources: dict[str, MethylationSource] = {}
         for name, relative_path in SOURCE_FILES.items():
             path = root / relative_path
-            h5f = h5py.File(path, "r", **_H5_CACHE_KWARGS)
+            h5f = h5py.File(path, "r", **cache_kwargs)
             sample_idx = np.asarray(h5f["sample_idx"][...], dtype=np.int64)
             measurement_idx = np.asarray(h5f["measurement_idx"][...], dtype=np.int64)
             sample_split = _decode(h5f["sample_split"][...]) if "sample_split" in h5f else None

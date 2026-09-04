@@ -54,6 +54,11 @@ training:
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 2
+  hdf5_cache_mb: 256
+  checkpoint_every: 1
+  compile: false
 
 schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true

@@ -17,7 +17,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from ..tcga_canonical.bundle import SOURCE_FILES, MethylationSource, _H5_CACHE_KWARGS
+from ..tcga_canonical.bundle import SOURCE_FILES, MethylationSource, h5_cache_kwargs
 from ..tcga_canonical.ids import GroupIndex, UniqueIndex
 
 
@@ -35,12 +35,12 @@ class MatchedChr1Protocol:
     sources: tuple[str, ...] = ("array", "epic", "wgbs")
 
 
-def open_methylation_source(name: str, path: Path) -> MethylationSource:
+def open_methylation_source(name: str, path: Path, *, hdf5_cache_mb: int = 256) -> MethylationSource:
     """Build a MethylationSource from any {beta,cpg_idx,sample_idx[,measurement_idx,
     sample_split]}-contract HDF5 file -- matched_chr1's pre-extracted array/epic
     files omit measurement_idx/sample_split (unused by these trainers), so those
     are synthesized/left None rather than required."""
-    h5f = h5py.File(path, "r", **_H5_CACHE_KWARGS)
+    h5f = h5py.File(path, "r", **h5_cache_kwargs(hdf5_cache_mb))
     sample_idx = np.asarray(h5f["sample_idx"][...], dtype=np.int64)
     measurement_idx = (
         np.asarray(h5f["measurement_idx"][...], dtype=np.int64)
@@ -62,7 +62,7 @@ def open_methylation_source(name: str, path: Path) -> MethylationSource:
 
 
 def load_matched_chr1_protocol_and_sources(
-    matched_chr1_root: Path, canonical_root: Path,
+    matched_chr1_root: Path, canonical_root: Path, *, hdf5_cache_mb: int = 256,
 ) -> tuple[MatchedChr1Protocol, dict[str, MethylationSource]]:
     """Official MethylProphet-matched chr1 split + pre-extracted, well-chunked
     data files -- see docs/BENCHMARK_METHYLPROPHET.md and
@@ -87,11 +87,11 @@ def load_matched_chr1_protocol_and_sources(
         },
     )
     sources = {
-        "array": open_methylation_source("array", meth_dir / "array_table5_chr1.h5"),
-        "epic": open_methylation_source("epic", meth_dir / "epic_table5_chr1.h5"),
+        "array": open_methylation_source("array", meth_dir / "array_table5_chr1.h5", hdf5_cache_mb=hdf5_cache_mb),
+        "epic": open_methylation_source("epic", meth_dir / "epic_table5_chr1.h5", hdf5_cache_mb=hdf5_cache_mb),
         # No pre-extracted WGBS file exists (WGBS only has 32 rows, so
         # per-chr1 extraction saves little) -- read the full genome-wide
         # file directly, filtered to matched_chr1's own wgbs_train_cpg_idx.
-        "wgbs": open_methylation_source("wgbs", canonical_root / SOURCE_FILES["wgbs"]),
+        "wgbs": open_methylation_source("wgbs", canonical_root / SOURCE_FILES["wgbs"], hdf5_cache_mb=hdf5_cache_mb),
     }
     return protocol, sources

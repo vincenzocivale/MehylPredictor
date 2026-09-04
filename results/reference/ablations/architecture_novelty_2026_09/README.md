@@ -48,9 +48,14 @@ The critique holds up against the **new** reference architecture too:
 ## Protocol
 
 Every arm: `matched_chr1_shared_backbone` engine, `mode=final`, 80 epochs,
-lr 5e-5 constant, `schedule_policy=pair_complete`, evaluated via
+`schedule_policy=pair_complete`, evaluated via
 `rna_training/locus_cls_trainer.py::evaluate_official_split` on the official
 MethylProphet Table-5 chr1 Array views (view `official_val_cpg_x_val_sample`).
+
+The stage-2 HC/mHC runs launched on 2026-09-03 use the user-selected aggressive
+optimizer profile: peak lr 2e-4, `cosine_warmup`, one warm-up epoch, and
+`min_lr_ratio=0.1` (final lr 2e-5). Other arms retain the original lr 5e-5
+constant protocol unless their recipe records an explicit override.
 
 **Two mechanical differences from the retired suite, both consequences of how
 this engine works:**
