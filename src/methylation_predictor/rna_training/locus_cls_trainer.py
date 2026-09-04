@@ -824,15 +824,17 @@ def evaluate_official_split(
                 project=wandb_info.get("project"), entity=wandb_info.get("entity"),
                 id=wandb_info["run_id"], resume="must",
             )
-            headline = {f"val/{k}": v for k, v in result.items()}
+            # Keep each evaluation split as a separate top-level W&B namespace
+            # instead of nesting all three under a shared ``val/`` prefix.
+            headline = {f"val_cpg_x_val_sample/{k}": v for k, v in result.items()}
             per_view = {
-                f"val/{view_name}/{key}": value
+                f"{view_name}/{key}": value
                 for view_name, metrics in view_results.items()
                 for key, value in metrics.items()
             }
             run.log({**headline, **per_view})
             run.summary.update({**headline, **per_view})
-            run.summary.update({"val/view": summary["view"], "val/checkpoint_epoch": ckpt.get("epoch")})
+            run.summary.update({"evaluation_view": summary["view"], "evaluation_checkpoint_epoch": ckpt.get("epoch")})
             run.finish()
         return summary
     finally:
