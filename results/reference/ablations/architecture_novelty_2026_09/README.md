@@ -158,8 +158,8 @@ python scripts/experiments/run_arch_suite.py --shard 3/3 --gpu 1
 
 # merge everything into this directory (idempotent, re-runnable)
 python scripts/experiments/collect_arch_results.py \
-    --output-root /dune/DATASETS/MethylPredictionData/experiments \
-    --output-root /mnt/m/experiments
+    --output-root results/experiments \
+    --output-root /mnt/m/results/experiments
 ```
 
 Run ids are deterministic per (arm, seed). A killed unit **is** auto-resumed

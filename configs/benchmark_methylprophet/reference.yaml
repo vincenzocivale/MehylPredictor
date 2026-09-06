@@ -5,7 +5,7 @@
 # "Table 5" is retained only inside legacy protocol/cache identifiers below
 # for provenance; it is not the experiment identity.
 run_name: tcga-chr1-reference
-output_dir: /raid/DATASETS/MethylPredictionData/experiments/MethylPredictor/tcga_chr1/reference
+output_dir: results/experiments/MethylPredictor/tcga_chr1/reference
 
 data:
   rna:

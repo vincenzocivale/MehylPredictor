@@ -38,12 +38,16 @@ loss:
 
 training:
   seed: 17
+  device: auto
   epochs: 80
-  learning_rate: 5.0e-5
+  steps_per_epoch: 250
+  sample_batch_size: 32
+  cpg_batch_size: 256
+  learning_rate: 2.0e-4
   weight_decay: 1.0e-4
-  scheduler: constant
+  scheduler: cosine_warmup
   scheduler_horizon_epochs: 80
-  warmup_epochs: 0.0
+  warmup_epochs: 1.0
   min_lr_ratio: 0.1
   gradient_clip_norm: 1.0
   amp: true
@@ -51,11 +55,27 @@ training:
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
+  patience: 15
+  min_delta: 1.0e-5
+  num_workers: 0
   schedule_layout: contiguous_blocks
   prefetch_depth: 2
+  prefetch_workers: 1
   hdf5_cache_mb: 256
   checkpoint_every: 1
   compile: false
+  compile_mode: default
+  validation_sample_split: validation
+  validation_cpg_split: validation
+  train_sample_split: train
+  train_cpg_split: train
+  checkpoint_metric: mse
+  validation_every: 1
+  validation_max_cpgs: 512
+  min_epochs: 0
+  save_every_epoch: false
+  cpg_sampling: uniform
+  checkpoint_selection: best
 
 schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true

@@ -480,7 +480,7 @@ run.
 The intended run contract is:
 
 ```text
-experiments/runs/<model>/<train-scope>/<run-id>/
+results/experiments/runs/<model>/<train-scope>/<run-id>/
   config.resolved.yaml
   metadata.json
   checkpoints/{best.pt,last.pt}
@@ -529,11 +529,10 @@ python scripts/train.py --model rna_methylation --scope chr123 \
   --output-root "$EXPERIMENT_ROOT" --run-id <declared-run-id>
 ```
 
-The current reference recipe still uses the conservative prefetch depth inherited from the
-chr1 experiments. Before declaring the optimized release command final, either create one
-scope-independent recipe validated with `prefetch_depth: 8` and `prefetch_workers: 4`, or
-add explicit CLI overrides for these performance-only fields. Do not claim the command above
-uses four workers until this mismatch is resolved.
+The reference recipe explicitly enables `prefetch_depth: 8` and `prefetch_workers: 4`.
+These settings preserve the training protocol but are machine-sensitive: smaller-memory or
+different-storage systems should use a derived recipe with a lower bounded queue and record
+the effective values in `config.resolved.yaml`.
 
 After training, `scripts/evaluate.py` must be called against `checkpoints/best.pt` with the
 same recipe and data paths. It writes all three official views to

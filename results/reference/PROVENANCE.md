@@ -1,17 +1,16 @@
 # Provenance: recorded numbers → raw run directories
 
 Every number in `results/reference/` traces back to a raw run under
-`/dune/DATASETS/MethylPredictionData/experiments/` (this machine; gitignored,
-not version-controlled). This file is the index from one to the other, so a
+`results/experiments/` (gitignored, not version-controlled). This file is the index from one to the other, so a
 paper table/figure can always be traced back to its exact checkpoint. Update
 it whenever a `results/reference/**` file is added or a referenced run is
 superseded/deleted.
 
-Layout note (2026-08-28 reorg): new runs from `scripts/{train,tune,evaluate}.py`
-should land under `experiments/runs/` (the `RunStore` layout,
+Layout note: new runs from `scripts/{train,tune,evaluate}.py` should land under
+`results/experiments/runs/` (the `RunStore` layout,
 `runs/<model>/<scope>/<run-id>/`) by passing `--output-root
-/dune/DATASETS/MethylPredictionData/experiments` (RunStore appends the `runs/`
-segment itself -- do not also put `/runs` in `--output-root` or it double-nests).
+results/experiments` (RunStore appends the `runs/` segment itself -- do not also
+put `/runs` in `--output-root` or it double-nests).
 Everything below predates that convention and lives under older ad hoc paths;
 entries are updated to `experiments/runs/...` as each is redone.
 
