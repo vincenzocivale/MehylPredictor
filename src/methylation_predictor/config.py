@@ -52,6 +52,10 @@ class EncoderConfig:
     # (e.g. "bulkrnabert_tcga") -- not read by any code path, only for
     # run/checkpoint provenance and W&B tagging.
     frozen_embedding_source: str = ""
+    # Ablation-only ("gene_pathway"): generated sparse gene/pathway membership.
+    pathway_membership_path: str = ""
+    pathway_dim1: int = 8
+    pathway_dim2: int = 16
 
 
 @dataclass(slots=True)
