@@ -110,14 +110,19 @@ measured, and removed — see "What was tried and removed" below.
 
 ## Current status (2026-09-06) and how to resume
 
-None of the arms below have been captured into `runs/`/`summary.yaml` yet --
-`collect_arch_results.py` has never been run. Status per arm, from
-`logs/arch_suite/queue_state_<host>.json` and each run directory:
+`enc_bottleneck_mlp` and `enc_frozen_embedding_bulkrnabert` have been captured into
+`runs/`/`summary.yaml` via `collect_arch_results.py` (2026-09-06) -- see `summary.md` for
+their numbers. Both underperform row B (the `locus_attention` reference) and are not
+promoted; see `docs/RNA_METHYLATION.md`'s "Forward direction" section for the read on each.
+Note the verdict column in `summary.md` currently reads "unjudged" for both: the noise
+floor (`seed_variance_reference`) hasn't converged yet, so their deltas are only measured
+against the epoch-47/80 lower-bound reference, not the 2×SD promotion rule -- re-run
+`collect_arch_results.py` once that arm finishes to get a judged verdict.
+Status per remaining arm, from `logs/arch_suite/queue_state_<host>.json` and each run
+directory:
 
 | arm | status | what's needed |
 |---|---|---|
-| `enc_bottleneck_mlp` | **complete** (train+eval) | ready to collect |
-| `enc_frozen_embedding_bulkrnabert` | training complete, **eval failed** 2026-09-06 (checkpoint/model shape mismatch: the eval step rebuilt the model against the default 25017-gene RNA cache instead of the BulkRNABert 256-d cache) | **already fixed in code** (`run_arch_suite.py::_eval_command` now mirrors `arm.extra_args`, see its comment) -- just rerun the arm, training will resume-and-immediately-finish and eval will succeed |
 | `seed_variance_reference` | queue says "training" but stalled (no process running) -- this is also the **missing chr1 convergence run** (rung_b_official_final was stopped at epoch 47/80) | rerun to auto-resume from `checkpoints/last.pt` |
 | `trunk_plain_d4` | stalled, same as above | rerun to auto-resume |
 | `p0_row_c_locus_attention_plain_trunk_d4` (does trunk depth help the reference encoder at all; run-id `p0_row_c-seed17`) | interrupted at epoch 21/80, never evaluated -- **not part of the `run_arch_suite.py` queue** (no `Arm` entry in `arch_suite.py`; it was launched as a one-off, see `logs/p0_tier1/driver.log`) | resume manually (see command below), then evaluate manually |
