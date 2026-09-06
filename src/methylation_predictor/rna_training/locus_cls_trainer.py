@@ -59,6 +59,35 @@ from .splits import blocked_cpg_split, stratified_sample_split
 from .trainer import TrainingPool, loss_config_for_source
 
 
+def ordered_bounded_prefetch(executor, function, items, depth):
+    """Yield ``function(item)`` results in input order with bounded look-ahead.
+
+    A replacement is submitted before yielding the completed result, so CPU
+    preparation continues while the caller performs the GPU update.  Keeping
+    this policy separate from the training loop makes its ordering and bound
+    independently regression-testable.
+    """
+    iterator = iter(items)
+    pending = deque()
+    for _ in range(depth):
+        try:
+            item = next(iterator)
+        except StopIteration:
+            break
+        pending.append(executor.submit(function, item))
+    while pending:
+        wait_started = time.perf_counter()
+        result = pending.popleft().result()
+        wait_seconds = time.perf_counter() - wait_started
+        try:
+            item = next(iterator)
+        except StopIteration:
+            pass
+        else:
+            pending.append(executor.submit(function, item))
+        yield result, wait_seconds
+
+
 def _direct_beta_loss(outputs: dict, target_beta: torch.Tensor, loss_cfg) -> tuple[torch.Tensor, dict]:
     """No-prior beta loss -- FeatureFusionLocusCLSModel predicts beta directly
     (no mu/sigma anchor to derive residual_loss's other terms from), so this
@@ -121,6 +150,7 @@ class LocusCLSJointTrainer:
         include_raw_cpg: bool = True,
         product_mlp: bool = False,
         fusion_init_std: float = 0.01,
+        query_source: str = "ntv3",
         aux_weight: float = 0.15,
         residual_aux_weight: float = 0.15,
         raw_lr_multiplier: float = 1.0,
@@ -128,6 +158,7 @@ class LocusCLSJointTrainer:
         early_stop_patience: int | None = None,
         run_id: str | None = None,
         overrides: dict | None = None,
+        development_split_seed: int | None = None,
         track: bool = True,
         resume: bool = False,
     ):
@@ -137,6 +168,8 @@ class LocusCLSJointTrainer:
         # into h_mean) a higher effective LR to compensate for that branch
         # imbalance -- measured empirically (chr1 pair_complete, 2026-09-02).
         self.raw_lr_multiplier = float(raw_lr_multiplier)
+        self.query_source = str(query_source)
+        self.development_split_seed = None if development_split_seed is None else int(development_split_seed)
         if mode not in {"development", "final"}:
             raise ValueError("mode must be development or final")
         self.mode = mode
@@ -175,8 +208,15 @@ class LocusCLSJointTrainer:
                     self.matched_chr1_root, self.root, hdf5_cache_mb=cfg.hdf5_cache_mb,
                 )
             else:
-                self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
-                self.protocol = scope_protocol(scope, self.bundle, canonical_root=self.root)
+                # The canonical bundle is needed only to resolve the frozen
+                # protocol. Do not retain its four HDF5 raw-chunk caches while
+                # the protocol-ordered compact sources are open for training.
+                canonical_bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
+                try:
+                    self.protocol = scope_protocol(scope, canonical_bundle, canonical_root=self.root)
+                finally:
+                    canonical_bundle.close()
+                self.bundle = None
                 self._sources = load_compact_scope_sources(
                     self.matched_chr1_root, self.protocol, hdf5_cache_mb=cfg.hdf5_cache_mb,
                 )
@@ -224,6 +264,8 @@ class LocusCLSJointTrainer:
             if self.architecture_variant
             else "feature_fusion_locus_cls"
         )
+        if self.query_source != "ntv3":
+            self.architecture_label += f"_query-{self.query_source}"
         self.model = model_cls(
             # Derived from whichever RNA cache was actually opened, not hardcoded --
             # a "frozen_embedding" arm (encoder.kind=frozen_embedding) points
@@ -241,6 +283,7 @@ class LocusCLSJointTrainer:
             **({
                 "use_raw_product": use_raw_product, "product_mlp": product_mlp,
                 "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
+                "query_source": self.query_source,
             } if self.architecture_variant else {}),
         ).to(self.device)
         self.train_model = (
@@ -254,18 +297,24 @@ class LocusCLSJointTrainer:
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
             resume=resume,
         )
-        resolved_config = {
-            **self.recipe.raw,
-            "training": asdict(cfg),
-            "locus_cls": {
-                "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
-                "use_raw_product": use_raw_product, "product_mlp": product_mlp,
-                "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
-                "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
-                "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
-                "trunk_hidden_dim": trunk_hidden_dim, "bottleneck_dim": bottleneck_dim,
-            },
+        locus_resolved = {
+            "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
+            "use_raw_product": use_raw_product, "product_mlp": product_mlp,
+            "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
+            "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
+            "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
+            "trunk_hidden_dim": trunk_hidden_dim, "bottleneck_dim": bottleneck_dim,
         }
+        # Preserve exact resolved-config compatibility for every pre-patch run:
+        # the default NTv3 query is implicit, just as it was before this patch.
+        if self.query_source != "ntv3":
+            locus_resolved["query_source"] = self.query_source
+        resolved_config = {**self.recipe.raw, "training": asdict(cfg), "locus_cls": locus_resolved}
+        if self.development_split_seed is not None:
+            resolved_config["development"] = {
+                **dict(resolved_config.get("development", {})),
+                "split_seed": self.development_split_seed,
+            }
         if self.store.is_new:
             self.store.save_resolved_config(resolved_config)
         else:
@@ -297,7 +346,10 @@ class LocusCLSJointTrainer:
                 "group": tracking.group or self.architecture_label,
                 "name": tracking.name or self.store.run_id, "job_type": tracking.job_type,
                 "mode": tracking.mode, "dir": str(self.store.path),
-                "tags": [*tracking.tags, f"scope-{scope}", f"mode-{mode}", self.architecture_label],
+                # wandb caps each tag at 64 chars; architecture_label can exceed that
+                # once ablation-variant suffixes (e.g. query-source) are appended, so
+                # truncate only the tag copy -- group/config keep the full label.
+                "tags": [*tracking.tags, f"scope-{scope}", f"mode-{mode}", self.architecture_label[:64]],
                 "config": {
                     "model": asdict(self.recipe.model), "loss": asdict(self.recipe.loss),
                     "training": asdict(self.recipe.training), "schedule_policy": self.recipe.schedule_policy,
@@ -305,8 +357,10 @@ class LocusCLSJointTrainer:
                         "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
                         "use_raw_product": use_raw_product, "product_mlp": product_mlp,
                         "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
+                        "query_source": self.query_source,
                         "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
                         "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
+                        "development_split_seed": self.development_split_seed,
                     },
                     "scope": scope, "mode": mode, "seed": self.seed, "architecture": self.architecture_label,
                 },
@@ -338,11 +392,12 @@ class LocusCLSJointTrainer:
         if self.mode == "development":
             frac = float(self.recipe.raw.get("development", {}).get("fraction", 0.1))
             block_bp = int(self.recipe.raw.get("development", {}).get("block_bp", 5_000_000))
+            split_seed = self.seed if self.development_split_seed is None else self.development_split_seed
             train_s, val_s = stratified_sample_split(
-                canonical_root=self.root, sample_ids=p.array_train_sample_idx, val_fraction=frac, seed=self.seed,
+                canonical_root=self.root, sample_ids=p.array_train_sample_idx, val_fraction=frac, seed=split_seed,
             )
             train_c, val_c = blocked_cpg_split(
-                registry=self.registry, cpg_ids=p.array_train_cpg_idx, val_fraction=frac, seed=self.seed, block_bp=block_bp,
+                registry=self.registry, cpg_ids=p.array_train_cpg_idx, val_fraction=frac, seed=split_seed, block_bp=block_bp,
             )
             self.inner_views = {
                 "train_cpg_x_val_sample": (val_s, train_c),
@@ -563,6 +618,7 @@ class LocusCLSJointTrainer:
                 "product_mlp": getattr(self.model, "product_mlp", False),
                 "include_raw_rna": getattr(self.model, "include_raw_rna", True),
                 "include_raw_cpg": getattr(self.model, "include_raw_cpg", True),
+                "query_source": self.query_source,
                 "fusion_init_std": self._fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
             },
@@ -669,46 +725,47 @@ class LocusCLSJointTrainer:
             # is strictly bounded, so large WGBS embeddings cannot inflate RAM.
             items = [(source_i, *schedules[source_i][local_step]) for source_i, local_step in plan]
             item_iter = iter(items)
-            pending = deque()
-            executor = ThreadPoolExecutor(max_workers=cfg.prefetch_workers, thread_name_prefix="block-prefetch")
-            for _ in range(min(cfg.prefetch_depth, len(items))):
-                source_i, row_slots, cpg_slots = next(item_iter)
-                pending.append(executor.submit(self._prepare_step, source_i, row_slots, cpg_slots))
-            while pending:
-                wait_started = time.perf_counter()
-                block = pending.popleft().result()
-                data_wait_seconds += time.perf_counter() - wait_started
-                try:
-                    source_i, row_slots, cpg_slots = next(item_iter)
-                    pending.append(executor.submit(self._prepare_step, source_i, row_slots, cpg_slots))
-                except StopIteration:
-                    pass
-                source_i, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count, batch_pair_slots, prepare_seconds = block
-                cpu_prepare_seconds += prepare_seconds
-                observed_pairs += finite_count
-                pair_slots += batch_pair_slots
-                pool = self.pools[source_i]
-                result = self._step(pool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count)
-                if result is None:
-                    continue
-                loss, pieces, h2d_start, h2d_end, compute_start = result
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.gradient_clip_norm)
-                optimizer.step()
-                scheduler.step()
-                compute_end = torch.cuda.Event(enable_timing=True)
-                compute_end.record()
-                cuda_timings.append((h2d_start, h2d_end, compute_start, compute_end))
-                optimizer_steps += 1
-                loss_sum = loss.detach() if loss_sum is None else loss_sum + loss.detach()
-                for key, value in pieces.items():
-                    if isinstance(value, torch.Tensor):
-                        piece_sums[key] = value if key not in piece_sums else piece_sums[key] + value
-                    else:
-                        piece_sums[key] = float(piece_sums.get(key, 0.0)) + float(value)
-                    piece_counts[key] = piece_counts.get(key, 0) + 1
-            executor.shutdown(wait=True)
+
+            def prepare(item):
+                return self._prepare_step(*item)
+
+            with ThreadPoolExecutor(
+                max_workers=cfg.prefetch_workers, thread_name_prefix="block-prefetch",
+            ) as executor:
+                for block, wait_seconds in ordered_bounded_prefetch(
+                    executor, prepare, item_iter, cfg.prefetch_depth,
+                ):
+                    data_wait_seconds += wait_seconds
+                    (
+                        source_i, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu,
+                        finite_count, batch_pair_slots, prepare_seconds,
+                    ) = block
+                    cpu_prepare_seconds += prepare_seconds
+                    observed_pairs += finite_count
+                    pair_slots += batch_pair_slots
+                    pool = self.pools[source_i]
+                    result = self._step(
+                        pool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count,
+                    )
+                    if result is None:
+                        continue
+                    loss, pieces, h2d_start, h2d_end, compute_start = result
+                    optimizer.zero_grad(set_to_none=True)
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.gradient_clip_norm)
+                    optimizer.step()
+                    scheduler.step()
+                    compute_end = torch.cuda.Event(enable_timing=True)
+                    compute_end.record()
+                    cuda_timings.append((h2d_start, h2d_end, compute_start, compute_end))
+                    optimizer_steps += 1
+                    loss_sum = loss.detach() if loss_sum is None else loss_sum + loss.detach()
+                    for key, value in pieces.items():
+                        if isinstance(value, torch.Tensor):
+                            piece_sums[key] = value if key not in piece_sums else piece_sums[key] + value
+                        else:
+                            piece_sums[key] = float(piece_sums.get(key, 0.0)) + float(value)
+                        piece_counts[key] = piece_counts.get(key, 0) + 1
             torch.cuda.synchronize(self.device)
             training_seconds = time.time() - started
             h2d_seconds = sum(a.elapsed_time(b) for a, b, _, _ in cuda_timings) / 1000.0
@@ -843,6 +900,7 @@ def evaluate_official_split(
         use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
         use_raw_product=lc.get("use_raw_product", True), product_mlp=lc.get("product_mlp", False),
         include_raw_rna=lc.get("include_raw_rna", True), include_raw_cpg=lc.get("include_raw_cpg", True),
+        query_source=lc.get("query_source", "ntv3"),
         fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
         track=False,

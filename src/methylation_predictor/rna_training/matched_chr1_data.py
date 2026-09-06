@@ -12,6 +12,8 @@ not touch ``MethylProphetTrainer`` itself.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
+import json
 from pathlib import Path
 
 import h5py
@@ -19,6 +21,18 @@ import numpy as np
 
 from ..tcga_canonical.bundle import SOURCE_FILES, MethylationSource, h5_cache_kwargs
 from ..tcga_canonical.ids import GroupIndex, UniqueIndex
+
+
+def _axis_digest(values: np.ndarray) -> str:
+    return hashlib.sha256(np.asarray(values, np.int64).tobytes()).hexdigest()
+
+
+def _file_digest(path: Path, chunk_bytes: int = 8 * 1024**2) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_bytes):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 @dataclass(slots=True)
@@ -100,7 +114,30 @@ def load_matched_chr1_protocol_and_sources(
 def load_compact_scope_sources(
     compact_root: Path, protocol, *, hdf5_cache_mb: int = 256,
 ) -> dict[str, MethylationSource]:
-    """Open scope-specific compact caches and verify protocol-axis coverage."""
+    """Open scope-specific caches and verify manifest, axes, and content hash.
+
+    Legacy manifests without file hashes remain readable, but still receive
+    exact axis validation. Re-running the cache builder upgrades them to the
+    content-hashed schema without rebuilding the matrices.
+    """
+    manifest_path = compact_root / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"compact cache manifest missing: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text())
+    if manifest.get("scope") != "chr123":
+        raise ValueError(f"compact cache has unexpected scope: {manifest.get('scope')!r}")
+    records = manifest.get("sources") or {}
+    for name in protocol.sources:
+        path = compact_root / f"{name}.h5"
+        record = records.get(name)
+        if not isinstance(record, dict):
+            raise ValueError(f"compact cache manifest has no {name!r} source record")
+        expected_bytes = record.get("bytes")
+        if expected_bytes is not None and path.stat().st_size != int(expected_bytes):
+            raise ValueError(f"{name} compact cache size does not match manifest")
+        expected_file_hash = record.get("file_sha256")
+        if expected_file_hash is not None and _file_digest(path) != expected_file_hash:
+            raise ValueError(f"{name} compact cache SHA-256 does not match manifest")
     sources = {
         name: open_methylation_source(name, compact_root / f"{name}.h5", hdf5_cache_mb=hdf5_cache_mb)
         for name in protocol.sources
@@ -110,9 +147,20 @@ def load_compact_scope_sources(
         **{name: np.asarray(ids, np.int64) for name, ids in protocol.auxiliary_cpg_idx.items()},
     }
     try:
+        expected_samples = {
+            "array": np.concatenate([protocol.array_train_sample_idx, protocol.array_val_sample_idx]),
+            **{name: sources[name].sample_idx for name in protocol.sources if name != "array"},
+        }
         for name, ids in required.items():
             if name in sources:
                 sources[name].cpg_positions(ids)
+                record = records[name]
+                if _axis_digest(sources[name].h5["cpg_idx"][...]) != record.get("cpgs_sha256"):
+                    raise ValueError(f"{name} compact CpG axis does not match manifest")
+                if _axis_digest(sources[name].sample_idx) != record.get("samples_sha256"):
+                    raise ValueError(f"{name} compact sample axis does not match manifest")
+                if name == "array" and not np.array_equal(sources[name].sample_idx, expected_samples[name]):
+                    raise ValueError("array compact sample axis does not match protocol order")
         sources["array"].rows_of_samples(
             np.concatenate([protocol.array_train_sample_idx, protocol.array_val_sample_idx])
         )

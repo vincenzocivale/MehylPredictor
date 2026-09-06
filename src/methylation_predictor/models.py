@@ -642,10 +642,21 @@ class LocusConditionedRNAEncoder(nn.Module):
         dropout: float,
         layer_norm: bool = True,
         bottleneck_dim: int = 256,
+        mean_query_dim: int | None = None,
+        query_source: str = "ntv3",
     ):
         super().__init__()
         if program_dim % n_heads != 0:
             raise ValueError(f"encoder.program_dim {program_dim} must be divisible by encoder.n_heads {n_heads}")
+        allowed_query_sources = {"ntv3", "mean_only", "hybrid_detached", "hybrid_joint"}
+        if query_source not in allowed_query_sources:
+            raise ValueError(
+                f"unknown locus-attention query_source={query_source!r}; "
+                f"expected one of {sorted(allowed_query_sources)}"
+            )
+        if query_source != "ntv3" and mean_query_dim is None:
+            raise ValueError(f"query_source={query_source!r} requires mean_query_dim")
+        self.query_source = str(query_source)
         self.n_programs = int(n_programs)
         self.program_dim = int(program_dim)
         self.n_heads = int(n_heads)
@@ -670,6 +681,15 @@ class LocusConditionedRNAEncoder(nn.Module):
         self.key = nn.Linear(program_dim, program_dim)
         self.value = nn.Linear(program_dim, program_dim)
         self.out = nn.Linear(program_dim, program_dim)
+        # Keep this parameter after every pre-existing locus-attention layer so
+        # adding a hybrid query does not perturb the initialization of Q/K/V/out.
+        # For hybrid modes it is zero-initialized: step 0 is exactly the current
+        # raw-NTv3 query, and training must earn any contribution from h_mean.
+        self.mean_query = None
+        if self.query_source != "ntv3":
+            self.mean_query = nn.Linear(int(mean_query_dim), program_dim, bias=False)
+            if self.query_source.startswith("hybrid_"):
+                nn.init.zeros_(self.mean_query.weight)
         self.dropout = nn.Dropout(dropout)
         self.last_attention: torch.Tensor | None = None
 
@@ -681,11 +701,33 @@ class LocusConditionedRNAEncoder(nn.Module):
         # this encoder is a strict superset of the canonical information.
         return RNARepresentation(tokens.mean(dim=1), program_tokens=tokens)
 
-    def attend(self, tokens: torch.Tensor, loci: torch.Tensor, store_attention: bool = False) -> torch.Tensor:
-        """(batch, K, program_dim) x (n_loci, locus_dim) -> (batch, n_loci, program_dim)."""
+    def attend(
+        self,
+        tokens: torch.Tensor,
+        loci: torch.Tensor,
+        mean_features: torch.Tensor | None = None,
+        store_attention: bool = False,
+    ) -> torch.Tensor:
+        """Query RNA program tokens with one of four controlled CpG representations.
+
+        ``ntv3`` is the existing reference: q = W_e e_c.
+        ``mean_only`` uses the CpGTrunk representation shaped by the mean-proxy task.
+        ``hybrid_detached`` adds a zero-initialized W_mu stopgrad(h_mean), so the
+        attention can use the methylation-aware representation without changing it.
+        ``hybrid_joint`` removes stopgrad and lets the prediction task co-adapt h_mean.
+        """
         batch, n_programs, _ = tokens.shape
         n_loci = loci.shape[0]
-        q = self.query(loci).view(n_loci, self.n_heads, self.head_dim)
+        q_ntv3 = self.query(loci)
+        if self.query_source == "ntv3":
+            q = q_ntv3
+        else:
+            if mean_features is None or self.mean_query is None:
+                raise ValueError(f"query_source={self.query_source!r} requires mean_features")
+            mean_input = mean_features.detach() if self.query_source == "hybrid_detached" else mean_features
+            q_mean = self.mean_query(mean_input)
+            q = q_mean if self.query_source == "mean_only" else q_ntv3 + q_mean
+        q = q.view(n_loci, self.n_heads, self.head_dim)
         k = self.key(tokens).view(batch, n_programs, self.n_heads, self.head_dim)
         v = self.value(tokens).view(batch, n_programs, self.n_heads, self.head_dim)
         scores = torch.einsum("lhd,bkhd->bhlk", q, k) / (self.head_dim ** 0.5)
@@ -696,6 +738,17 @@ class LocusConditionedRNAEncoder(nn.Module):
         weights = self.dropout(weights)
         attended = torch.einsum("bhlk,bkhd->blhd", weights, v).reshape(batch, n_loci, self.program_dim)
         return self.out(attended)
+
+    def query_diagnostics(self) -> dict[str, float]:
+        if self.mean_query is None:
+            return {}
+        ntv3_norm = float(self.query.weight.detach().norm())
+        mean_norm = float(self.mean_query.weight.detach().norm())
+        return {
+            "query_ntv3_weight_norm": ntv3_norm,
+            "query_mean_weight_norm": mean_norm,
+            "query_mean_to_ntv3_norm_ratio": mean_norm / max(ntv3_norm, 1e-12),
+        }
 
 
 class _BottleneckMLPBlock(nn.Module):
@@ -789,7 +842,14 @@ class FrozenEmbeddingEncoder(nn.Module):
         return RNARepresentation(self.projection(self.norm(x)))
 
 
-def build_rna_encoder(config: "EncoderConfig", input_dim: int, locus_dim: int) -> nn.Module:
+def build_rna_encoder(
+    config: "EncoderConfig",
+    input_dim: int,
+    locus_dim: int,
+    *,
+    mean_query_dim: int | None = None,
+    query_source: str = "ntv3",
+) -> nn.Module:
     """``EncoderConfig.kind`` dispatch. ``linear`` is the reference encoder; the
     rest are architecture-novelty ablations reachable only via
     ``FeatureFusionArchitectureVariantModel``."""
@@ -810,6 +870,7 @@ def build_rna_encoder(config: "EncoderConfig", input_dim: int, locus_dim: int) -
             input_dim=input_dim, locus_dim=locus_dim, n_programs=config.n_programs,
             program_dim=config.program_dim, n_heads=config.n_heads, dropout=config.dropout,
             layer_norm=config.layer_norm, bottleneck_dim=config.latent_dim,
+            mean_query_dim=mean_query_dim, query_source=query_source,
         )
     if config.kind == "gene_pathway":
         return GenePathwayEncoder(
@@ -1041,10 +1102,12 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         include_raw_cpg: bool = True,
         product_mlp: bool = False,
         fusion_init_std: float = 0.01,
+        query_source: str = "ntv3",
     ):
         super().__init__()
         self.config = config
         self.use_mean_branch = bool(use_mean_branch)
+        self.query_source = str(query_source)
         # Ablation-only toggle (default True preserves every existing config/checkpoint
         # byte-for-byte): drops the raw branch's elementwise RNA*CpG product term
         # p_{s,l} = W_r r_{s,l} ⊙ W_e e_l, isolating whether that multiplicative
@@ -1087,7 +1150,15 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
             self.mean_head = nn.Linear(bottleneck_dim, 1)
 
         encoder_cfg, interaction_cfg = config.encoder, config.interaction
-        self.rna_encoder = build_rna_encoder(encoder_cfg, input_dim=input_dim, locus_dim=cpg_input_dim)
+        if self.query_source != "ntv3" and encoder_cfg.kind != "locus_attention":
+            raise ValueError("non-NTv3 query_source requires encoder.kind='locus_attention'")
+        if self.query_source != "ntv3" and not self.use_mean_branch:
+            raise ValueError("mean-aware query_source requires use_mean_branch=true")
+        self.rna_encoder = build_rna_encoder(
+            encoder_cfg, input_dim=input_dim, locus_dim=cpg_input_dim,
+            mean_query_dim=bottleneck_dim if self.use_mean_branch else None,
+            query_source=self.query_source,
+        )
         self.locus_conditioned = encoder_cfg.kind == "locus_attention"
         rna_pair_dim = encoder_cfg.program_dim if self.locus_conditioned else encoder_cfg.latent_dim
         raw_hidden_dim = interaction_cfg.hidden_dim
@@ -1170,9 +1241,12 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         return self.axial is not None
 
     def diagnostics(self) -> dict[str, float]:
-        if self.trunk is None or not hasattr(self.trunk, "composite_gain"):
-            return {}
-        return self.trunk.composite_gain()
+        diagnostics: dict[str, float] = {}
+        if self.locus_conditioned and hasattr(self.rna_encoder, "query_diagnostics"):
+            diagnostics.update(self.rna_encoder.query_diagnostics())
+        if self.trunk is not None and hasattr(self.trunk, "composite_gain"):
+            diagnostics.update(self.trunk.composite_gain())
+        return diagnostics
 
     def forward(
         self, rna: torch.Tensor, cpg_embedding: torch.Tensor, cpg_positions: torch.Tensor | None = None,
@@ -1180,9 +1254,25 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         representation = self.rna_encoder(rna)
         batch = rna.shape[0]
         n_loci = cpg_embedding.shape[0]
+
+        # Compute the mean-proxy representation before cross-attention so the
+        # query experiment can reuse exactly the representation already shaped
+        # by the auxiliary locus-mean task. The scalar mu_logit still never
+        # enters beta_hat directly.
+        if self.use_mean_branch:
+            h_mean = self.trunk_cpg(cpg_embedding)  # (n_loci, bottleneck_dim)
+            mu_logit = self.mean_head(h_mean).squeeze(-1)  # auxiliary probe only
+            h_mean_b = h_mean[None, :, :].expand(batch, n_loci, -1)
+        else:
+            h_mean = None
+            mu_logit = None
+            h_mean_b = None
+
         if self.locus_conditioned:
             assert representation.program_tokens is not None
-            rna_pair = self.rna_encoder.attend(representation.program_tokens, cpg_embedding)
+            rna_pair = self.rna_encoder.attend(
+                representation.program_tokens, cpg_embedding, mean_features=h_mean,
+            )
         else:
             rna_pair = representation.global_vector[:, None, :].expand(batch, n_loci, -1)
 
@@ -1197,14 +1287,6 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         joint = torch.cat(pieces, dim=-1)
         h_raw = self.raw_branch(joint)  # (batch, n_loci, raw_hidden_dim)
         residual_logit = self.residual_head(h_raw).squeeze(-1)  # auxiliary probe only
-
-        if self.use_mean_branch:
-            h_mean = self.trunk_cpg(cpg_embedding)  # (n_loci, bottleneck_dim)
-            mu_logit = self.mean_head(h_mean).squeeze(-1)  # auxiliary probe only
-            h_mean_b = h_mean[None, :, :].expand(batch, n_loci, -1)
-        else:
-            mu_logit = None
-            h_mean_b = None
 
         if self.trunk is None:
             pieces = [h_mean_b, h_raw] if self.use_mean_branch else [h_raw]

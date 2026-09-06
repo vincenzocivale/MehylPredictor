@@ -25,6 +25,14 @@ def digest(values: np.ndarray) -> str:
     return hashlib.sha256(np.asarray(values, np.int64).tobytes()).hexdigest()
 
 
+def file_digest(path: Path, chunk_bytes: int = 8 * 1024**2) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_bytes):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def build_wgbs_compact(root: Path, output: Path, cpg_ids: np.ndarray) -> dict[str, object]:
     """Compact WGBS columns while retaining all physical rows, including duplicate patients."""
     if output.is_file():
@@ -85,7 +93,13 @@ def main() -> None:
     manifest = {
         "schema_version": 1, "scope": "chr123", "canonical_root": str(root.resolve()),
         "sources": {
-            name: {**results[name], "samples_sha256": digest(samples), "cpgs_sha256": digest(cpgs)}
+            name: {
+                **results[name],
+                "bytes": (output / f"{name}.h5").stat().st_size,
+                "file_sha256": file_digest(output / f"{name}.h5"),
+                "samples_sha256": digest(samples),
+                "cpgs_sha256": digest(cpgs),
+            }
             for name, (samples, cpgs) in axes.items()
         },
     }
