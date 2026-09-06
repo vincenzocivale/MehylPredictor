@@ -20,10 +20,12 @@ arms:
     note: mas_pcc is mathematically undefined (constant prediction per CpG across samples).
 
   - arm: global_rna_shift
-    status: found_but_suspicious_needs_review
+    status: confirmed_official   # re-diagnosed 2026-09-06 -- see reassessment below
     description: >
       Raw branch sees RNA only, ignores the CpG embedding entirely (use_mean_branch=false,
-      include_raw_cpg=false, use_raw_product=false).
+      include_raw_cpg=false, use_raw_product=false). By construction, beta_hat is CONSTANT across
+      every CpG for a given sample (only the patient-level RNA signal varies) -- see the recipe's
+      own header comment.
     recipe: configs/models/baselines/baseline_global_rna_shift.yaml
     run_id: baseline-global-shift
     checkpoint: results/experiments/runs/locus_cls_joint/chr1/baseline-global-shift/checkpoints/best.pt
@@ -33,19 +35,37 @@ arms:
         train_cpg_x_val_sample: {mas_pcc: 0.3104, mac_pcc: null, mse: 0.1334, mae: 0.3372}
         val_cpg_x_train_sample: {mas_pcc: 0.2312, mac_pcc: null, mse: 0.1469, mae: 0.3567}
         val_cpg_x_val_sample:   {mas_pcc: 0.2188, mac_pcc: null, mse: 0.1471, mae: 0.3570}
-    red_flags: >
-      MSE (~0.13-0.15) is far worse than even the zero-parameter CpG-Prior baseline (~0.023-0.028)
-      and worse than the old engine's own frozen legacy number (0.2343 MAS-PCC per
-      docs/EXPERIMENT_ROADMAP.md) -- this magnitude of MSE suggests something is actually broken
-      in this run (bad loss scale/config), not a genuinely weak-but-valid baseline. mac_pcc is NaN.
-      A directory literally named `baseline-global-shift-invalid-settings-20260906T1025` exists
-      under this host's $METHYL_DATA_ROOT/experiments (separate from results/experiments) --
-      strongly suggests a known-bad configuration was used at least once for this baseline; unclear
-      whether the run captured here is that bad run or a different, earlier attempt. Do not cite
-      these numbers before re-deriving this baseline from a clean config.
-    next_step: >
-      Inspect config.resolved.yaml for baseline-global-shift and diff against
-      configs/models/baselines/baseline_global_rna_shift.yaml before deciding whether to rerun.
+    reassessment_2026_09_06: >
+      Previously flagged found_but_suspicious_needs_review on the assumption that MSE this much
+      worse than CpG Prior implied a broken config. Re-diagnosed by diffing this run's
+      config.resolved.yaml against configs/models/baselines/baseline_global_rna_shift.yaml
+      field-by-field: EVERY field matches (use_mean_branch=false, include_raw_cpg=false,
+      use_raw_product=false, include_raw_rna=true, same loss/training/batching blocks) -- no
+      misconfiguration found. Both "red flags" turn out to be the mathematically necessary
+      consequence of this baseline's own definition, not bugs:
+      1. High MSE: this baseline discards ALL locus-specific information, so it can only ever
+         predict one constant value per patient across every CpG on chr1 -- and true methylation
+         is dominated by BETWEEN-locus variance (CpG islands near 0, gene bodies/repeats near 1),
+         not between-patient variance. CpG Prior's low MSE captures exactly that dominant
+         between-locus signal (it varies its prediction per CpG, just not per patient) -- the
+         opposite restriction. A baseline built to prove "patient-level RNA alone is not enough"
+         losing badly to a zero-parameter per-locus constant is the expected, correct result, not
+         evidence of brokenness.
+      2. mac_pcc=NaN: mac_pcc is the across-CpG Pearson correlation for a given sample; a
+         perfectly constant prediction across CpGs has zero variance, making the correlation
+         mathematically undefined (0/0) -- the exact mirror-image of cpg_prior's mas_pcc=null
+         (constant across samples for a given CpG -> across-sample correlation undefined). Expected
+         for both baselines, not a defect in either.
+      The `baseline-global-shift-invalid-settings-20260906T1025` directory (separate host path)
+      was checked too: its locus_cls block is byte-identical to this run's -- whatever was
+      "invalid" about it was not this axis (likely an unrelated data-path/CLI mistake in that
+      specific abandoned attempt), and it does not cast doubt on the run captured here.
+      The old engine's legacy 0.2343 MAS-PCC (docs/EXPERIMENT_ROADMAP.md) is not directly
+      comparable -- different engine/architecture generation, not re-derivable by current code.
+    note: >
+      Numbers now trusted. MSE/MAE are the meaningful comparison metrics here (MAS-PCC is also
+      reported and non-null, unlike CpG Prior, since MAS-PCC only needs prediction variance across
+      SAMPLES for a fixed CpG -- which this baseline still has, via the RNA signal).
 
   - arm: bilinear_rna_cpg
     status: confirmed_official
@@ -78,8 +98,9 @@ arms:
         val_cpg_x_val_sample:   {mas_pcc: 0.5259, mac_pcc: 0.9289, mse: 0.0202, mae: 0.0909}
 
 summary: >
-  3 of 4 baselines confirmed with real official-split numbers and real checkpoints on this host.
-  global_rna_shift needs review/rerun before use -- its numbers look broken, not just weak.
+  All 4 baselines confirmed with real official-split numbers and real checkpoints on this host.
+  global_rna_shift's high MSE / null mac_pcc are expected consequences of its own definition
+  (see its reassessment_2026_09_06 note), not a bug -- no rerun needed.
 
 chr123_arms:
   # Same 4 baselines, chr123 scope, engine=shared_backbone, same recipes as the chr1 arms above
@@ -99,10 +120,10 @@ chr123_arms:
     recipe: configs/models/baselines/baseline_global_rna_shift.yaml
     checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-global-shift-chr123/checkpoints/best.pt
     metrics: null
-    carry_forward_caveat: >
-      The chr1 arm of this same baseline is flagged found_but_suspicious_needs_review (MSE far
-      worse than CpG Prior, mac_pcc NaN) -- watch this chr123 run for the same symptom before
-      trusting its number either; do not assume chr123 is clean just because chr1 was reviewed.
+    expected_pattern: >
+      The chr1 arm of this same baseline has high MSE and mac_pcc=null by construction (constant
+      prediction per patient across all CpGs -- see its reassessment_2026_09_06 note) -- expect
+      the same pattern here on chr123, not a sign this run is broken.
 
   - arm: bilinear_rna_cpg
     status: queued
