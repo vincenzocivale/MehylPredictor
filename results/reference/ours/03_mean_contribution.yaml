@@ -1,0 +1,95 @@
+# B.3 — Mean-contribution causal ablation (P1)
+#
+# Protocol: docs/MEAN_CONTRIBUTION_EXPERIMENTS.md. Three arms, same RNA encoder (locus attention
+# K=64), same raw product=false throughout -- only the mean branch / its auxiliary supervision
+# changes.
+
+study: mean_contribution
+source: ours
+primary_contrast: full_reference vs no_mean_supervision (proxy-task supervision, the paper's
+  causal claim)
+secondary_contrast: no_mean_supervision vs no_mean_branch (branch capacity alone)
+arms:
+
+  - arm: full_reference
+    mean_branch: true
+    mean_aux_weight: 0.15
+    raw_product: false
+    status: confirmed_official   # CLOSED 2026-09-06 21:39 UTC
+    note: >
+      Same run as B.1 (../ours/01_final_chr1_model.yaml): reference-locus_attention_no_product-
+      seed17, full 80/80 epochs, official split. p0_row_b-seed17 is NOT this arm -- it has
+      use_raw_product=true (codebase default when unset), confirmed by grepping models.py/
+      locus_cls_trainer.py/config.py. See 01_final_chr1_model.yaml's history note for the full
+      correction story.
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.7004, mse: 0.0109, mae: 0.0632}
+        val_cpg_x_train_sample: {mas_pcc: 0.6311, mse: 0.0135, mae: 0.0684}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5838, mse: 0.0143, mae: 0.0705}
+
+  - arm: no_mean_supervision
+    mean_branch: true
+    mean_aux_weight: 0
+    raw_product: false
+    status: not_started
+    note: >
+      Not found anywhere on this host. p0_row_b_no_mean_only-seed17 is NOT this arm despite the
+      similar name -- it has use_mean_branch=FALSE and use_raw_product=TRUE, a different cell
+      entirely (see the arm below, kept for completeness but out of this ladder).
+    checkpoint: null
+    next_step: >
+      python scripts/experiments/run_mean_contribution.py --arms no_mean_supervision --gpu <N>
+
+  - arm: no_mean_branch
+    mean_branch: false
+    mean_aux_weight: null
+    raw_product: false
+    status: found_matches_protocol_exactly
+    note: Config matches this arm's spec exactly (use_mean_branch=false, use_raw_product=false).
+    checkpoint: results/experiments/runs/locus_cls_joint/chr1/p0_row_b_ablation-seed17/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.7046, mse: 0.0119, mae: 0.0695}
+        val_cpg_x_train_sample: {mas_pcc: 0.6232, mse: 0.0174, mae: 0.0810}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5812, mse: 0.0181, mae: 0.0826}
+
+# Not part of the 3-arm ladder above, but a real official run sitting on disk -- kept here for
+# provenance since it's directly adjacent (same mean/product isolation family, referenced by
+# rna_methylation_locus_attention.yaml's own header comment as "mean removed, product kept").
+extra_cell_not_in_protocol:
+  arm: p0_row_b_no_mean_only-seed17
+  mean_branch: false
+  raw_product: true
+  status: confirmed_official_but_off_protocol
+  checkpoint: results/experiments/runs/locus_cls_joint/chr1/p0_row_b_no_mean_only-seed17/checkpoints/best.pt
+  metrics:
+    chr1:
+      val_cpg_x_val_sample: {mas_pcc: 0.5860, mse: 0.0179, mae: 0.0822}
+
+paired_seed_note: >
+  All three found/needed cells above are currently single-seed (17). The written protocol calls
+  for seeds 17/29/43 per arm for the causal claim's statistical power -- decide whether the
+  single-seed numbers above are sufficient for a first paper draft or whether the other two seeds
+  are needed before treating "no_mean_supervision" and the causal contrast as settled.
+
+total_mean_contribution_full_reference_vs_no_mean_branch: >
+  Now computable with real official numbers for both endpoints (2026-09-06):
+  val_cpg_x_val_sample MSE 0.0143 (full_reference) vs 0.0181 (no_mean_branch) = +26.6% MSE with
+  the mean branch entirely removed -- consistent with the "~28% MSE increase on unseen CpGs"
+  figure already cited as motivation before this ladder was run. This is the "total contribution"
+  bound (branch capacity + proxy supervision combined); it does NOT yet isolate how much of that
+  26.6% is the proxy-task supervision specifically (the paper's actual causal claim) vs. just
+  having the extra branch capacity -- that isolation is exactly what the missing
+  "no_mean_supervision" arm above answers. Do not report 26.6% as evidence for the supervision
+  claim specifically until that arm exists.
+
+secondary_evidence_from_variance_decile_and_bias_metrics: >
+  Not yet computed for these runs -- docs/MEAN_CONTRIBUTION_EXPERIMENTS.md's collector
+  (scripts/experiments/collect_mean_contribution.py) produces locus-bias and variance-decile
+  metrics beyond plain MAS-PCC/MSE; none of that has been run against
+  reference-locus_attention_no_product-seed17 / p0_row_b_ablation-seed17 since neither was ever
+  registered as a mean_contribution_2026_09 run.

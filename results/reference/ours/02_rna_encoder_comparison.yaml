@@ -1,0 +1,88 @@
+# B.2 — RNA encoder comparison, official chr1 (P1)
+#
+# Same harness throughout (mean branch ON, raw product OFF, same loss/training budget) --
+# only the RNA encoder (model.encoder.kind) changes per arm.
+
+study: rna_encoder_comparison
+source: ours
+arms:
+
+  - arm: cross_attention (reference)
+    status: confirmed_official   # CLOSED 2026-09-06 21:39 UTC
+    same_as: ../ours/01_final_chr1_model.yaml
+    run_id: reference-locus_attention_no_product-seed17
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.7004, mac_pcc: 0.9634, mse: 0.0109, mae: 0.0632}
+        val_cpg_x_train_sample: {mas_pcc: 0.6311, mac_pcc: 0.9527, mse: 0.0135, mae: 0.0684}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5838, mac_pcc: 0.9506, mse: 0.0143, mae: 0.0705}
+    note: >
+      NOT the same as p0_row_b-seed17 (0.5938) -- that run has use_raw_product=true (the
+      codebase's default when the flag is unset), a different cell. See
+      ../ours/01_final_chr1_model.yaml for the full correction history.
+
+  - arm: enc_bottleneck_mlp
+    status: confirmed_official
+    description: >
+      Reproduces the architecture of MethylProphet's own published RNA branch (BottleneckMLP
+      "B_6-Wi_1024", 6 pre-norm residual blocks, width 1024, GELU), trained from scratch in place
+      of the current encoder -- everything else (fixed frozen RNA cache, fusion, loss) identical.
+    recipe: configs/models/arch_shared_backbone/enc_bottleneck_mlp.yaml
+    run_id: arch-architecture_novelty_2026_09-shared-enc_bottleneck_mlp-seed17
+    seed: 17
+    checkpoint: results/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-enc_bottleneck_mlp-seed17/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.6631, mac_pcc: 0.9588, mse: 0.0122, mae: 0.0679}
+        val_cpg_x_train_sample: {mas_pcc: 0.6127, mac_pcc: 0.9516, mse: 0.0139, mae: 0.0703}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5810, mac_pcc: 0.9499, mse: 0.0145, mae: 0.0720}
+    verdict: underperforms cross-attention reference on every view; not promoted.
+
+  - arm: frozen_embedding_bulkrnabert
+    status: confirmed_official
+    description: >
+      Frozen (not fine-tuned) BulkRNABert sample embedding, single trainable Linear adapter.
+      15,259/19,062 (80.0%) BulkRNABert genes matched.
+    recipe: configs/models/arch_shared_backbone/enc_frozen_embedding_bulkrnabert.yaml
+    run_id: arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17
+    seed: 17
+    checkpoint: results/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.5795, mac_pcc: 0.9515, mse: 0.0145, mae: 0.0753}
+        val_cpg_x_train_sample: {mas_pcc: 0.5321, mac_pcc: 0.9466, mse: 0.0156, mae: 0.0758}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5164, mac_pcc: 0.9465, mse: 0.0158, mae: 0.0765}
+    verdict: underperforms cross-attention reference, larger gap than bottleneck_mlp; not promoted.
+
+  - arm: gene_pathway
+    status: dev_only_needs_official_run
+    description: >
+      Trainable SurvPath-style biologically sparse gene→pathway encoder (our own implementation,
+      NOT MethylProphet's gene-pathway variant from Table 9 -- see paper/table9_rna_encoder_ablation.md).
+    recipe: configs/models/rna_encoder_comparison/enc_gene_pathway.yaml
+    run_id_dev: rnaenc-gene_pathway-development-seed17
+    checkpoint: null   # dev run lived under a different host's $METHYL_DATA_ROOT, not present here
+    checkpoint_exists_on_this_host: false
+    metrics_development_only:
+      # inner proxy split (carved out of the training pool) -- NOT the official split, do not
+      # report as a paper number
+      val_cpg_x_val_sample_inner: {mas_pcc: 0.5072}
+    next_step: >
+      python scripts/experiments/run_rna_encoder_comparison.py --arms gene_pathway --mode final --gpu 0
+      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final
+
+  - arm: bulkformer_147m
+    status: dev_only_needs_official_run
+    description: Frozen BulkFormer-147M sample embedding + trainable LayerNorm/Linear adapter.
+    recipe: configs/models/rna_encoder_comparison/enc_frozen_bulkformer_147m.yaml
+    run_id_dev: rnaenc-bulkformer_147m-development-seed17
+    checkpoint: null
+    checkpoint_exists_on_this_host: false
+    metrics_development_only:
+      val_cpg_x_val_sample_inner: {mas_pcc: 0.4516}
+    next_step: >
+      python scripts/experiments/run_rna_encoder_comparison.py --arms bulkformer_147m --mode final --gpu 0
+      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final

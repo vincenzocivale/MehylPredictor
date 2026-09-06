@@ -1,10 +1,32 @@
 # Provenance: recorded numbers → raw run directories
 
+> **Relocated 2026-09-06** into `results/reference/appendix/` when `results/reference/` was
+> reorganized around `docs/PAPER_ROADMAP.md` (see `../README.md`). Every path below that starts
+> `rna_methylation/...`, `baselines/...`, etc. refers to this file's *pre-reorganization* location
+> (`results/reference/<that path>`) — kept as-is, historical, not current. Current numbers for the
+> paper live in `../paper/` (MethylProphet published) and `../ours/` (our experiments, with
+> checkpoint paths inline in each entry — this file's indexing role is now secondary to those).
+
 Every number in `results/reference/` traces back to a raw run under
 `results/experiments/` (gitignored, not version-controlled). This file is the index from one to the other, so a
 paper table/figure can always be traced back to its exact checkpoint. Update
 it whenever a `results/reference/**` file is added or a referenced run is
 superseded/deleted.
+
+## 2026-09-06 pipeline: B.1 chr1 close-out, chr123-ref, cross-scope, chr123 baselines
+
+| file | run path | checkpoint sha256 | status |
+|---|---|---|---|
+| `ours/01_final_chr1_model.yaml`, `ours/02_rna_encoder_comparison.yaml` (cross_attention arm), `ours/03_mean_contribution.yaml` (full_reference arm), `ours/05_chromosome_generalization.yaml` (chr1→chr1 cell) | `MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt` | `0504ecd7d330bd295f4baa2543da07b5ddd3218b0c9bceb4a21c548c0fb81095` | **live**, confirmed official 2026-09-06 21:39 UTC, 80/80 epochs |
+| `ours/05_chromosome_generalization.yaml` (chr123→chr123 cell) | `.../runs/locus_cls_joint/chr123/chr123-ref/checkpoints/best.pt` | pending — training running on host `hal` as of this write | in_progress |
+| `ours/05_chromosome_generalization.yaml` (chr123→chr1, chr1→chr123 cells) | same two checkpoints above, cross-scope eval only (no new checkpoint) | n/a | queued, runs automatically once chr123-ref finishes |
+| `ours/04_baselines.yaml` (chr123 columns, not yet added) | `.../experiments/baselines/cpg_prior/chr123/metrics.json` (no checkpoint, zero-parameter) | n/a | queued |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-global-shift-chr123/checkpoints/best.pt` | pending | queued |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-bilinear-chr123/checkpoints/best.pt` | pending | queued |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-mlp-chr123/checkpoints/best.pt` | pending | queued |
+
+Update each `pending`/`queued` row with its real sha256/status as it completes (see the three
+chained driver scripts under `logs/b1_final_reference/queue_*.log` for live progress).
 
 Layout note: new runs from `scripts/{train,tune,evaluate}.py` should land under
 `results/experiments/runs/` (the `RunStore` layout,

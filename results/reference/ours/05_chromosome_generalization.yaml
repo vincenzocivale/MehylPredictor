@@ -1,0 +1,41 @@
+# B.5 — chr1 ↔ chr123 chromosome generalization (P3)
+#
+# Deliberately run LAST, after B.1's architecture is fully frozen -- a test of the architecture,
+# not another chance to pick one.
+
+study: chromosome_generalization
+source: ours
+status: not_started
+cells:
+  - train: chr1
+    eval: chr1
+    status: confirmed_official   # CLOSED 2026-09-06 21:39 UTC -- = B.1, same checkpoint/metrics
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
+    metrics:
+      train_cpg_x_val_sample: {mas_pcc: 0.7004, mse: 0.0109}
+      val_cpg_x_train_sample: {mas_pcc: 0.6311, mse: 0.0135}
+      val_cpg_x_val_sample:   {mas_pcc: 0.5838, mse: 0.0143}
+  - {train: chr123, eval: chr1, status: in_progress_queued, note: "chr123-ref training running now on host hal; cross-scope eval queued to follow automatically"}
+  - {train: chr1, eval: chr123, status: in_progress_queued, note: "queued to run right after chr123-ref finishes; cross-scope eval path (shared_backbone engine, chr1 checkpoint against chr123 data) untested before this -- watch for errors"}
+  - {train: chr123, eval: chr123, status: in_progress_queued, note: "chr123-ref training running now on host hal"}
+
+prerequisite_chr123_ref:
+  status: not_started
+  note: >
+    No chr123 checkpoint trained with the current cross-attention architecture exists anywhere --
+    verified directly (2026-09-06) against both chr123 runs found on disk, neither of which
+    qualifies:
+      - rna-methylation-chr123-retrain-2026-08-31 -- retired two-stage engine (deleted from
+        results/experiments/ 2026-09-06 once its numbers were captured into
+        ../appendix/rna_methylation/chr123.yaml as legacy_two_stage).
+      - chr123-shared-primary-aggressive-seed17 -- confirmed model.encoder.kind=linear (the
+        *previous* reference architecture, superseded 2026-09-05), not the current one. Deleted
+        2026-09-06 (superseded architecture, out of paper scope).
+  commands: see docs/PAPER_ROADMAP.md section 5a (prepare_chr123_compact.py, then scripts/train.py
+    --scope chr123 --engine shared_backbone --recipe configs/models/rna_methylation_locus_attention.yaml)
+
+cross_scope_eval_risk: >
+  Evaluating a chr1-trained checkpoint against chr123 data (or vice versa) has never been tried
+  under the current engine -- confirm scripts/evaluate.py --engine shared_backbone actually
+  accepts a checkpoint trained on one scope against another scope's --prepared-root/
+  --feature-cache/--cpg-targets-dir before assuming the two cross cells are a simple eval-only run.

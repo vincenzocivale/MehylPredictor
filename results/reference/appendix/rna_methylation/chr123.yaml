@@ -1,0 +1,32 @@
+status: reference
+model: rna_methylation
+training_scope: chr123
+legacy_two_stage:
+  architecture: retired two-stage frozen-prior + residual generation (RNAMethylationPredictor,
+    removed from the codebase -- see CLAUDE.md's "Model compatibility note"); generic engine,
+    reads the full genome-wide canonical bundle via the tcga_mix_chr123 protocol
+  run_id: rna-methylation-chr123-retrain-2026-08-31
+  checkpoint_sha256: d07dd24f6fd0b621edf778af5de39ff715333b74388d428254996d1a3851818f
+  seed: null
+  training: {sources: [array, epic, wgbs], chromosomes: [chr1, chr2, chr3], mode: final}
+  evaluation:
+    train_cpg_x_val_sample: {mas_pcc: 0.5468, mac_pcc: 0.9452, mse: 0.01592, mae: 0.07465}
+    val_cpg_x_train_sample: {mas_pcc: 0.5492, mac_pcc: 0.9230, mse: 0.02198, mae: 0.08994}
+    val_cpg_x_val_sample:   {mas_pcc: 0.5034, mac_pcc: 0.9200, mse: 0.02287, mae: 0.09173}
+  note: >
+    Predates the shared-backbone architecture entirely (2026-08-31). Not a verified
+    MethylProphet-matched comparison -- see docs/PAPER_EXPERIMENTS.md's chr123 section (sample-axis
+    split is a reconstruction, not a literal release-ID match). Kept as historical provenance only;
+    raw checkpoint deleted 2026-09-06 (retired engine, cannot be resumed/re-evaluated by current
+    code) once these numbers were captured here -- see results/reference/PROVENANCE.md.
+current_architecture:
+  note: >
+    No chr123 run of the current cross-attention reference architecture
+    (encoder.kind=locus_attention) exists yet. See docs/PAPER_ROADMAP.md section 5
+    (`chr123-ref`) for the pending run that fills this in. A chr123 run with the *previous*
+    (linear-encoder) reference architecture exists on disk (chr123-shared-primary-aggressive-
+    seed17, 2026-09-04, MAS-PCC 0.5316 val_cpg_x_val_sample) but was superseded before being
+    promoted to any results/reference/ number, and is out of scope for the current paper plan --
+    not recorded here, deleted 2026-09-06.
+benchmark_role: chr123 chromosomal-generalization comparison point (docs/PAPER_EXPERIMENTS.md
+  setting 2; MethylProphet Table 8 companion)

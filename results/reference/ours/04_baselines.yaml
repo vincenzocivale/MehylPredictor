@@ -1,0 +1,119 @@
+# B.4 — Simplified baselines, current architecture (P2)
+# chr1 arms below; chr123 arms (queued 2026-09-06, run after chr123-ref + cross-scope evals
+# finish -- see logs/b1_final_reference/queue_chr123_baselines.log) at the bottom of this file.
+
+study: baselines
+source: ours
+arms:
+
+  - arm: cpg_prior
+    status: confirmed_official
+    description: >
+      Zero-parameter -- prediction is the cached CpGStatisticsPredictor prior mu directly
+      (CpGPriorEvaluator), no RNA input, no training.
+    checkpoint: null   # not applicable, no model
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: null, mac_pcc: 0.9245, mse: 0.02384}
+        val_cpg_x_train_sample: {mas_pcc: null, mac_pcc: 0.9104, mse: 0.02734}
+        val_cpg_x_val_sample:   {mas_pcc: null, mac_pcc: 0.9101, mse: 0.02779}
+    note: mas_pcc is mathematically undefined (constant prediction per CpG across samples).
+
+  - arm: global_rna_shift
+    status: found_but_suspicious_needs_review
+    description: >
+      Raw branch sees RNA only, ignores the CpG embedding entirely (use_mean_branch=false,
+      include_raw_cpg=false, use_raw_product=false).
+    recipe: configs/models/baselines/baseline_global_rna_shift.yaml
+    run_id: baseline-global-shift
+    checkpoint: results/experiments/runs/locus_cls_joint/chr1/baseline-global-shift/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.3104, mac_pcc: null, mse: 0.1334, mae: 0.3372}
+        val_cpg_x_train_sample: {mas_pcc: 0.2312, mac_pcc: null, mse: 0.1469, mae: 0.3567}
+        val_cpg_x_val_sample:   {mas_pcc: 0.2188, mac_pcc: null, mse: 0.1471, mae: 0.3570}
+    red_flags: >
+      MSE (~0.13-0.15) is far worse than even the zero-parameter CpG-Prior baseline (~0.023-0.028)
+      and worse than the old engine's own frozen legacy number (0.2343 MAS-PCC per
+      docs/EXPERIMENT_ROADMAP.md) -- this magnitude of MSE suggests something is actually broken
+      in this run (bad loss scale/config), not a genuinely weak-but-valid baseline. mac_pcc is NaN.
+      A directory literally named `baseline-global-shift-invalid-settings-20260906T1025` exists
+      under this host's $METHYL_DATA_ROOT/experiments (separate from results/experiments) --
+      strongly suggests a known-bad configuration was used at least once for this baseline; unclear
+      whether the run captured here is that bad run or a different, earlier attempt. Do not cite
+      these numbers before re-deriving this baseline from a clean config.
+    next_step: >
+      Inspect config.resolved.yaml for baseline-global-shift and diff against
+      configs/models/baselines/baseline_global_rna_shift.yaml before deciding whether to rerun.
+
+  - arm: bilinear_rna_cpg
+    status: confirmed_official
+    description: >
+      Raw branch sees only the RNA×CpG product term (use_mean_branch=false, include_raw_rna=false,
+      include_raw_cpg=false).
+    recipe: configs/models/baselines/baseline_bilinear_rna_cpg.yaml
+    run_id: baseline-bilinear
+    checkpoint: results/experiments/runs/locus_cls_joint/chr1/baseline-bilinear/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.6452, mac_pcc: 0.9489, mse: 0.0148, mae: 0.0796}
+        val_cpg_x_train_sample: {mas_pcc: 0.5964, mac_pcc: 0.9326, mse: 0.0191, mae: 0.0866}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5571, mac_pcc: 0.9306, mse: 0.0198, mae: 0.0881}
+
+  - arm: mlp_rna_cpg
+    status: confirmed_official
+    description: >
+      Raw branch sees concatenated RNA+CpG, no product term (use_mean_branch=false,
+      use_raw_product=false).
+    recipe: configs/models/baselines/baseline_mlp_rna_cpg.yaml
+    run_id: baseline-mlp
+    checkpoint: results/experiments/runs/locus_cls_joint/chr1/baseline-mlp/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.5740, mac_pcc: 0.9378, mse: 0.0177, mae: 0.0889}
+        val_cpg_x_train_sample: {mas_pcc: 0.5702, mac_pcc: 0.9319, mse: 0.0193, mae: 0.0892}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5259, mac_pcc: 0.9289, mse: 0.0202, mae: 0.0909}
+
+summary: >
+  3 of 4 baselines confirmed with real official-split numbers and real checkpoints on this host.
+  global_rna_shift needs review/rerun before use -- its numbers look broken, not just weak.
+
+chr123_arms:
+  # Same 4 baselines, chr123 scope, engine=shared_backbone, same recipes as the chr1 arms above
+  # (scope is a CLI flag, not baked into the recipe file, so no new recipe files needed). All
+  # queued 2026-09-06 to run automatically after chr123-ref + the two cross-scope evals finish.
+
+  - arm: cpg_prior
+    status: queued
+    description: Zero-parameter, no training -- CpGPriorEvaluator against chr123's targets.
+    checkpoint: null
+    output: MethylPredictionData/experiments/baselines/cpg_prior/chr123/metrics.json
+    metrics: null
+
+  - arm: global_rna_shift
+    status: queued
+    run_id: baseline-global-shift-chr123
+    recipe: configs/models/baselines/baseline_global_rna_shift.yaml
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-global-shift-chr123/checkpoints/best.pt
+    metrics: null
+    carry_forward_caveat: >
+      The chr1 arm of this same baseline is flagged found_but_suspicious_needs_review (MSE far
+      worse than CpG Prior, mac_pcc NaN) -- watch this chr123 run for the same symptom before
+      trusting its number either; do not assume chr123 is clean just because chr1 was reviewed.
+
+  - arm: bilinear_rna_cpg
+    status: queued
+    run_id: baseline-bilinear-chr123
+    recipe: configs/models/baselines/baseline_bilinear_rna_cpg.yaml
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-bilinear-chr123/checkpoints/best.pt
+    metrics: null
+
+  - arm: mlp_rna_cpg
+    status: queued
+    run_id: baseline-mlp-chr123
+    recipe: configs/models/baselines/baseline_mlp_rna_cpg.yaml
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-mlp-chr123/checkpoints/best.pt
+    metrics: null

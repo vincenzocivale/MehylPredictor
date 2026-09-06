@@ -1,0 +1,60 @@
+# B.1 — Final chr1 reference model (P0, highest priority)
+#
+# Target config (agreed): RNA encoder = locus-conditioned cross-attention, K=64 program tokens,
+# program_dim=256, 4 heads, query=raw NTv3, mean branch ON + mean supervision ON, raw product OFF.
+# = configs/models/rna_methylation_locus_attention.yaml, unmodified.
+
+source: ours
+status: confirmed_official   # CLOSED 2026-09-06 21:39 UTC
+description: >
+  FeatureFusionArchitectureVariantModel, encoder.kind=locus_attention (n_programs=64,
+  program_dim=256, n_heads=4, query_source=ntv3), use_mean_branch=true, aux_weight=0.15,
+  use_raw_product=false -- byte-for-byte the adopted reference recipe. matched_chr1_shared_backbone
+  engine, mode=final (full official training pool, 80/80 epochs, not early-stopped), evaluated on
+  the true official MethylProphet Table-5 chr1 split (rows=6,129,992 for val_cpg_x_val_sample
+  confirms the real official split, matching TABLE5_EXPECTED exactly).
+recipe: configs/models/rna_methylation_locus_attention.yaml
+run_id: reference-locus_attention_no_product-seed17
+seed: 17
+epochs: 80 / 80 (full budget; started 2026-09-05, resumed and completed 2026-09-06 after being
+  interrupted at epoch 66 by user request)
+checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
+checkpoint_exists_on_this_host: true
+metrics:
+  chr1:
+    train_cpg_x_val_sample: {mas_pcc: 0.7004, mac_pcc: 0.9634, mse: 0.0109, mae: 0.0632}
+    val_cpg_x_train_sample: {mas_pcc: 0.6311, mac_pcc: 0.9527, mse: 0.0135, mae: 0.0684}
+    val_cpg_x_val_sample:   {mas_pcc: 0.5838, mac_pcc: 0.9506, mse: 0.0143, mae: 0.0705}   # headline
+
+vs_methylprophet:
+  # see ../paper/table5_main_comparison.md for the published numbers
+  train_cpg_x_val_sample: {ours: 0.7004, methylprophet: 0.5455, delta: +0.1549}
+  val_cpg_x_train_sample: {ours: 0.6311, methylprophet: 0.4194, delta: +0.2117}
+  val_cpg_x_val_sample:   {ours: 0.5838, methylprophet: 0.3904, delta: +0.1934}
+
+single_seed_caveat: >
+  Single seed (17). No second seed has been run for this exact recipe -- decide whether a
+  confirmation seed is wanted before treating 0.5838 as final for the manuscript. (Separately,
+  `seed_variance_reference`, a 3-seed suite for a DIFFERENT purpose -- noise-floor estimation for
+  the architecture-novelty ablation arms -- exists elsewhere per docs/EXPERIMENT_ROADMAP.md but is
+  not this exact recipe cell either; do not conflate.)
+
+history_of_this_number_2026_09_06: >
+  This file went through two wrong attributions before landing here, both corrected in-session by
+  checking actual config.resolved.yaml content rather than trusting run-id names:
+  1. First wrongly used p0_row_b-seed17 (0.5938 headline) -- that run has use_raw_product=true
+     (the codebase's default when unset), a different cell from this recipe's use_raw_product=false.
+  2. Then correctly identified reference-locus_attention_no_product-seed17 as the exact matching
+     config, but it was stalled at epoch 66/80 (interrupted by user request on 2026-09-05).
+     Resuming it failed once (RuntimeError: "resume requested with a different resolved
+     shared-backbone recipe") because its saved config.resolved.yaml predated a later code change
+     that unconditionally records include_raw_rna/include_raw_cpg in the resolved-config schema
+     (added for the baseline-model suite) -- confirmed via a byte-for-byte dict comparison, not
+     assumed. Fixed by adding the two missing keys (both true, matching the always-true default
+     this run actually trained with -- no behavior change) to that run's config.resolved.yaml, then
+     resume succeeded and ran epochs 67-80 (927.8s) followed immediately by the official eval above.
+  Interesting note for later discussion, not yet acted on: this run's headline (0.5838) is slightly
+  BELOW p0_row_b-seed17's (0.5938, product=true) -- the isolation ladder's own claim that the
+  product term "does essentially nothing on either unseen-CpG view" (docs/RNA_METHYLATION.md,
+  2026-09-05 update) doesn't fully hold up against this single full run; both are single-seed, so
+  this could be within seed noise -- flag if revisiting the use_raw_product=false decision.

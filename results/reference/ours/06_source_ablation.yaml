@@ -1,0 +1,22 @@
+# B.6 — Source ablation, current architecture (P4, nice-to-have, lowest priority)
+
+study: source_ablation
+source: ours
+status: not_started
+feasibility: unconfirmed
+feasibility_note: >
+  MethylProphet's own Table 7 "Ours" column (historical, retired-engine numbers, see
+  ../appendix/methylprophet_comparison/table7_source_ablation.md) was produced by that old
+  engine's own source-restriction path. Grepping the current matched_chr1_shared_backbone/
+  shared_backbone engines and scripts/train.py found no --sources/train-time source-subset flag --
+  locus_cls.structured_loss_sources in the recipe only reweights the loss per source, it does not
+  appear to restrict which sources' samples enter training. CONFIRM (by reading
+  rna_training/locus_cls_trainer.py's pool-construction code, not by assuming) whether restricting
+  training to a source subset is possible with existing code before launching anything here. If
+  not possible without new code, this item is out of scope for the "no new code" reduction and
+  should stay explicitly deferred rather than forced.
+cells:
+  - {sources: [array], status: not_started}
+  - {sources: [array, wgbs], status: not_started}
+  - {sources: [array, epic], status: not_started}
+  - {sources: [array, epic, wgbs], status: not_started, note: "= B.1's own run once confirmed; no extra training needed for this cell"}
