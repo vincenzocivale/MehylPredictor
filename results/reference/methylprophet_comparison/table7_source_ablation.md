@@ -1,5 +1,10 @@
 # Comparison: MethylProphet vs Ours
 
+> **Historical provenance note**: `RNAMethylationPredictor` and the `MethylProphetTrainer`
+> that produced the "Ours" numbers below have since been removed from the codebase (see
+> `CLAUDE.md`'s "Model compatibility note"). These numbers remain frozen, valid
+> paper-comparison provenance; they are not reproducible by current code.
+
 - **MethylProphet**: published results from the paper
 - **Ours**: `RNAMethylationPredictor`, chr1, verified from `evaluation/headline.json`
 - **↑** higher is better

@@ -36,10 +36,10 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     model_raw = dict(raw.get("model", {}))
     interaction_raw = dict(model_raw.get("interaction", {}))
-    # The architecture-novelty blocks are parsed here too -- not because this
-    # engine can run them (ScopedRNATrainer refuses, see its constructor), but so
-    # that pointing the generic engine at an arch recipe fails loudly instead of
-    # silently dropping the blocks and training the canonical model.
+    # The architecture-novelty blocks (trunk/axial/beta_likelihood_head) are
+    # parsed here too -- LocusCLSJointTrainer dispatches on them
+    # (is_architecture_variant) to select FeatureFusionArchitectureVariantModel
+    # over the reference FeatureFusionLocusCLSModel, see models.py.
     model = ModelConfig(
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
         interaction=InteractionConfig(**interaction_raw),
@@ -66,6 +66,10 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         raise ValueError("training.schedule_layout must be legacy_scattered or contiguous_blocks")
     if training.prefetch_depth < 1:
         raise ValueError("training.prefetch_depth must be positive")
+    if training.prefetch_workers < 1:
+        raise ValueError("training.prefetch_workers must be positive")
+    if training.prefetch_workers > training.prefetch_depth:
+        raise ValueError("training.prefetch_workers cannot exceed training.prefetch_depth")
     if training.hdf5_cache_mb < 1:
         raise ValueError("training.hdf5_cache_mb must be positive")
     if training.checkpoint_every < 1:

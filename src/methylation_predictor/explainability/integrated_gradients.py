@@ -1,16 +1,21 @@
 """Expected Gradients (Erion et al. 2021) attribution of RNA genes onto the
-RNA-driven residual ``raw_delta`` (not the final ``beta``).
+RNA-conditioned raw branch's ``residual_logit`` (not the final ``beta``).
 
-Why ``raw_delta`` and not ``beta``: ``beta_hat = sigmoid(logit(mu_i) + sigma_i
-* raw_delta)`` (``VarianceNormalizedResidualModel``/``RNAMethylationPredictor``,
-see models.py) already has a CpG-only component (``mu_i``, the locus prior)
-baked in. Attributing ``beta`` would mix "this locus is usually methylated"
-with "this sample's RNA pushed it further" into one number. ``raw_delta`` is
-exactly the model's RNA+CpG interaction term before the prior is added back
-in, so attributing it isolates the RNA effect the model actually learned.
+Why ``residual_logit`` and not ``beta``: in the reference shared-backbone
+architecture (``FeatureFusionLocusCLSModel``/
+``FeatureFusionArchitectureVariantModel``, see models.py), ``beta_hat`` is a
+learned fusion of a locus-only "mean" branch (``h_mean``, no RNA input at
+all) and an RNA-conditioned "raw" branch (``h_raw``). Attributing ``beta``
+would mix "this locus is usually methylated" with "this sample's RNA pushed
+it further" into one number. ``residual_logit`` is the raw branch's own
+auxiliary probe head -- trained with a direct gradient into ``h_raw``
+precisely so it carries the RNA+CpG interaction signal on its own (see
+``FeatureFusionLocusCLSModel``'s docstring) -- so attributing it isolates the
+RNA effect the model actually learned, the same role ``raw_delta`` played in
+the retired two-stage architecture.
 
 Why Expected Gradients instead of vanilla Integrated Gradients with a
-zero baseline: the RNA encoder starts with a ``LayerNorm`` (canonical
+zero baseline: the RNA encoder starts with a ``LayerNorm`` (reference
 default, ``EncoderConfig.layer_norm=True``), and z-scored RNA input has
 mean 0 by construction (``RNACache``/``rna_stats.npz``), so the "obvious"
 baseline is the all-zero vector -- but ``LayerNorm`` is numerically singular
@@ -37,23 +42,18 @@ import torch
 from torch import nn
 
 
-def _raw_delta(model: nn.Module, rna: torch.Tensor, loci: torch.Tensor) -> torch.Tensor:
-    """Paired (not Cartesian) raw_delta: element ``i`` uses ``rna[i]`` with ``loci[i]``.
+def _residual_logit(model: nn.Module, rna: torch.Tensor, loci: torch.Tensor) -> torch.Tensor:
+    """Paired (not Cartesian) ``residual_logit``: element ``i`` uses ``rna[i]``
+    with ``loci[i]``.
 
-    Every interaction module in models.py (``ProductInteraction``,
-    ``FiLMInteraction``, ``CrossAttentionInteraction``, ``BilinearInteraction``,
-    ``GlobalShiftInteraction``) shares the same broadcasting contract:
-    ``interaction(rna_repr, loci) -> (batch, n_loci)``. Calling it with
-    ``batch == n_loci == len(loci)`` and taking the diagonal gives the paired
-    score without an interaction-specific pairwise implementation, so this
-    helper -- and everything built on it -- works unmodified across
-    ``interaction.kind`` and across ``RNA2DNAmModel`` /
-    ``VarianceNormalizedResidualModel`` / ``DirectPredictionModel`` (anything
-    exposing ``.rna_encoder`` + ``.interaction``; ``FeatureFusionLocusCLSModel``
-    does not and is out of scope).
+    ``FeatureFusionLocusCLSModel``/``FeatureFusionArchitectureVariantModel.forward``
+    already broadcasts ``rna: (batch, input_dim)`` against
+    ``cpg_embedding: (n_loci, cpg_dim)`` into a ``(batch, n_loci)`` output.
+    Calling it with ``batch == n_loci == len(loci)`` and taking the diagonal
+    gives the paired score directly from the model's own forward pass, with no
+    architecture-specific decomposition needed.
     """
-    representation = model.rna_encoder(rna)
-    full = model.interaction(representation, loci)  # (n_loci, n_loci)
+    full = model(rna, loci)["residual_logit"]  # (n_loci, n_loci)
     return torch.diagonal(full)
 
 
@@ -62,23 +62,23 @@ class GeneAttribution:
     """Per-locus, per-gene signed attribution for one sample.
 
     ``attributions``: (n_loci, rna_dim) -- gene-level contribution to
-    ``raw_delta`` at each locus, averaged over background baselines, in the
-    RNA input's own units (z-scored gene expression), signed (positive =
+    ``residual_logit`` at each locus, averaged over background baselines, in
+    the RNA input's own units (z-scored gene expression), signed (positive =
     pushes the residual up relative to the background).
-    ``raw_delta`` / ``raw_delta_baseline``: (n_loci,) the model's actual
-    ``raw_delta`` at the input RNA vector, and averaged over the background
-    baselines.
-    ``convergence_gap``: (n_loci,) ``|sum(attributions) - (raw_delta -
-    raw_delta_baseline)|`` -- the method's own diagnostic (completeness
-    axiom, averaged over baselines). Small relative to ``raw_delta``'s scale
-    means the step count was sufficient; large means call again with more
-    ``steps`` (or check whether the baselines are pathologically close to a
-    normalization-layer singularity -- see module docstring).
+    ``residual_logit`` / ``residual_logit_baseline``: (n_loci,) the model's
+    actual ``residual_logit`` at the input RNA vector, and averaged over the
+    background baselines.
+    ``convergence_gap``: (n_loci,) ``|sum(attributions) - (residual_logit -
+    residual_logit_baseline)|`` -- the method's own diagnostic (completeness
+    axiom, averaged over baselines). Small relative to ``residual_logit``'s
+    scale means the step count was sufficient; large means call again with
+    more ``steps`` (or check whether the baselines are pathologically close
+    to a normalization-layer singularity -- see module docstring).
     """
 
     attributions: torch.Tensor
-    raw_delta: torch.Tensor
-    raw_delta_baseline: torch.Tensor
+    residual_logit: torch.Tensor
+    residual_logit_baseline: torch.Tensor
     convergence_gap: torch.Tensor
 
 
@@ -91,7 +91,7 @@ def integrated_gradients_rna(
     baselines: torch.Tensor,
     steps: int = 50,
 ) -> GeneAttribution:
-    """Expected Gradients of ``raw_delta`` wrt one sample's RNA vector,
+    """Expected Gradients of ``residual_logit`` wrt one sample's RNA vector,
     evaluated separately (paired) against each row of ``loci``.
 
     ``rna``: (rna_dim,) single sample, already z-scored (``RNACache`` convention).
@@ -118,10 +118,10 @@ def integrated_gradients_rna(
 
         rna_rep = rna.unsqueeze(0).expand(n_loci, -1)
         with torch.no_grad():
-            raw_delta = _raw_delta(model, rna_rep, loci)
+            residual_logit = _residual_logit(model, rna_rep, loci)
 
         attribution_sum = torch.zeros(n_loci, rna.shape[0], device=rna.device)
-        raw_delta_baseline_sum = torch.zeros(n_loci, device=rna.device)
+        residual_logit_baseline_sum = torch.zeros(n_loci, device=rna.device)
         for baseline in baselines:
             baseline_rep = baseline.unsqueeze(0).expand(n_loci, -1)
             diff = rna_rep - baseline_rep
@@ -130,22 +130,22 @@ def integrated_gradients_rna(
             for step in range(1, steps + 1):
                 alpha = step / steps
                 scaled = (baseline_rep + alpha * diff).clone().requires_grad_(True)
-                out = _raw_delta(model, scaled, loci)
+                out = _residual_logit(model, scaled, loci)
                 (grad,) = torch.autograd.grad(out.sum(), scaled)
                 grad_sum = grad_sum + grad
             attribution_sum = attribution_sum + diff * (grad_sum / steps)
             with torch.no_grad():
-                raw_delta_baseline_sum = raw_delta_baseline_sum + _raw_delta(model, baseline_rep, loci)
+                residual_logit_baseline_sum = residual_logit_baseline_sum + _residual_logit(model, baseline_rep, loci)
 
         n_baselines = baselines.shape[0]
         attributions = attribution_sum / n_baselines
-        raw_delta_baseline = raw_delta_baseline_sum / n_baselines
-        convergence_gap = (attributions.sum(-1) - (raw_delta - raw_delta_baseline)).abs()
+        residual_logit_baseline = residual_logit_baseline_sum / n_baselines
+        convergence_gap = (attributions.sum(-1) - (residual_logit - residual_logit_baseline)).abs()
 
         return GeneAttribution(
             attributions=attributions.detach(),
-            raw_delta=raw_delta.detach(),
-            raw_delta_baseline=raw_delta_baseline.detach(),
+            residual_logit=residual_logit.detach(),
+            residual_logit_baseline=residual_logit_baseline.detach(),
             convergence_gap=convergence_gap.detach(),
         )
     finally:

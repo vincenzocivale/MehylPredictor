@@ -10,9 +10,12 @@ implementation detail.  The default `sample_weighted` target treats every
 finite methylation observation equally; `technology_balanced` gives each
 technology with data at a locus equal mixture weight.
 
-`mu` is a beta-space mean. `sigma` is a standard deviation in clipped
-`logit(beta)` space, matching the residual scale consumed by
-`RNAMethylationPredictor`.
+`mu` is a beta-space mean, consumed by the reference RNA-methylation model's mean-branch
+auxiliary proxy task (`rna_training/locus_cls_trainer.py`). `sigma` is a standard deviation in
+clipped `logit(beta)` space; it was the residual scale consumed by the now-removed two-stage
+architecture's `logit(mu) + sigma*residual` composition (see CLAUDE.md's "Model compatibility
+note") and remains part of the feature-cache schema for that reason, but the current reference
+architecture does not read it.
 
 The model is selected only on a genomic-block inner split of official train
 CpGs. Official held-out CpGs are final evaluation labels only.  For the RNA

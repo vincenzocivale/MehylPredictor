@@ -95,3 +95,29 @@ def load_matched_chr1_protocol_and_sources(
         "wgbs": open_methylation_source("wgbs", canonical_root / SOURCE_FILES["wgbs"], hdf5_cache_mb=hdf5_cache_mb),
     }
     return protocol, sources
+
+
+def load_compact_scope_sources(
+    compact_root: Path, protocol, *, hdf5_cache_mb: int = 256,
+) -> dict[str, MethylationSource]:
+    """Open scope-specific compact caches and verify protocol-axis coverage."""
+    sources = {
+        name: open_methylation_source(name, compact_root / f"{name}.h5", hdf5_cache_mb=hdf5_cache_mb)
+        for name in protocol.sources
+    }
+    required = {
+        "array": np.unique(np.concatenate([protocol.array_train_cpg_idx, protocol.array_val_cpg_idx])),
+        **{name: np.asarray(ids, np.int64) for name, ids in protocol.auxiliary_cpg_idx.items()},
+    }
+    try:
+        for name, ids in required.items():
+            if name in sources:
+                sources[name].cpg_positions(ids)
+        sources["array"].rows_of_samples(
+            np.concatenate([protocol.array_train_sample_idx, protocol.array_val_sample_idx])
+        )
+    except Exception:
+        for source in sources.values():
+            source.close()
+        raise
+    return sources

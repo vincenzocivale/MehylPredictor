@@ -11,27 +11,46 @@ the three settings below** (not tuned once and reused across settings) — the p
 MP" is a like-for-like comparison against MethylProphet's own published/released per-setting
 numbers, not a single number applied everywhere.
 
+## Status: what's missing right now, and how to run it
+
+**See [`EXPERIMENT_ROADMAP.md`](EXPERIMENT_ROADMAP.md) for the full, launchable list** — one
+short ID per pending experiment (usable directly as `--run-id`), exact commands against the
+**current** codebase (no `--engine generic`/`matched_chr1`, `configs/models/rna_methylation.yaml`,
+or `InteractionConfig.kind` baseline switches remain), priority, dependencies, and where each
+result lands. Summary: the 3 non-CpG-Prior paper baselines need a fresh chr1 run each (their
+existing numbers are from the removed engine — see the "Baseline models" section below and
+`results/reference/methylprophet_comparison/baselines_chr1.md`'s provenance note);
+`architecture_novelty_2026_09` has arms finished-but-uncollected, stalled mid-training, and one
+outside the queue entirely (including the missing chr1 full-budget convergence run); chr123 has
+no isolated matched cache yet.
+
+**Not "resume training"** — longer-term/blocked work, tracked separately, not on the roadmap
+above: ENCODE atlas expansion (setting 3 below, blocked on NTv3 atlas coverage) and the
+foundation-model baselines (blocked on integration work — position lookups, ID crosswalks — see
+that section below), neither of which is a matter of just launching a training run.
+
 ## Baseline models
 
-Four simplified baselines isolate why the canonical architecture (`configs/models/rna_methylation.yaml`)
-works, each trained/tuned independently per setting above and reported alongside the headline
-MethylProphet comparison:
+Four simplified baselines isolate why the reference architecture
+(`configs/models/rna_methylation_locus_attention.yaml`) works, each trained/tuned independently
+per setting above and reported alongside the headline MethylProphet comparison:
 
 | Baseline | What it tests | Recipe | Architecture |
 | --- | --- | --- | --- |
 | CpG Prior | how much performance is explained by the intrinsic methylation tendency of each CpG alone, with no RNA input at all | `configs/models/baselines/baseline_cpg_prior.yaml` (documentation-only stub, zero parameters) | prediction = cached prior `mu` directly, via `CpGPriorEvaluator` (`rna_training/evaluator.py`) — no model, no training |
-| Global RNA Shift | whether a single per-patient correction is sufficient, without any CpG-specific modeling of the RNA effect | `configs/models/baselines/baseline_global_rna_shift.yaml` | `VarianceNormalizedResidualModel` with `interaction.kind: global_shift` (`GlobalShiftInteraction`, ignores the CpG embedding) |
-| Bilinear RNA–CpG | a simple low-rank model of patient-locus interactions (shared latent space, dot product) | `configs/models/baselines/baseline_bilinear_rna_cpg.yaml` | `VarianceNormalizedResidualModel` with `interaction.kind: bilinear`, `include_rna: false`, `include_cpg: false` (`BilinearInteraction`, bilinear term only) |
-| MLP RNA–CpG | whether a standard nonlinear fusion model can substitute for the proposed explicit interaction term | `configs/models/baselines/baseline_mlp_rna_cpg.yaml` | `VarianceNormalizedResidualModel` with `interaction.kind: concat`, `include_product: false` (`ProductInteraction`, no product term) |
+| Global RNA Shift | whether a single per-patient correction is sufficient, without any CpG-specific modeling of the RNA effect | `configs/models/baselines/baseline_global_rna_shift.yaml` | `FeatureFusionArchitectureVariantModel` with `use_mean_branch=False, include_raw_cpg=False, use_raw_product=False` (raw branch sees RNA only, ignores the CpG embedding entirely) |
+| Bilinear RNA–CpG | a simple low-rank model of patient-locus interactions (shared latent space, dot product) | `configs/models/baselines/baseline_bilinear_rna_cpg.yaml` | `FeatureFusionArchitectureVariantModel` with `use_mean_branch=False, include_raw_rna=False, include_raw_cpg=False` (raw branch sees only the RNA×CpG product term) |
+| MLP RNA–CpG | whether a standard nonlinear fusion model can substitute for the proposed explicit interaction term | `configs/models/baselines/baseline_mlp_rna_cpg.yaml` | `FeatureFusionArchitectureVariantModel` with `use_mean_branch=False, use_raw_product=False` (raw branch sees concatenated RNA+CpG, no product term) |
 
 Results land under `results/reference/baselines/<name>/<scope>.yaml`, one file per
 baseline per setting, schema-compatible with `results/reference/rna_methylation/<scope>.yaml` so
-they drop into the same comparison tables. The narrative head-to-head table lives at
-`results/reference/methylprophet_comparison/baselines_chr1.md` — **all four complete for chr1**
-(2026-09-01; Bilinear RNA–CpG and MLP RNA–CpG both land close to the canonical model and clearly
-ahead of MethylProphet, Global RNA Shift and CpG Prior well below) — chr123/genomewide added once
-those settings are themselves verified/built, per settings 2–3 below. None of these reuse numbers
-from `results/reference/ablations.yaml`'s `fusion_mechanism_2026_08`/
+they drop into the same comparison tables. The narrative head-to-head table at
+`results/reference/methylprophet_comparison/baselines_chr1.md` — **all four completed for chr1
+2026-09-01** — reports numbers from the now-retired two-stage engine
+(`VarianceNormalizedResidualModel` + `InteractionConfig.kind`), kept as frozen historical
+provenance; reproducing them under the current engine (table above) requires a fresh training run
+per baseline, not yet done as of this document's last update. None of these reuse numbers from
+`results/reference/ablations.yaml`'s `fusion_mechanism_2026_08`/
 `interaction_concat_and_latent_dim_2026_08` studies — those used different splits/engines/flag
 combinations and cover chr1 only; the baselines above get fresh, independently-tuned runs.
 
@@ -44,16 +63,18 @@ combinations and cover chr1 only; the baselines above get fresh, independently-t
   (stopped epoch 47/80 by user request), superseding the two-stage architecture's 0.5613 (kept
   under that file's `legacy_two_stage` key). Selected via the `shared_backbone_locus_cls_2026_09`
   ablation ladder (`results/reference/ablations.yaml`).
-- Engine (earlier two-stage architecture, still fully supported): `--engine matched_chr1`
-  (`benchmark/methylprophet/`, a frozen/isolated Cartesian-block trainer — see `CLAUDE.md`'s
-  "MethylProphet benchmark is isolated" note).
+- The earlier two-stage architecture's own `--engine matched_chr1` (`benchmark/methylprophet/`'s
+  `MethylProphetTrainer`, a frozen/isolated Cartesian-block trainer) has been **removed**; its
+  0.5613 chr1 number remains frozen under `legacy_two_stage` above and in
+  `results/reference/methylprophet_comparison/`, not reproducible by current code.
 - Data: `derived/methylprophet_table5_tcga_chr1/` — a pre-extracted, well-chunked (per-source
   small HDF5 files, `chunks=(128, 2048)` for Array/EPIC) slice of the canonical bundle, built by
-  `scripts/benchmark_methylprophet/prepare.py`. This is *not* the same data path as the generic
-  engine's own `chr1` scope reads from (`derived/rna_feature_cache/chr1` + the full genome-wide
-  canonical bundle) — the two happen to share the same official Array split (see next bullet) but
-  are otherwise separate, and the matched_chr1 files are dramatically faster to read (small,
-  training-friendly chunking vs. the genome-wide bundle's per-row chunking).
+  `scripts/benchmark_methylprophet/prepare.py`. This is *not* the same data path as the
+  scope-agnostic `shared_backbone` engine's own `chr1` scope reads from
+  (`derived/rna_feature_cache/chr1` + the full genome-wide canonical bundle) — the two happen to
+  share the same official Array split (see next bullet) but are otherwise separate, and the
+  matched_chr1 files are dramatically faster to read (small, training-friendly chunking vs. the
+  genome-wide bundle's per-row chunking).
 - Split independently verified **exact** (ID-set match, not just counts) against MethylProphet's
   actual released chr1 evaluation artifact — see `docs/BENCHMARK_METHYLPROPHET.md` and
   `results/reference/methylprophet_comparison/chr1_official_split_verification.md`.
@@ -62,8 +83,12 @@ combinations and cover chr1 only; the baselines above get fresh, independently-t
 
 ## 2. TCGA chr1-3 (chr123), matched MP — CpG axis verified 2026-09-02, sample axis a reconstruction
 
-- Currently trained via the generic engine at `scope=chr123`, reading the full genome-wide
-  canonical bundle (no isolated `matched_chr123` cache exists yet, unlike chr1).
+- The existing checkpoint (`results/reference/rna_methylation/chr123.yaml`, 2026-08-31) was
+  trained via the now-retired two-stage architecture's generic engine at `scope=chr123`, reading
+  the full genome-wide canonical bundle — pending a rerun under the current reference architecture
+  (`--engine shared_backbone`, no isolated `matched_chr123` cache exists yet either, unlike chr1;
+  see `docs/CHR123_TRAINING_OPTIMIZATIONS.md` for the input-pipeline work already done for this
+  scope).
 - Checked against the released MethylProphet chr123 evaluation artifact
   (`MethylProphet/eval-tcga-mix-chr123-bs_512-32xl40s-aws-eval_on_tcga_chr123`, access approved
   and downloaded 2026-09-02). The CpG axis (`note1 ∪ note4`) matched exactly as already
@@ -240,7 +265,7 @@ one as of 2026-09-02:
   produced it. A systematic, one-change-at-a-time ladder (rungs A-F) tested a postdoc-proposed
   single-stage shared-backbone architecture (`models.py::FeatureFusionLocusCLSModel`,
   `rna_training/locus_cls_trainer.py`) as a more elegant alternative to the two-stage frozen-prior
-  pipeline (`RNAMethylationPredictor`, still supported for old checkpoints) — mean-prediction proxy
+  pipeline (`RNAMethylationPredictor`, since removed -- see CLAUDE.md's "Model compatibility note") — mean-prediction proxy
   task and RNA-conditioned prediction late-fused into one head, instead of that model's explicit
   `logit(mu) + sigma*residual` composition. The ladder (rungs A-F, `mode=development`, see
   methodology note above) found only one real jump — adding the mean branch (rung A -> B) — with
@@ -255,17 +280,18 @@ one as of 2026-09-02:
 - **`architecture_novelty_2026_09`** (in progress, retargeted 2026-09-04): an architecture-novelty
   suite prompted by a postdoc review (2026-09-03) that judged the architecture too simple for the
   paper's novelty claim despite its numbers. Originally built against the two-stage
-  `RNAMethylationPredictor`; rebuilt on `FeatureFusionLocusCLSModel` once
-  `shared_backbone_locus_cls_2026_09` (above) concluded and that model became primary -- the
-  retired arms stay in the repo, unrun further, as a compatibility-only measurement (see the
-  study's README for the retarget note). Targets the two axes never ablated on the primary
-  architecture -- the raw branch's RNA encoder (still a single `Linear(25017 -> 256)`) and how
-  `h_mean`/`h_raw` are combined (still one `Linear`) -- plus a bounded Beta likelihood head,
-  windowed attention along the CpG axis, and Hyper-Connections/mHC on top of a depth ladder. The
-  flagship arm (`trunk_mhc_stream_semantics_d4`) makes `h_mean` and `h_raw` themselves the two
-  streams of an mHC trunk instead of the single fusion `Linear` -- the most literal possible
-  answer to "improve how the two branch embeddings are combined," asked of the architecture that
-  actually has two named embeddings. Every arm runs at `mode=final` on the
+  `RNAMethylationPredictor` (`models.py::ArchitectureVariantModel`); rebuilt on
+  `FeatureFusionLocusCLSModel` once `shared_backbone_locus_cls_2026_09` (above) concluded and that
+  model became primary. The two-stage generation and `ArchitectureVariantModel` have since been
+  removed entirely (see CLAUDE.md's "Model compatibility note") -- the retired arms' numbers
+  remain frozen in `results/reference/ablations.yaml`, not reproducible by current code. Targets
+  the two axes never ablated on the primary
+  architecture -- the raw branch's RNA encoder (still a single `Linear(25017 -> 256)`) and whether
+  extra trunk depth helps at all (still one `Linear`) -- plus a bounded Beta likelihood head and
+  windowed attention along the CpG axis. (A Hyper-Connections/mHC multi-stream trunk kind was also
+  tried as part of this suite and removed entirely once measured -- see
+  `results/reference/ablations/architecture_novelty_2026_09/README.md`'s "What was tried and
+  removed" section.) Every arm runs at `mode=final` on the
   `matched_chr1_shared_backbone` engine, evaluated via `evaluate_official_split`, so its MAS-PCC is
   directly comparable to rung B's. Its noise-floor arm (3 seeds, full 80-epoch budget) doubles as
   the full-budget rerun `shared_backbone_locus_cls_2026_09`'s own entry above already flagged as

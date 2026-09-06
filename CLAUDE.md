@@ -8,7 +8,7 @@ Research framework for reconstructing DNA methylation from bulk RNA using frozen
 representations. Two canonical trainable models share one genomic-scope axis:
 
 - `CpGStatisticsPredictor` (`src/methylation_predictor/cpg_statistics/`): frozen NTv3 CpG embedding -> locus mean `mu` and logit-scale `sigma`. Its `target_mu` output also feeds the RNA model's mean-branch proxy task below.
-- `FeatureFusionLocusCLSModel` (`src/methylation_predictor/models.py`, trained via `rna_training/locus_cls_trainer.py`, `scripts/train.py --engine matched_chr1_shared_backbone`): the **primary/reference RNA-methylation architecture** as of 2026-09-03 — a single-stage shared backbone: RNA + CpG embedding -> two late-fused branches (a locus-only mean-prediction branch, an RNA-conditioned branch) -> `beta_hat` directly, no explicit prior/residual composition. Selected over the earlier two-stage design via the `shared_backbone_locus_cls_2026_09` ablation ladder (`results/reference/ablations.yaml`); see `docs/RNA_METHYLATION.md`. `RNAMethylationPredictor` (`models.py`, trained via `rna_training/trainer.py`/`joint_trainer.py`, `benchmark/methylprophet/`): the earlier two-stage frozen-prior + residual architecture — RNA + CpG embedding + `(mu, sigma)` -> sample-specific methylation via `logit(mu) + sigma*residual`. Kept frozen for old-checkpoint compatibility (see "Model compatibility note" below), not the recommended architecture for new work.
+- `FeatureFusionArchitectureVariantModel` with `model.encoder.kind=locus_attention` (`src/methylation_predictor/models.py`, trained via `rna_training/locus_cls_trainer.py`, `scripts/train.py --engine matched_chr1_shared_backbone`, recipe `configs/models/rna_methylation_locus_attention.yaml`): the **primary/reference RNA-methylation architecture** as of 2026-09-05 — a single-stage shared backbone: RNA + CpG embedding -> two late-fused branches (a locus-only mean-prediction branch, a locus-conditioned RNA-attention branch) -> `beta_hat` directly, no explicit prior/residual composition, no post-fusion trunk. Superseded the `encoder.kind=linear` reference (`FeatureFusionLocusCLSModel`, selected 2026-09-03 via the `shared_backbone_locus_cls_2026_09` ablation ladder) once a follow-up chr1 isolation ladder showed locus-conditioned RNA attention is a decisive, consistent win over that linear-encoder model on every official view; see `docs/RNA_METHYLATION.md`'s "2026-09-05 update" section for the full evidence and open questions (a trunk-depth control, row C, was interrupted, not yet rerun). A multi-stream Hyper-Connections/Manifold-Constrained-HC (mHC) trunk kind was also tried as part of the architecture-novelty suite and **removed from the codebase entirely** (its contribution was small, within single-seed-noise range, and judged not worth the added complexity) — see git history before this removal if it needs revisiting; `TrunkConfig`/`FeatureFusionArchitectureVariantModel` now only support `kind="none"`/`"plain"`. **The RNA encoder is now the repo's primary axis of ongoing exploration** — see that section's "Forward direction" for the encoder-comparison harness and candidate directions (data-derived gene programs, pathway-informed projections, frozen foundation-model embeddings, deeper Perceiver-style designs) new work should target through `EncoderConfig.kind`/`build_rna_encoder()`, evaluated against the locus-attention reference above. `FeatureFusionLocusCLSModel` (`encoder.kind` hardcoded to `linear`) remains supported for old-checkpoint compatibility and as the frozen previous-reference recipe (`configs/models/rna_methylation_shared_backbone.yaml`), not where new recipes should target. The earlier two-stage frozen-prior + residual architecture (`RNAMethylationPredictor`/`VarianceNormalizedResidualModel`/`RNA2DNAmModel`/`ArchitectureVariantModel`, trained via the retired `MethylProphetTrainer`/`ScopedRNATrainer`) has been **removed**, including old-checkpoint compatibility for it; its frozen numbers remain under `results/reference/methylprophet_comparison/` and `results/reference/rna_methylation/chr1.yaml`'s `legacy_two_stage` field as historical provenance. See "Model compatibility note" below.
 - Scopes: `chr1`, `chr123` (`chr1 ∪ chr2 ∪ chr3`), `genomewide`. `chr1` is the MethylProphet-matched
   comparison scope (official Array split independently verified against the released MethylProphet
   evaluation artifact, see `docs/BENCHMARK_METHYLPROPHET.md`); `genomewide` is the primary general
@@ -50,8 +50,8 @@ is strictly required to run them):
 
 ```bash
 pytest -q                                    # full suite
-pytest tests/test_model.py -q                # one file
-pytest tests/test_model.py::test_name -q     # one test
+pytest tests/test_architecture_variants.py -q                # one file
+pytest tests/test_architecture_variants.py::test_name -q     # one test
 pytest -m "not slow" -q                      # skip tests that read multi-GB real TCGA slices
 ```
 
@@ -72,9 +72,11 @@ The four public entrypoints (all support `--model {cpg_statistics,rna_methylatio
 ```bash
 python scripts/prepare.py --model cpg_statistics --canonical-root ... --registry ... --scope genomewide --output ...
 python scripts/prepare.py --model rna_methylation --checkpoint ... --targets ... --embeddings ... --output ...
-python scripts/train.py --model rna_methylation --scope chr123 --recipe configs/models/rna_methylation.yaml ...
-python scripts/tune.py --model rna_methylation --scope chr123 --lrs 2e-5,5e-5,8e-5 --schedulers constant,cosine_warmup ...
-python scripts/evaluate.py --model rna_methylation --checkpoint /path/to/best.pt --eval-scope genomewide ...
+python scripts/train.py --model rna_methylation --scope chr123 --engine shared_backbone \
+  --recipe configs/models/rna_methylation_locus_attention.yaml --cpg-targets-dir ... ...
+python scripts/tune.py --model rna_methylation --scope chr123 --cpg-targets-dir ... \
+  --lrs 2e-5,5e-5,8e-5 --schedulers constant,cosine_warmup ...
+python scripts/evaluate.py --model rna_methylation --checkpoint /path/to/best.pt --eval-scope genomewide --cpg-targets-dir ... ...
 ```
 
 A fifth, read-only diagnostic entrypoint explains a trained `rna_methylation` checkpoint's
@@ -99,17 +101,10 @@ python scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_
   --feature-cache ... --rna-cache ... --registry ... --cpg-targets-dir ... --output ...
 ```
 
-Exact MethylProphet chr1 reproduction path for the earlier two-stage architecture (frozen,
-pair-complete — kept for old-checkpoint compatibility, see "Model compatibility note" below):
-
-```bash
-python scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1 \
-  --prepared-root ... --canonical-root ... --feature-cache ... --rna-cache ... \
-  --registry ... --recipe configs/models/rna_methylation.yaml --output-root ...
-```
-
-Both consume caches built by `scripts/benchmark_methylprophet/prepare.py` (see
-`docs/BENCHMARK_METHYLPROPHET.md`).
+Both engines above consume caches built by `scripts/benchmark_methylprophet/prepare.py` (see
+`docs/BENCHMARK_METHYLPROPHET.md`). The earlier two-stage architecture's exact `--engine
+matched_chr1` reproduction path has been retired along with that architecture generation; its
+frozen chr1 numbers remain under `results/reference/methylprophet_comparison/`.
 
 ## Architecture
 
@@ -128,26 +123,26 @@ artifact shapes/keys and the "never regenerate raw data" rules.
 
 `src/methylation_predictor/config.py` holds only the dataclasses genuinely shared across both
 models: `EncoderConfig`, `InteractionConfig`, `ModelConfig`, `LossConfig`, `TrainingConfig`,
-`TrackingConfig`. Each training path has its own thin loader on top of these:
+`TrackingConfig`. `rna_training/config.py::RNARecipe` / `load_rna_recipe` is the sole recipe
+loader on top of these, used by `LocusCLSJointTrainer` for both the chr1 matched preparation and
+the scope-agnostic chr123/genome-wide path.
 
-- `rna_training/config.py::RNARecipe` / `load_rna_recipe` — the generic scoped pipeline's recipe format.
-- `benchmark/methylprophet/config.py::RunConfig` / `load_config` — the MethylProphet-matched path's
-  single-YAML format (`data:`/`model:`/`loss:`/`training:`/`tracking:` blocks), including
-  `DataConfig`/`MatrixConfig`/`TableConfig` which exist only for that path.
+When adding a config field, decide first whether it belongs in the shared dataclasses (also read
+by `cpg_statistics/`) or in `rna_training/config.py` — don't add RNA-methylation-only fields to
+the shared `config.py`.
 
-When adding a config field, decide first whether it belongs in the shared dataclasses (read by
-both trainers) or in one of the two path-specific loaders — don't add benchmark-only fields to the
-shared `config.py`.
+### The MethylProphet chr1 data preparation is isolated, not central
 
-### The MethylProphet benchmark is isolated, not central
-
-`benchmark/methylprophet/` (+ `scripts/benchmark_methylprophet/` + `configs/benchmark_methylprophet/`)
-is a frozen, exact reproduction of the MethylProphet Table-5 chr1 benchmark — kept for paper-parity
-validation, not as the repo's main architecture. It has its own `cache.py`/`feature_store.py`/
-`probe.py`/`tracking.py`, deliberately not shared with the generic pipeline's own
-`storage.py`/wandb wiring, because they evolved independently and merging them would be a behavior
-change. `MethylProphetTrainer` (`benchmark/methylprophet/trainer.py`) is a complete, self-contained
-Cartesian-block trainer — don't route generic-pipeline changes through it.
+`benchmark/methylprophet/` (+ `scripts/benchmark_methylprophet/prepare.py` +
+`configs/benchmark_methylprophet/`) builds the exact chr1 MethylProphet-matched cache
+(`cache.py`/`feature_store.py`/`probe.py`/`protocol.py`), deliberately not shared with the
+generic pipeline's own `storage.py`/wandb wiring, because they evolved independently and merging
+them would be a behavior change. The `LocusCLSJointTrainer` engine (`--engine
+matched_chr1_shared_backbone`) consumes this cache but is otherwise defined in `rna_training/`,
+not here. The earlier exact two-stage-architecture reproduction path (`MethylProphetTrainer` and
+its own `scripts/benchmark_methylprophet/{run_experiment,analyze_context,resolve_final_epoch_budget}.py`/
+`run.sh`) has been retired along with that architecture generation; its frozen numbers remain
+under `results/reference/methylprophet_comparison/`.
 
 ### The foundation-model masked-CpG comparison is isolated too
 
@@ -186,19 +181,33 @@ architecture-simplification sweeps). `docs/BENCHMARKS.md` is the narrative index
 
 ### Model compatibility note
 
-`FeatureFusionLocusCLSModel` is the reference RNA-methylation architecture going forward (see "What
-this repo is" above) — new work should target it, not the models below. `RNAMethylationPredictor`
-(in `models.py`) is a zero-diff subclass of `VarianceNormalizedResidualModel`, kept so historical
-checkpoints load with identical state-dict keys — don't rename or add parameters to it without
-checking checkpoint compatibility. `RNA2DNAmModel` (the flat, non-variance-normalized residual
-model) is still live production code for `MethylProphetTrainer`, not dead/legacy. Both remain fully
-supported for reproducing/extending existing chr1/chr123/genomewide checkpoints and the frozen
-MethylProphet benchmark path — they are not deprecated, just no longer the primary architecture.
+`FeatureFusionArchitectureVariantModel` with `encoder.kind=locus_attention` is the reference
+RNA-methylation architecture going forward (see "What this repo is" above) — new work should
+target it, not `FeatureFusionLocusCLSModel` below. `FeatureFusionLocusCLSModel` (`encoder.kind`
+hardcoded to `linear`) is the previous (2026-09-03 to 2026-09-05) reference, kept live for
+old-checkpoint compatibility and as a frozen comparison point, not for new work.
+
+The earlier two-stage frozen-prior + residual architecture generation
+(`RNAMethylationPredictor`, `VarianceNormalizedResidualModel`, `RNA2DNAmModel`,
+`ArchitectureVariantModel`, `DirectPredictionModel`, and their trainers `MethylProphetTrainer`/
+`ScopedRNATrainer`) has been **removed entirely, with no old-checkpoint compatibility retained**.
+Checkpoints from that generation cannot be loaded by current code. Its frozen paper-comparison
+numbers remain under `results/reference/methylprophet_comparison/` and
+`results/reference/rna_methylation/chr1.yaml`'s `legacy_two_stage` field as historical provenance.
+Three things that depended on it were ported to the current architecture rather than removed:
+the three simplified baselines other than CpG Prior (Global RNA Shift/Bilinear RNA-CpG/MLP
+RNA-CpG, now expressed via `FeatureFusionArchitectureVariantModel`'s `use_mean_branch`/
+`include_raw_rna`/`include_raw_cpg`/`use_raw_product` constructor kwargs — see
+`docs/PAPER_EXPERIMENTS.md`), explainability (`scripts/explain.py`, now attributing
+`residual_logit` instead of the old `raw_delta` — see `docs/EXPLAINABILITY.md`), and
+hyperparameter tuning (`scripts/tune.py`, now built on `LocusCLSJointTrainer`).
 
 ### No legacy fallback path
 
 There is no older training entrypoint left in this repo (the pre-refactor `data.py`/`trainer.py`/
 `cli.py` Cartesian-batch path, and the ad-hoc `full_suite/` cache/probe helpers it depended on,
-were removed). `scripts/{prepare,train,tune,evaluate}.py` are the only entrypoints; treat any
-future one-off/experiment-specific script or config as something to delete once the experiment
-concludes, not something to keep around as a second workflow.
+were removed; more recently, the entire two-stage frozen-prior + residual architecture generation
+and its `--engine generic`/`matched_chr1` CLI paths were removed too — see "Model compatibility
+note" above). `scripts/{prepare,train,tune,evaluate,explain}.py` are the only entrypoints; treat
+any future one-off/experiment-specific script or config as something to delete once the
+experiment concludes, not something to keep around as a second workflow.

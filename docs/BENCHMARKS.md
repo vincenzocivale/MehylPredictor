@@ -15,9 +15,10 @@ Two trainable models, three genomic scopes:
 - RNA-methylation model → `results/reference/rna_methylation/{chr1,chr123,genomewide}.yaml`. As of
   2026-09-03, chr1's file records the new primary/reference architecture
   (`FeatureFusionLocusCLSModel`, shared-backbone -- see `docs/RNA_METHYLATION.md`); chr123 and
-  genomewide still record the earlier two-stage architecture (`RNAMethylationPredictor`) pending
-  the same shared-backbone extension to those scopes. chr1's file keeps the two-stage number too,
-  under `legacy_two_stage`, for comparison.
+  genomewide still record the earlier two-stage architecture (`RNAMethylationPredictor`, since
+  removed from the codebase -- see CLAUDE.md's "Model compatibility note") pending a
+  shared-backbone rerun at those scopes. chr1's file keeps the two-stage number too, under
+  `legacy_two_stage`, for comparison.
 
 `chr1` is the MethylProphet-matched comparison scope -- its official Array
 split is independently verified against the actual released MethylProphet
@@ -47,7 +48,8 @@ Cells are `MAS-PCC / MSE`. chr1's shared-backbone row (`FeatureFusionLocusCLSMod
 primary architecture, see `docs/RNA_METHYLATION.md`) is a single-seed run stopped at epoch 47/80
 by user request, not yet at convergence -- a lower bound, not this architecture's final number
 (`results/reference/rna_methylation/chr1.yaml`). chr123/genomewide are still on the earlier
-two-stage architecture (`RNAMethylationPredictor`) pending the same extension. Genome-wide
+two-stage architecture (`RNAMethylationPredictor`, since removed) pending a shared-backbone
+rerun. Genome-wide
 per-chromosome mean MAS-PCC (two-stage): 0.5196 (observed range 0.459–0.579). LR 5e-5, constant
 scheduler, 80 epochs, seed 17 for all rows. chr123 (2026-08-31) is not a MethylProphet-matched
 result -- see the scope note above -- and required extending the generic engine's feature cache to
@@ -69,17 +71,20 @@ see `results/reference/PROVENANCE.md`). chr123 retrained 2026-08-31 (replaces a 
 ## Baseline models
 
 Four simplified baselines (CpG Prior, Global RNA Shift, Bilinear RNA–CpG, MLP RNA–CpG) isolate
-why the canonical architecture works, each trained/tuned independently per setting — see
-[`PAPER_EXPERIMENTS.md`](PAPER_EXPERIMENTS.md#baseline-models) for what each tests and which
-recipe/architecture it maps to. Results land under `results/reference/baselines/<name>/<scope>.yaml`
-(schema-compatible with `rna_methylation/<scope>.yaml`); the head-to-head table against
-MethylProphet and the canonical model lives at
-[`baselines_chr1.md`](../results/reference/methylprophet_comparison/baselines_chr1.md) — **complete
-for chr1** (2026-09-01): Bilinear RNA–CpG (0.5273 val-CpG × val-sample MAS-PCC) and MLP RNA–CpG
-(0.5198) both land close to the canonical model (0.5613) and clearly ahead of MethylProphet
-(0.3904); Global RNA Shift (0.2343) and CpG Prior (MSE-only, MAS-PCC undefined for a
-constant-per-CpG predictor) are well below. chr123/genomewide follow once those settings are
-themselves verified/built.
+why the reference architecture works, each trained/tuned independently per setting — see
+[`PAPER_EXPERIMENTS.md`](PAPER_EXPERIMENTS.md#baseline-models) for what each tests, its current
+recipe (`configs/models/baselines/`), and **how to run the still-missing retrain under the
+current shared-backbone engine**. Results land under
+`results/reference/baselines/<name>/<scope>.yaml` (schema-compatible with
+`rna_methylation/<scope>.yaml`); the head-to-head table against MethylProphet at
+[`baselines_chr1.md`](../results/reference/methylprophet_comparison/baselines_chr1.md) —
+**complete for chr1** (2026-09-01): Bilinear RNA–CpG (0.5273 val-CpG × val-sample MAS-PCC) and MLP
+RNA–CpG (0.5198) both landed close to the two-stage architecture's 0.5613 and clearly ahead of
+MethylProphet (0.3904); Global RNA Shift (0.2343) and CpG Prior (MSE-only, MAS-PCC undefined for a
+constant-per-CpG predictor) were well below — **but these numbers were produced by the
+now-removed two-stage engine and are frozen historical provenance, not yet reproduced under the
+current architecture** (see `PAPER_EXPERIMENTS.md`'s "Baseline models" section for the pending
+retrain). chr123/genomewide follow once those settings are themselves verified/built.
 
 ## Head-to-head comparison with MethylProphet (published SOTA)
 
@@ -102,7 +107,11 @@ are reproduced and the protocol caveats.
 `results/reference/ablations.yaml` holds the machine-readable outcomes of
 internal design/hyperparameter ablations against the chr1 `rna_methylation`
 reference (val-CpG × val-sample MAS-PCC 0.5613 baseline) — distinct from the
-MethylProphet paper-comparison tables above:
+MethylProphet paper-comparison tables above. **Historical note**: every study
+below except `shared_backbone_locus_cls_2026_09` and `architecture_novelty_2026_09`
+ran against the now-removed two-stage architecture's 0.5613 number (see
+CLAUDE.md's "Model compatibility note"); their qualitative conclusions are
+still the design record, but their code is not reproducible as-is.
 
 - **`prior_headroom`** — an oracle mu (true per-locus mean instead of the
   predicted prior) reaches MAS-PCC 0.5675, a delta of only 0.0062. Conclusion:
@@ -142,5 +151,10 @@ MethylProphet paper-comparison tables above:
 
 - [`WORKFLOWS.md`](WORKFLOWS.md) — the four generic entrypoints
   (`prepare.py`/`train.py`/`tune.py`/`evaluate.py`) across any model × scope.
-- [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md) — the frozen,
-  exact MethylProphet chr1 reproduction path.
+- [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md) — the exact
+  MethylProphet chr1 split/data-preparation path. Its own two-stage
+  `MethylProphetTrainer` was removed in the 2026-09-06 refactor (see that
+  doc and CLAUDE.md's "Model compatibility note") -- what remains runnable is
+  data prep (`scripts/benchmark_methylprophet/prepare.py`) plus training the
+  *current* shared-backbone architecture on that data, not a still-runnable
+  exact-reproduction trainer.

@@ -1,42 +1,52 @@
 # RNA methylation model
 
-`FeatureFusionLocusCLSModel` is the repo's **primary/reference RNA-methylation
-architecture** as of 2026-09-03. See [`CPG_STATISTICS.md`](CPG_STATISTICS.md) for the
-companion `CpGStatisticsPredictor` (mu, sigma) model whose `target_mu` output feeds this
-model's mean-branch proxy task, and [`EXPLAINABILITY.md`](EXPLAINABILITY.md) for
-attributing a trained checkpoint's predictions back to RNA genes (`scripts/explain.py`,
-written against the earlier two-stage architecture -- see below).
+`FeatureFusionArchitectureVariantModel` with `encoder.kind=locus_attention` is the repo's
+**primary/reference RNA-methylation architecture** as of 2026-09-05, superseding the
+`encoder.kind=linear` reference of 2026-09-03 -- see "2026-09-05 update" below for the
+ablation evidence. See [`CPG_STATISTICS.md`](CPG_STATISTICS.md) for the companion
+`CpGStatisticsPredictor` (mu, sigma) model whose `target_mu` output feeds this model's
+mean-branch proxy task, and [`EXPLAINABILITY.md`](EXPLAINABILITY.md) for attributing a
+trained checkpoint's predictions back to RNA genes (`scripts/explain.py`).
 
 ## Primary architecture: shared-backbone late fusion
 
 A single-stage model: two branches, each producing a learned feature vector, late-fused
 into one prediction head -- no separate frozen prior stage, no explicit
-`mu + sigma*residual` composition.
+`mu + sigma*residual` composition, and no post-fusion trunk (`model.trunk.kind=none`).
 
 ```text
-CpG -> frozen 1536-D NTv3 embedding e_i
-  -> CpGTrunk (LayerNorm -> Linear(256) -> GELU -> Dropout -> Linear(64) -> GELU) -> h_mean_i
-  -> mean_head: Linear(h_mean_i) -> mu_logit_i   [auxiliary proxy-task probe only, not used in beta]
+CpG -> frozen 1536-D NTv3 embedding e_l
+  -> CpGTrunk (LayerNorm -> Linear(256) -> GELU -> Dropout -> Linear(64) -> GELU) -> h_mean_l
+  -> mean_head: Linear(h_mean_l) -> mu_logit_l   [auxiliary proxy-task probe only, not used in beta]
 
-RNA (25,017) -> Linear(256) -> z_s
-[z_s, e_i, W_R(z_s) ⊙ W_C(e_i)] -> LayerNorm -> Linear(128) -> GELU -> Dropout -> h_raw_{s,i}
-  -> residual_head: Linear(h_raw_{s,i}) -> residual_logit_{s,i}   [auxiliary probe only, weight=0 in the reference recipe]
+RNA (25,017) -> LayerNorm -> Linear(256) -> GELU -> LayerNorm -> u_s (patient bottleneck)
+  -> 64 learned bases -> program tokens T_s (64 x 256)
+e_l -> query Q(e_l) --4-head cross-attention over T_s--> r_{s,l} (256, locus-conditioned RNA)
 
-fusion: Linear([h_mean_i, h_raw_{s,i}]) -> beta_logit_{s,i} -> sigmoid -> beta_hat_{s,i}
+[r_{s,l}, e_l] -> LayerNorm -> Linear(128) -> GELU -> Dropout -> h_raw_{s,l}
+  -> residual_head: Linear(h_raw_{s,l}) -> residual_logit_{s,l}   [auxiliary probe only, weight=0 in the reference recipe]
+
+fusion: Linear([h_mean_l, h_raw_{s,l}]) -> beta_logit_{s,l} -> sigmoid -> beta_hat_{s,l}
 ```
 
 `beta_hat` is bounded in (0,1) by construction (final `sigmoid`), same as the earlier
 architecture. `mu_logit`/`residual_logit` are auxiliary training-time probes only --
 `mean_head`'s output shapes `h_mean` via a proxy loss but never enters the `beta`
 computation directly; `residual_head` is available (`residual_aux_weight` in the recipe)
-but weighted to 0 in the reference configuration (see selection rationale below).
+but weighted to 0 in the reference configuration (see selection rationale below). The RNA
+encoder is the one piece of this diagram that is **not** fixed going forward -- see
+"Forward direction" below.
 
-Code: `models.py::FeatureFusionLocusCLSModel` (+ `CpGTrunk`), trained via
-`rna_training/locus_cls_trainer.py::LocusCLSJointTrainer`. Entry points:
+Code: `models.py::FeatureFusionArchitectureVariantModel` (`encoder.kind=locus_attention`,
+`trunk.kind=none`) + `CpGTrunk`, trained via
+`rna_training/locus_cls_trainer.py::LocusCLSJointTrainer`. The older
+`models.py::FeatureFusionLocusCLSModel` (`encoder.kind` hardcoded to `linear`) remains live
+for old-checkpoint compatibility -- see the model-compatibility note in `CLAUDE.md` -- but
+is no longer where new recipes should target. Entry points:
 
 ```bash
 python scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
-  --recipe configs/models/rna_methylation_shared_backbone.yaml --mode final \
+  --recipe configs/models/rna_methylation_locus_attention.yaml --mode final \
   --prepared-root ... --canonical-root ... --feature-cache ... --rna-cache ... \
   --registry ... --cpg-targets-dir ... --output-root ...
 
@@ -46,8 +56,15 @@ python scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_
   --registry ... --cpg-targets-dir ... --output ...
 ```
 
-Currently chr1-only (matched_chr1 data); chr123/genomewide support tracked alongside the
-same expansion work as the earlier architecture (`docs/PAPER_EXPERIMENTS.md`).
+`configs/models/rna_methylation_shared_backbone.yaml` (`encoder.kind=linear`) remains as
+the frozen, previous-reference recipe for compatibility/comparison.
+
+The shared-backbone engine also supports canonical chr123 training via
+`--engine shared_backbone`; pass its protocol-ordered target cache through
+`--prepared-root`. See [`CHR123_TRAINING_OPTIMIZATIONS.md`](CHR123_TRAINING_OPTIMIZATIONS.md)
+for the cache contract, preparation command, measured 7.4x epoch speedup and provenance
+caveats. The legacy `matched_chr1_shared_backbone` engine name remains supported for the
+exact chr1 path.
 
 ### Selection: the `shared_backbone_locus_cls_2026_09` ablation ladder
 
@@ -99,94 +116,179 @@ doing its job.
 ### Architecture-novelty suite (`architecture_novelty_2026_09`)
 
 A 2026-09 suite, prompted by a separate postdoc review that judged the architecture too
-simple for the paper's novelty claim, targets two things this ladder never touched: the
-raw branch's RNA encoder (still a single `Linear(25017 -> 256)`, no nonlinearity) and how
-`h_mean`/`h_raw` are combined (still one `Linear`). It adds
-`models.py::FeatureFusionArchitectureVariantModel` -- a separate class, so
+simple for the paper's novelty claim, targets two things the ladder above never touched:
+the raw branch's RNA encoder (still a single `Linear(25017 -> 256)`, no nonlinearity) and
+whether depth after `h_mean`/`h_raw` are combined helps at all (still one `Linear`). It
+adds `models.py::FeatureFusionArchitectureVariantModel` -- a separate class, so
 `FeatureFusionLocusCLSModel`'s parameter set is untouched -- selected whenever a recipe
 sets a non-default `model.encoder.kind`, `model.trunk`, `model.axial` or
-`model.beta_likelihood_head`. The flagship arm answers the postdoc's suggestion most
-literally: with `trunk.stream_semantics=True`, `h_mean` and `h_raw` themselves become the
-two streams of a Manifold-Constrained Hyper-Connections (mHC, arXiv:2512.24880) trunk --
-exchanging information under a doubly stochastic, mass-conserving mixing matrix for
-several depth steps instead of being combined once. Every arm runs on
-`matched_chr1_shared_backbone` at `mode=final`, evaluated via `evaluate_official_split`,
-so its MAS-PCC is directly comparable to rung B's own number. Its noise-floor arm
-(3 seeds, full 80-epoch budget) doubles as the full-budget rerun this section already
-flagged as worth doing -- see `results/reference/ablations/architecture_novelty_2026_09/README.md`.
+`model.beta_likelihood_head`. Every arm runs on `matched_chr1_shared_backbone` at
+`mode=final`, evaluated via `evaluate_official_split`, so its MAS-PCC is directly
+comparable to rung B's own number. Its noise-floor arm (3 seeds, full 80-epoch budget)
+doubles as the full-budget rerun this section already flagged as worth doing -- see
+`results/reference/ablations/architecture_novelty_2026_09/README.md`.
 
 Note: this suite originally targeted the earlier two-stage architecture (see that
 section's own note below) -- it was rebuilt on `FeatureFusionLocusCLSModel` on
-2026-09-04, once this ladder concluded and the shared-backbone model became primary.
+2026-09-04, once this ladder concluded and the shared-backbone model became primary. A
+multi-stream (Hyper-Connections / Manifold-Constrained-HC) trunk kind was also tried as
+part of this suite and later **removed from the codebase entirely** -- see the note at the
+end of the next section and CLAUDE.md's "Model compatibility note".
 
-## Previous architecture: two-stage frozen prior + residual
+### 2026-09-05 update: locus-attention becomes the reference RNA encoder
 
-Kept live and fully supported for reproducing/extending existing chr1/chr123/genomewide
-checkpoints and the frozen MethylProphet benchmark path (`RNAMethylationPredictor`/
-`VarianceNormalizedResidualModel` in `models.py`, `RNA2DNAmModel` for
-`MethylProphetTrainer`) -- **not the recommended architecture for new work**, superseded
-by the shared-backbone model above. `scripts/train.py --engine matched_chr1` (no
-`_shared_backbone` suffix) and `--engine generic` still train it.
+The architecture-novelty suite's locus-conditioned-RNA arm (`enc_locus_attention_k64` /
+"row B" below) beat the then-reference linear-encoder model on every official
+view/metric. A chr1/seed-17 isolation ladder, matched on every training hyperparameter
+(lr 2e-4, cosine_warmup, 80 epochs, same batching/loss), quantifies exactly this encoder
+change against the product term and mean branch:
 
-```text
-RNA (25,017) -> LayerNorm -> Linear(256) -> z_s
-CpG -> frozen 1536-D NTv3 embedding e_i
-[z_s, e_i, W_R(z_s) ⊙ W_C(e_i)] -> MLP -> raw_delta
-logit(beta_hat_{s,i}) = logit(mu_i) + sigma_i * raw_delta_{s,i}
-```
+| arm | encoder | trunk | product term | mean branch | official MAS-PCC (train_cpg×val / val_cpg×train / val_cpg×val) |
+| --- | --- | --- | --- | --- | --- |
+| A (old reference) | linear | none | yes | yes | 0.6565 / 0.6138 / 0.5760 |
+| **row B** | **locus_attention** | none | yes | yes | **0.7179 / 0.6385 / 0.5938** |
+| row B, mean removed | locus_attention | none | yes | no | 0.7212 / 0.6301 / 0.5860 |
+| row B, product+mean removed | locus_attention | none | no | no | 0.7046 / 0.6232 / 0.5812 |
 
-`mu_i` is a probability in (0,1) (the sigmoid output of `CpGStatisticsPredictor`), not a
-logit -- the sum above happens in logit space, and a final `sigmoid` (see `models.py`
-`VarianceNormalizedResidualModel.forward`) maps `beta_hat` back to (0,1). This means
-`beta_hat` is bounded in (0,1) by construction regardless of the residual's magnitude; no
-separate clamp is needed or applied to the model's output.
+Conclusions supported by the table above:
 
-Reference objective: beta MSE 1.0, standardized residual Huber 0.1,
-standardized shrinkage 1e-4, locus Pearson 0.15, sigma floor 0.05.
-The variability gate and mean-RNA anchor branches are historical ablations retained only
-in git history. The flat residual (`RNA2DNAmModel`) and a no-prior-anchor direct
-prediction (`DirectPredictionModel`) remain live, ablation-only model paths (matched_chr1
-engine only). A 2026-08 re-check (product/product_only/cpg_product/no_product
-interaction-concat pieces, plus a 256/512/1024 RNA-latent-width sweep; chr1, single seed)
-confirmed the product term matters but found no case strong enough to change the
-canonical architecture -- see
-`results/reference/ablations.yaml::interaction_concat_and_latent_dim_2026_08`. A later
-2026-08 suite re-measured sigma-scaling (no measurable effect,
-`::sigma_normalization_2026_08`), the prior/mu anchor (a real but modest -0.0065 MAS-PCC
-cost if dropped, `::prior_anchor_2026_08`), and three new RNA-CpG fusion mechanisms --
-FiLM/gating, cross-attention, low-rank bilinear pooling, via `InteractionConfig.kind` +
-`build_interaction()` -- none of which beat the canonical concat+product interaction
-(`::fusion_mechanism_2026_08`). No permanent architecture change adopted from any of
-these; the two-stage recipe (`configs/models/rna_methylation.yaml`) is unchanged.
+- **Locus-conditioned RNA (row B vs A) is a decisive, consistent win** on every view:
+  +0.0614 train_cpg×val_sample, +0.0247 val_cpg×train_sample, +0.0178 val_cpg×val_sample
+  (the hardest, double-OOD view). This is *the* effect worth building on.
+- **The product term and the mean branch are not interchangeable** despite both looking
+  like "extra complexity added to row B". Removing only the mean branch collapses MSE
+  specifically on the two unseen-CpG views (val_cpg×train_sample: 0.01334 -> 0.01714,
+  +28.5%; val_cpg×val_sample: 0.01414 -> 0.01788, +26.5%) while barely moving MAS-PCC --
+  the mean branch is the model's only locus-specific signal that does not require having
+  seen that CpG's RNA relationship before, so losing it mainly hurts calibration on novel
+  loci, not correlation. The product term's effect is the opposite shape: comparing "mean
+  removed" against "product+mean removed" shows the product term recovers MSE on
+  train_cpg×val_sample (already-seen loci: 0.01191 -> 0.01088, -8.6%) but does essentially
+  nothing on either unseen-CpG view (-1.3 to -1.5%) -- its benefit is concentrated on the
+  single least-generalization-relevant view. The reference recipe below therefore keeps
+  the mean branch and drops the product term (see that recipe's header comment for the
+  one caveat: the exact cell "product removed, mean kept" was not itself an isolated run
+  before this decision -- only "both kept", "both removed", and "mean removed only" have
+  official numbers).
 
-**Historical / compatibility-only note** (retired architecture, not the primary target of the
-suite as of 2026-09-04 -- see the shared-backbone section above): a 2026-09 suite
-(`architecture_novelty_2026_09`) originally went after the two axes none of the above
-touched, following a postdoc review that judged the architecture too simple for the paper's
-novelty claim: the **RNA encoder** (canonically a single `Linear(25017 -> 256)` with no
-nonlinearity -- only its width was ever ablated) and the **depth/topology of the fusion trunk**
-(canonically one hidden layer, which is why Hyper-Connections and mHC have nothing to act on
-until a real trunk exists). It adds `models.py::ArchitectureVariantModel` -- a separate class, so
-`RNAMethylationPredictor`'s parameter set and state-dict keys are untouched -- selected whenever a
-recipe sets a non-default `model.encoder.kind`, `model.trunk`, `model.axial` or
-`model.beta_likelihood_head`. Every arm keeps the canonical
-`logit(mu) + sigma * raw_delta` anchor and runs on the matched_chr1 engine at `mode=final`, so its
-MAS-PCC is directly comparable to 0.5613 and to `fusion_mechanism_2026_08`. The suite also
-introduces the repo's first **measured noise floor** (three seeds of the unmodified canonical
-recipe) and judges every arm against `2 x` that seed SD -- earlier studies called deltas "in
-noise" without ever measuring the noise. See
-`results/reference/ablations/architecture_novelty_2026_09/README.md` for the arm taxonomy,
-protocol and promotion rule, and `configs/models/arch/` for the recipes.
+**New reference recipe**: `configs/models/rna_methylation_locus_attention.yaml` --
+`encoder.kind=locus_attention`, `use_mean_branch=true`, `use_raw_product=false`,
+`trunk.kind=none`. Train/evaluate before citing its numbers (see recipe header).
 
-One result from it needs no GPU time: `BilinearInteraction` at `rank == min(rna_dim, locus_dim)`
-is bit-identical to the canonical `ProductInteraction`, so `fusion_mechanism_2026_08`'s bilinear
-arm (0.5460) measured a hardcoded rank-64 restriction rather than a different fusion mechanism.
+Open questions (do not overclaim past this point):
 
-Four of these ablation-only pieces are also formalized as **paper baselines** (fresh,
-independently-tuned runs per setting, distinct from the ablation-suite numbers above) — see
-`docs/PAPER_EXPERIMENTS.md`'s "Baseline models" section: a zero-parameter CpG-Prior floor
-(`CpGPriorEvaluator`), a fourth `InteractionConfig.kind` — `global_shift`
-(`GlobalShiftInteraction`, ignores the CpG embedding entirely for a single per-patient
-correction), the existing `bilinear` kind with `include_rna=include_cpg=false` (bilinear term
-only), and the existing `concat` kind with `include_product=false` (plain MLP, no interaction
-term).
+- **Does any extra trunk depth help the reference (locus-attention) encoder at all?** Row
+  C (`locus_attention` + a parameter-matched **plain** depth-4 trunk) tests this directly.
+  Interrupted at epoch 21/80, never evaluated -- see
+  `results/reference/ablations/architecture_novelty_2026_09/README.md`'s status section
+  and `docs/EXPERIMENT_ROADMAP.md` for the resume command.
+- **Single seed, chr1 only, official-split-informed selection.** Every number above is one
+  seed; chr123 contains chr1; the architecture decisions here were made looking at chr1's
+  official split. None of the multi-seed/fresh-scope requirements this warrants have been
+  run for this specific ladder.
+- Reproducibility: chr1 runs `p0_row_b_locus_attention_matched`,
+  `p0_row_b_no_mean_only`, `p0_row_b_no_product_no_mean` (recipes under
+  `configs/models/arch_shared_backbone/`), evaluated via the same
+  `evaluate_official_split` path as the flagship arm.
+
+### Forward direction: RNA-encoder comparison harness
+
+With locus-conditioned attention shown to be the dominant lever and the rest of the
+architecture (mean branch, concat fusion, direct sigmoid readout) now fixed as a stable
+harness, **the repo's RNA-methylation work going forward is a comparison of RNA-encoding
+approaches**, not further additions to the fusion/trunk side. `EncoderConfig.kind` +
+`build_rna_encoder()` (`models.py`) is the extension point: a new encoder only needs to
+produce a `RNARepresentation` (a per-sample global vector, plus optionally per-sample
+`program_tokens` for locus-conditioning) to slot into the existing harness and be
+comparable to `locus_attention`/`linear`/`mlp`/`program_bottleneck` on the same protocol.
+Candidate directions worth an arm, roughly in order of implementation cost (see the
+literature survey in this repo's working session notes for detail on each):
+
+- **evaluated 2026-09-06, underperforms row B** -- `encoder.kind=bottleneck_mlp`
+  (`configs/models/arch_shared_backbone/enc_bottleneck_mlp.yaml`,
+  `models.py::BottleneckMLPEncoder`): reproduces the *architecture* of MethylProphet's
+  published RNA branch (bioRxiv 2025.02.05.636730, `github.com/xk-huang/methylprophet`,
+  `BottleneckMLP` "B_6-Wi_1024" -- 6 pre-norm residual blocks, width 1024, GELU), trained
+  from scratch in place of the current encoder. Deliberately not their preprocessing
+  (log-quantize to [0,1]) or their fusion (DistilBERT token concatenation) -- it consumes
+  the same frozen z-scored RNA cache and plugs into the same fixed branch architecture as
+  every other arm here, isolating the encoder architecture as the only variable. Trained
+  and evaluated chr1/seed17, matched to row B's own protocol: official MAS-PCC
+  0.6631 / 0.6127 / 0.5810 (train_cpg×val / val_cpg×train / val_cpg×val), **-7.6% / -4.0% /
+  -2.2% vs. row B** on every view -- the training-loss curve was already visibly worse
+  than row B's from epoch ~10 onward, not just a held-out generalization gap. A
+  from-scratch bottleneck MLP does not match locus-conditioned attention at this data
+  scale; not promoted.
+- **evaluated 2026-09-06, underperforms row B (worse than bottleneck_mlp above)** --
+  `encoder.kind=frozen_embedding`
+  (`configs/models/arch_shared_backbone/enc_frozen_embedding_bulkrnabert.yaml`,
+  `models.py::FrozenEmbeddingEncoder`, `scripts/prepare_bulkrnabert_embeddings.py`): a
+  frozen, *not* fine-tuned, embedding from BulkRNABert
+  (`github.com/instadeepai/multiomics-open-research`, CC BY-NC-SA 4.0 --
+  non-commercial), a small pretrained bulk-RNA-seq transformer, adapted by a single
+  trainable Linear projection. The extraction script's model/tokenizer API was verified
+  against the live checkpoint, including a real bug fixed in the vendored tokenizer
+  (`tokenizer.mask_token_id` crashes with `KeyError: None`; the script reads
+  `tokenizer.vocab` directly instead) and a real memory constraint discovered by actually
+  triggering it (full self-attention over the ~19,062-gene sequence needs far more memory
+  than one batch-size unit's naive estimate, and bfloat16 + explicit CUDA-cache-clearing
+  between samples was required to complete a full run without OOM -- see that script's
+  docstring). The full 10,916-sample extraction has been run end to end (cache at
+  `MethylPredictionData/derived/bulkrnabert_embeddings/tcga`, real coverage: 15,259/19,062
+  BulkRNABert genes matched, 80.0%). Trained and evaluated chr1/seed17, matched to row B's
+  protocol: official MAS-PCC 0.5795 / 0.5321 / 0.5164, **-19.3% / -16.7% / -13.0% vs. row
+  B** -- a substantially larger gap than the from-scratch bottleneck MLP above, consistent
+  with an embedding that was never fine-tuned for this task and only adapted by a single
+  Linear layer, plus incomplete gene-panel coverage. Not promoted.
+  `frozen_embedding_source` records provenance for any future frozen-embedding arm
+  (Geneformer, scGPT -- see below), not just this one.
+- data-derived gene programs (consensus NMF / topic-model-style modules discovered from
+  co-expression, e.g. cNMF, SPECTRA) as the token bank instead of `program_basis`'s fully
+  end-to-end-learned bases -- would also finally let the "gene program" language used
+  informally today be backed by a stability/enrichment check, which the current learned
+  tokens explicitly cannot support (see the locus-attention encoder's own docstring);
+- pathway/gene-set-informed projections (MSigDB/KEGG/Reactome) as a biologically
+  constrained alternative bottleneck;
+- frozen embeddings from other pretrained single-cell/bulk transcriptome foundation
+  models (Geneformer's rank-value tokens, scGPT's binned-value tokens), sharing
+  `FrozenEmbeddingEncoder` with the BulkRNABert arm above via `frozen_embedding_source`;
+- deeper Perceiver-IO-style query/latent designs (the existing cross-attention is already
+  in this family; the open question is whether more latent slots, more cross-attention
+  rounds, or a learned rather than CpG-derived query change anything).
+
+Any new arm should be evaluated under the same matched-hyperparameter protocol used
+above (chr1, seed 17 minimum, `evaluate_official_split`'s three views) against row B's
+numbers as the baseline to beat.
+
+## Retired architecture: two-stage frozen prior + residual
+
+An earlier generation (`RNAMethylationPredictor`/`VarianceNormalizedResidualModel`/
+`RNA2DNAmModel`/`ArchitectureVariantModel`/`DirectPredictionModel`, trained via the
+`MethylProphetTrainer`/`ScopedRNATrainer` engines: `logit(beta_hat) = logit(mu_i) + sigma_i *
+raw_delta`, an explicit frozen-prior + variance-normalized-residual composition) has been
+**removed entirely**, including old-checkpoint compatibility -- see CLAUDE.md's "Model
+compatibility note". Its frozen chr1 numbers (MAS-PCC 0.5613 on `val_cpg_x_val_sample`, the
+number the shared-backbone architecture above was originally selected against) remain under
+`results/reference/methylprophet_comparison/` and `results/reference/rna_methylation/chr1.yaml`'s
+`legacy_two_stage` field as historical provenance; the ablation ladders that were run against it
+(`interaction_concat_and_latent_dim_2026_08`, `sigma_normalization_2026_08`,
+`prior_anchor_2026_08`, `fusion_mechanism_2026_08`) remain recorded in
+`results/reference/ablations.yaml` for the same reason. The code itself is only recoverable from
+git history before this removal.
+
+Three things that depended on this generation were **ported** to the current architecture rather
+than retired with it:
+
+- **Explainability** (`scripts/explain.py`) now attributes `FeatureFusionLocusCLSModel`/
+  `FeatureFusionArchitectureVariantModel`'s `residual_logit` auxiliary probe instead of the old
+  `raw_delta` -- see `docs/EXPLAINABILITY.md`.
+- **Hyperparameter tuning** (`scripts/tune.py`) now runs `LocusCLSJointTrainer` instead of the
+  retired `ScopedRNATrainer`.
+- **Three of the four paper-required simplified baselines** (Global RNA Shift, Bilinear RNA-CpG,
+  MLP RNA-CpG -- the fourth, CpG Prior, has no model) are now expressed as
+  `FeatureFusionArchitectureVariantModel` configurations instead of `InteractionConfig.kind`
+  variants on the old engine: `use_mean_branch=False` plus `include_raw_rna`/`include_raw_cpg`/
+  `use_raw_product` constructor kwargs select which raw-branch pieces feed the joint input (Global
+  RNA Shift: RNA only; Bilinear RNA-CpG: product term only; MLP RNA-CpG: concatenated RNA+CpG, no
+  product) -- see `docs/PAPER_EXPERIMENTS.md`'s "Baseline models" section and
+  `FeatureFusionArchitectureVariantModel`'s docstring in `models.py`.

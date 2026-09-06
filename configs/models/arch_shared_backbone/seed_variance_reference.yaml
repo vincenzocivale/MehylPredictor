@@ -7,10 +7,9 @@
 # --engine matched_chr1_shared_backbone in scripts/train.py).
 #
 # This is the repo's primary/reference RNA-methylation architecture as of
-# 2026-09-03 (see docs/RNA_METHYLATION.md), replacing the two-stage frozen-prior
-# + residual pipeline (VarianceNormalizedResidualModel/RNAMethylationPredictor,
-# still frozen for old-checkpoint compatibility -- see CLAUDE.md's "Model
-# compatibility note"). Selected via the shared_backbone_locus_cls_2026_09
+# 2026-09-03 (see docs/RNA_METHYLATION.md), replacing the (since removed) two-stage
+# frozen-prior + residual pipeline (VarianceNormalizedResidualModel/
+# RNAMethylationPredictor -- see CLAUDE.md's "Model compatibility note"). Selected via the shared_backbone_locus_cls_2026_09
 # ablation ladder (results/reference/ablations.yaml): a mean-prediction proxy
 # branch (CpGTrunk) late-fused (concatenation, no product term) with an
 # RNA-conditioned branch into a single prediction head -- the simplest

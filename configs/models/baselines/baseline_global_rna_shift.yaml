@@ -1,21 +1,29 @@
 # Baseline (paper comparison, see docs/PAPER_EXPERIMENTS.md): "Global RNA Shift".
-# Adds a single patient-specific correction derived from RNA to the CpG prior,
-# with no CpG-specific modeling of the RNA effect at all (GlobalShiftInteraction
-# ignores the CpG embedding -- raw_delta is constant across every locus for a
-# given sample). Tests whether global differences between patients are
-# sufficient without modeling CpG-specific effects. Identical to the canonical
-# recipe (configs/models/rna_methylation.yaml) except model.interaction.kind.
+# Adds a single patient-specific correction derived from RNA, with no
+# CpG-specific modeling of the RNA effect at all -- the raw branch never sees
+# the CpG embedding (include_raw_cpg: false, use_raw_product: false), so
+# beta_hat is constant across every locus for a given sample except through
+# whatever the mean branch alone contributes (disabled here: use_mean_branch:
+# false, so the raw-branch-only prediction really is patient-global). Tests
+# whether global differences between patients are sufficient without modeling
+# CpG-specific effects.
+#
+# Reproduced under the reference shared-backbone engine
+# (FeatureFusionArchitectureVariantModel) -- see models.py's docstring-in-code
+# for the include_raw_rna/include_raw_cpg/use_raw_product axis. The retired
+# two-stage engine's InteractionConfig.kind=global_shift baseline (frozen chr1
+# numbers under results/reference/methylprophet_comparison/baselines_chr1.md)
+# is no longer reproducible -- see CLAUDE.md's "Model compatibility note".
+# Otherwise identical to configs/models/rna_methylation_shared_backbone.yaml.
 model:
   encoder:
     kind: linear
     latent_dim: 256
     layer_norm: true
   interaction:
-    kind: global_shift
+    kind: concat
     hidden_dim: 128
     dropout: 0.1
-  zero_init_residual: true
-  variance_normalized_residual: true
 
 loss:
   beta_mse_weight: 1.0
@@ -43,18 +51,34 @@ training:
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 2
+  hdf5_cache_mb: 256
+  checkpoint_every: 1
+  compile: false
 
-# Scalable default. Use --engine matched_chr1 for the exact pair-complete chr1
-# E1 reproduction. For a pair-complete chr123 study, set this explicitly to
-# pair_complete in a copied recipe and record the compute budget.
-schedule_policy: axis_full_coverage
+schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true
 structured_loss_sources: [array, epic, wgbs]
 
+locus_cls:
+  use_mean_branch: false
+  use_fusion_product: false
+  use_raw_product: false
+  include_raw_rna: true
+  include_raw_cpg: false
+  fusion_init_std: 0.01
+  aux_weight: 0.15
+  residual_aux_weight: 0.0
+  raw_lr_multiplier: 1.0
+  trunk_hidden_dim: 256
+  bottleneck_dim: 64
+  trunk_dropout: 0.1
+
 batching:
-  array: {sample_size: 512, cpg_size: 512}
-  epic: {sample_size: 128, cpg_size: 4096}
-  wgbs: {sample_size: 32, cpg_size: 16384}
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
 
 development:
   fraction: 0.10

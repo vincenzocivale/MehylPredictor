@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Data-preparation entrypoint for CpGStatisticsPredictor and RNAMethylationPredictor.
+"""Data-preparation entrypoint for CpGStatisticsPredictor and the reference
+RNA-methylation model (FeatureFusionLocusCLSModel/FeatureFusionArchitectureVariantModel).
 
 --model cpg_statistics: build multi-technology CpG mean/sigma labels for
 chr1, chr123 or genome-wide (former scripts/prepare_statistics.py).

@@ -1,14 +1,14 @@
-"""Scope-general training/evaluation for the canonical RNA methylation model."""
+"""Scope-general training/evaluation for the reference RNA-methylation model."""
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .trainer import ScopedRNATrainer
+    from .locus_cls_trainer import LocusCLSJointTrainer
 
-__all__ = ["ScopedRNATrainer"]
+__all__ = ["LocusCLSJointTrainer"]
 
 
 def __getattr__(name: str):
-    if name == "ScopedRNATrainer":
-        from .trainer import ScopedRNATrainer
-        return ScopedRNATrainer
+    if name == "LocusCLSJointTrainer":
+        from .locus_cls_trainer import LocusCLSJointTrainer
+        return LocusCLSJointTrainer
     raise AttributeError(name)

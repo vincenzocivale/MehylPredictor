@@ -14,8 +14,10 @@ from dataclasses import dataclass, field
 class EncoderConfig:
     # "linear" is the canonical single Linear(25017 -> latent_dim) projection and the
     # only kind the frozen canonical model classes accept. "mlp"/"program_bottleneck"/
-    # "locus_attention" are architecture-novelty ablations reachable only through
-    # ``models.ArchitectureVariantModel`` -- see docs/RNA_METHYLATION.md and
+    # "locus_attention"/"bottleneck_mlp"/"frozen_embedding" are architecture-novelty
+    # ablations (an ongoing RNA-encoder-comparison harness, not a closed one-off study)
+    # reachable only through ``models.FeatureFusionArchitectureVariantModel`` -- see
+    # docs/RNA_METHYLATION.md's "Forward direction" section and
     # results/reference/ablations/architecture_novelty_2026_09/README.md.
     kind: str = "linear"
     # Canonical width of the RNA latent (LinearRNAEncoder output / ProductInteraction
@@ -23,7 +25,8 @@ class EncoderConfig:
     # docs/RNA_METHYLATION.md ablation note before flipping this in a non-experimental recipe.
     latent_dim: int = 256
     layer_norm: bool = True
-    # Ablation-only (kind != "linear"): hidden width of the "mlp" encoder.
+    # Ablation-only (kind != "linear"): hidden width of the "mlp" encoder, and the
+    # per-block width of the "bottleneck_mlp" encoder (default 1024 matches both).
     hidden_dim: int = 1024
     dropout: float = 0.0
     # Ablation-only: number of gene-program units -- the bottleneck width for
@@ -35,6 +38,20 @@ class EncoderConfig:
     # locus -> gene-program cross attention.
     program_dim: int = 128
     n_heads: int = 4
+    # Ablation-only ("bottleneck_mlp"): number of pre-norm residual blocks
+    # (``x = x + Linear(GELU(Linear(LayerNorm(x))))``) and the inner expansion ratio
+    # of each block's hidden layer (inner width = hidden_dim * mlp_ratio). Defaults
+    # (6, 4) reproduce MethylProphet's published RNA-branch architecture (bioRxiv
+    # 2025.02.05.636730, github.com/xk-huang/methylprophet, BottleneckMLP
+    # "B_6-Wi_1024") -- architecture only, not their preprocessing or fusion; see
+    # docs/RNA_METHYLATION.md.
+    n_blocks: int = 6
+    mlp_ratio: int = 4
+    # Ablation-only ("frozen_embedding"): free-text label of which pretrained
+    # transcriptome foundation model produced the embedding this encoder adapts
+    # (e.g. "bulkrnabert_tcga") -- not read by any code path, only for
+    # run/checkpoint provenance and W&B tagging.
+    frozen_embedding_source: str = ""
 
 
 @dataclass(slots=True)
@@ -68,52 +85,23 @@ class InteractionConfig:
 class TrunkConfig:
     """Depth/topology of the post-fusion trunk (architecture-novelty ablation).
 
-    The canonical model has *no* trunk (``kind="none"``): the joint
+    The reference model has *no* trunk (``kind="none"``): the joint
     ``[rna, cpg, product]`` vector goes straight through one hidden layer to a
-    scalar, i.e. depth 1. Hyper-Connections and mHC are macro-design mechanisms
-    for deep residual stacks, so they only have something to act on once a real
-    trunk exists -- ``kind="plain"`` at several depths is the mandatory control
-    that separates "depth helped" from "stream mixing helped".
+    scalar, i.e. depth 1. ``kind="plain"`` at several depths is the control
+    that isolates whether depth alone helps beyond that single fusion layer.
 
-    - ``plain``: pre-norm residual blocks, single residual stream.
-    - ``hc``:    Hyper-Connections (Zhu et al., ICLR 2025, arXiv:2409.19606) --
-                 ``n_streams`` parallel residual streams with unconstrained
-                 learnable mixing.
-    - ``mhc``:   Manifold-Constrained Hyper-Connections (DeepSeek,
-                 arXiv:2512.24880) -- the same, with the residual mapping
-                 projected onto the Birkhoff polytope (doubly stochastic) by
-                 Sinkhorn-Knopp, restoring the identity-mapping/conservation
-                 property that plain HC loses.
-
-    Only the *static* (input-independent) mappings are learned. mHC's dynamic,
-    input-dependent mappings would need one n x n matrix per (sample, locus)
-    pair -- 262k matrices per array block, each Sinkhorn-normalized -- which is
-    not affordable on Cartesian blocks. The paper's own component ablation
-    (its Table 1) attributes -0.022 of the -0.027 total loss gap to the
-    residual mapping alone, which is exactly the piece kept here.
+    A Hyper-Connections/Manifold-Constrained-HC multi-stream trunk kind was
+    tried and removed (architecture_novelty_2026_09, see
+    `docs/RNA_METHYLATION.md` and CLAUDE.md's "Model compatibility note" --
+    judged not worth the added complexity for the measured gain); this
+    dataclass no longer has multi-stream fields.
     """
 
-    kind: str = "none"  # none|plain|hc|mhc
+    kind: str = "none"  # none|plain
     depth: int = 0
     width: int = 128
     dropout: float = 0.1
     expansion: int = 2
-    # HC/mHC only: residual stream width (expansion rate n in the papers).
-    n_streams: int = 4
-    # mHC only: Sinkhorn-Knopp iterations for the doubly stochastic projection.
-    # 20 is the value used in the mHC paper.
-    sinkhorn_iters: int = 20
-    # mHC/HC only: how strongly the residual mapping is initialized towards the
-    # identity (logit scale before the exponent/Sinkhorn). At the default 4.0 with
-    # n_streams=4 the projected matrix is ~0.948 on the diagonal and ~0.017 off
-    # it -- near-independent streams, but not a hard identity, which would leave
-    # the residual mapping with no gradient to move away from.
-    identity_init_scale: float = 4.0
-    # The novelty arm: instead of n anonymous copies of the residual width, give
-    # each stream a modality identity (rna / cpg / product / prior), so the
-    # doubly stochastic residual mapping is a mass-conserving *cross-modal
-    # exchange* operator that can be read off per depth. Requires n_streams == 4.
-    stream_semantics: bool = False
     gradient_checkpointing: bool = False
 
 
@@ -150,9 +138,9 @@ class ModelConfig:
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     interaction: InteractionConfig = field(default_factory=InteractionConfig)
     # Architecture-novelty ablation blocks. Both default to inert, and any
-    # non-default value routes the run to ``models.ArchitectureVariantModel``
-    # instead of the frozen canonical classes (whose parameters must not change
-    # -- see CLAUDE.md's model-compatibility note).
+    # non-default value routes the run to
+    # ``models.FeatureFusionArchitectureVariantModel`` instead of the reference
+    # ``models.FeatureFusionLocusCLSModel``.
     trunk: TrunkConfig = field(default_factory=TrunkConfig)
     axial: AxialConfig = field(default_factory=AxialConfig)
     # Emit a per-pair Beta concentration alongside the anchored mean, so
@@ -245,6 +233,7 @@ class TrainingConfig:
     # shuffles whole blocks while retaining physical locality inside them.
     schedule_layout: str = "legacy_scattered"  # legacy_scattered|contiguous_blocks
     prefetch_depth: int = 2
+    prefetch_workers: int = 1
     hdf5_cache_mb: int = 256
     checkpoint_every: int = 1
     compile: bool = False

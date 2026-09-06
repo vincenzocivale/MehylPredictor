@@ -26,11 +26,11 @@ mirroring (not sharing) ``JointRNAMethylationTrainer``'s.
 from __future__ import annotations
 
 from contextlib import nullcontext
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 import json
 import os
-import queue
-import threading
 import time
 from pathlib import Path
 
@@ -52,7 +52,7 @@ from ..scopes import scope_protocol
 from ..storage import LocusFeatureCache, RNACache, SortedIndex
 from ..tcga_canonical import TCGACanonicalBundle
 from .config import load_rna_recipe
-from .matched_chr1_data import load_matched_chr1_protocol_and_sources
+from .matched_chr1_data import load_compact_scope_sources, load_matched_chr1_protocol_and_sources
 from .metrics import ArrayMomentMetrics
 from .schedule import SourceSchedule, interleave
 from .splits import blocked_cpg_split, stratified_sample_split
@@ -116,6 +116,10 @@ class LocusCLSJointTrainer:
         trunk_dropout: float = 0.1,
         use_mean_branch: bool = True,
         use_fusion_product: bool = False,
+        use_raw_product: bool = True,
+        include_raw_rna: bool = True,
+        include_raw_cpg: bool = True,
+        product_mlp: bool = False,
         fusion_init_std: float = 0.01,
         aux_weight: float = 0.15,
         residual_aux_weight: float = 0.15,
@@ -165,12 +169,17 @@ class LocusCLSJointTrainer:
 
         self.matched_chr1_root = Path(matched_chr1_root) if matched_chr1_root else None
         if self.matched_chr1_root is not None:
-            if scope != "chr1":
-                raise ValueError("matched_chr1_root is only valid for scope='chr1'")
-            self.bundle = None
-            self.protocol, self._sources = load_matched_chr1_protocol_and_sources(
-                self.matched_chr1_root, self.root, hdf5_cache_mb=cfg.hdf5_cache_mb,
-            )
+            if scope == "chr1":
+                self.bundle = None
+                self.protocol, self._sources = load_matched_chr1_protocol_and_sources(
+                    self.matched_chr1_root, self.root, hdf5_cache_mb=cfg.hdf5_cache_mb,
+                )
+            else:
+                self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
+                self.protocol = scope_protocol(scope, self.bundle, canonical_root=self.root)
+                self._sources = load_compact_scope_sources(
+                    self.matched_chr1_root, self.protocol, hdf5_cache_mb=cfg.hdf5_cache_mb,
+                )
         else:
             self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
             self.protocol = scope_protocol(scope, self.bundle, canonical_root=self.root)
@@ -195,11 +204,20 @@ class LocusCLSJointTrainer:
         # An architecture-novelty recipe (a non-default encoder kind, trunk or
         # axial block, or a beta-likelihood head) routes to
         # FeatureFusionArchitectureVariantModel instead of the reference class --
-        # see architecture_novelty_2026_09 / docs/RNA_METHYLATION.md. At every
-        # default this class is numerically identical to
-        # FeatureFusionLocusCLSModel (tests/test_architecture_variants.py), so
-        # this dispatch changes nothing for the reference recipe itself.
-        self.architecture_variant = is_architecture_variant(self.recipe.model)
+        # see architecture_novelty_2026_09 / docs/RNA_METHYLATION.md. So does a
+        # non-default raw-branch composition (use_raw_product/product_mlp/
+        # include_raw_rna/include_raw_cpg): these are the paper-required
+        # simplified-baseline axis (docs/PAPER_EXPERIMENTS.md), which needs
+        # FeatureFusionArchitectureVariantModel even with encoder.kind=linear --
+        # FeatureFusionLocusCLSModel (the reference, non-variant class) has no
+        # such parameters. At every default this class is numerically identical
+        # to FeatureFusionLocusCLSModel (tests/test_architecture_variants.py),
+        # so this dispatch changes nothing for the reference recipe itself.
+        self.architecture_variant = (
+            is_architecture_variant(self.recipe.model)
+            or not use_raw_product or product_mlp
+            or not include_raw_rna or not include_raw_cpg
+        )
         model_cls = FeatureFusionArchitectureVariantModel if self.architecture_variant else FeatureFusionLocusCLSModel
         self.architecture_label = (
             "feature_fusion_locus_cls_arch_" + feature_fusion_variant_label(self.recipe.model)
@@ -207,9 +225,23 @@ class LocusCLSJointTrainer:
             else "feature_fusion_locus_cls"
         )
         self.model = model_cls(
-            25_017, 1536, self.recipe.model,
+            # Derived from whichever RNA cache was actually opened, not hardcoded --
+            # a "frozen_embedding" arm (encoder.kind=frozen_embedding) points
+            # --rna-cache at a precomputed-embedding directory (e.g. BulkRNABert,
+            # 256-d) instead of the canonical 25017-gene z-scored cache; see
+            # scripts/prepare_bulkrnabert_embeddings.py and
+            # models.py::FrozenEmbeddingEncoder.
+            self.rna.values.shape[1], 1536, self.recipe.model,
             trunk_hidden_dim=trunk_hidden_dim, bottleneck_dim=bottleneck_dim, trunk_dropout=trunk_dropout,
             use_mean_branch=use_mean_branch, use_fusion_product=use_fusion_product, fusion_init_std=fusion_init_std,
+            # use_raw_product/include_raw_rna/include_raw_cpg/product_mlp are
+            # ablation-only knobs on FeatureFusionArchitectureVariantModel;
+            # FeatureFusionLocusCLSModel (the reference, non-variant class) has
+            # no such parameters.
+            **({
+                "use_raw_product": use_raw_product, "product_mlp": product_mlp,
+                "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
+            } if self.architecture_variant else {}),
         ).to(self.device)
         self.train_model = (
             torch.compile(self.model, mode=cfg.compile_mode) if cfg.compile else self.model
@@ -227,6 +259,8 @@ class LocusCLSJointTrainer:
             "training": asdict(cfg),
             "locus_cls": {
                 "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
+                "use_raw_product": use_raw_product, "product_mlp": product_mlp,
+                "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
                 "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
                 "trunk_hidden_dim": trunk_hidden_dim, "bottleneck_dim": bottleneck_dim,
@@ -269,6 +303,8 @@ class LocusCLSJointTrainer:
                     "training": asdict(self.recipe.training), "schedule_policy": self.recipe.schedule_policy,
                     "locus_cls": {
                         "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
+                        "use_raw_product": use_raw_product, "product_mlp": product_mlp,
+                        "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
                         "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
                         "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
                     },
@@ -290,6 +326,9 @@ class LocusCLSJointTrainer:
     def close(self) -> None:
         if self.bundle is not None:
             self.bundle.close()
+            for source in self._sources.values():
+                if source not in self.bundle.sources.values():
+                    source.close()
         else:
             for source in self._sources.values():
                 source.close()
@@ -330,6 +369,25 @@ class LocusCLSJointTrainer:
                 cpg = cpg[np.isin(cpg, pools[0].cpg_idx)]
             if len(rows) and len(cpg):
                 pools.append(TrainingPool(name, rows, source.sample_idx[rows], cpg))
+        # ``contiguous_blocks`` refers to slots in each pool. Protocol arrays
+        # are split/shuffled ID lists, so those slots are not necessarily
+        # contiguous in the underlying HDF5. Sort each axis once by its physical
+        # position. Pair-complete still visits the exact same Cartesian pairs
+        # and computes identical per-block losses; reads become bounded local
+        # rectangles instead of expensive HDF5 fancy selections.
+        if self.recipe.training.schedule_layout == "contiguous_blocks":
+            local_pools = []
+            for pool in pools:
+                source = self._sources[pool.name]
+                row_order = np.argsort(pool.row_positions, kind="stable")
+                cpg_order = np.argsort(source.cpg_positions(pool.cpg_idx), kind="stable")
+                local_pools.append(TrainingPool(
+                    pool.name,
+                    np.asarray(pool.row_positions[row_order], np.int64),
+                    np.asarray(pool.sample_idx[row_order], np.int64),
+                    np.asarray(pool.cpg_idx[cpg_order], np.int64),
+                ))
+            pools = local_pools
         return pools
 
     def _autocast(self):
@@ -501,6 +559,10 @@ class LocusCLSJointTrainer:
             "loss_config": asdict(self.recipe.loss), "training": asdict(self.recipe.training), "history": history,
             "locus_cls": {
                 "use_mean_branch": self.use_mean_branch, "use_fusion_product": self.model.use_fusion_product,
+                "use_raw_product": getattr(self.model, "use_raw_product", True),
+                "product_mlp": getattr(self.model, "product_mlp", False),
+                "include_raw_rna": getattr(self.model, "include_raw_rna", True),
+                "include_raw_cpg": getattr(self.model, "include_raw_cpg", True),
                 "fusion_init_std": self._fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
             },
@@ -601,40 +663,26 @@ class LocusCLSJointTrainer:
             cuda_timings = []
             observed_pairs = 0
             pair_slots = 0
-            # Block reads (self._read_block -> self._sources[...], HDF5) and the GPU
-            # step were fully serial: the GPU sat idle while the next block was being
-            # read/decoded on CPU. A single background thread now reads blocks one
-            # epoch's worth ahead (bounded by the queue's maxsize=2, so memory stays
-            # flat) while this thread trains on the GPU -- strictly one reader thread,
-            # same order as `plan`, so no concurrency on the HDF5 sources and no change
-            # to training numerics, just overlap. Measured ~7% GPU utilization before
-            # this change (mostly CPU-bound, un-overlapped block prep).
+            # Prepare blocks concurrently but consume futures in submission order:
+            # optimizer order/numerics stay identical while HDF5 decode, NaN scans,
+            # feature/RNA copies and pinning can overlap across CPU cores. The deque
+            # is strictly bounded, so large WGBS embeddings cannot inflate RAM.
             items = [(source_i, *schedules[source_i][local_step]) for source_i, local_step in plan]
-            block_queue: queue.Queue = queue.Queue(maxsize=cfg.prefetch_depth)
-            done = object()
-
-            def _prefetch(items=items, out=block_queue, done=done):
-                for source_i, row_slots, cpg_slots in items:
-                    try:
-                        block = self._prepare_step(source_i, row_slots, cpg_slots)
-                        out.put((source_i, block, None))
-                    except Exception as exc:  # noqa: BLE001 - re-raised on the main thread below
-                        out.put((source_i, None, exc))
-                        return
-                out.put(done)
-
-            prefetch_thread = threading.Thread(target=_prefetch, daemon=True)
-            prefetch_thread.start()
-            while True:
+            item_iter = iter(items)
+            pending = deque()
+            executor = ThreadPoolExecutor(max_workers=cfg.prefetch_workers, thread_name_prefix="block-prefetch")
+            for _ in range(min(cfg.prefetch_depth, len(items))):
+                source_i, row_slots, cpg_slots = next(item_iter)
+                pending.append(executor.submit(self._prepare_step, source_i, row_slots, cpg_slots))
+            while pending:
                 wait_started = time.perf_counter()
-                item = block_queue.get()
+                block = pending.popleft().result()
                 data_wait_seconds += time.perf_counter() - wait_started
-                if item is done:
-                    break
-                source_i, block, exc = item
-                if exc is not None:
-                    prefetch_thread.join()
-                    raise exc
+                try:
+                    source_i, row_slots, cpg_slots = next(item_iter)
+                    pending.append(executor.submit(self._prepare_step, source_i, row_slots, cpg_slots))
+                except StopIteration:
+                    pass
                 source_i, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count, batch_pair_slots, prepare_seconds = block
                 cpu_prepare_seconds += prepare_seconds
                 observed_pairs += finite_count
@@ -660,7 +708,7 @@ class LocusCLSJointTrainer:
                     else:
                         piece_sums[key] = float(piece_sums.get(key, 0.0)) + float(value)
                     piece_counts[key] = piece_counts.get(key, 0) + 1
-            prefetch_thread.join()
+            executor.shutdown(wait=True)
             torch.cuda.synchronize(self.device)
             training_seconds = time.time() - started
             h2d_seconds = sum(a.elapsed_time(b) for a, b, _, _ in cuda_timings) / 1000.0
@@ -763,9 +811,10 @@ def evaluate_official_split(
     feature_cache: str | Path,
     rna_cache: str | Path,
     registry: str | Path,
-    matched_chr1_root: str | Path,
+    matched_chr1_root: str | Path | None,
     cpg_targets_dir: str | Path,
     output: str | Path,
+    scope: str = "chr1",
     sample_chunk: int = 128,
     cpg_chunk: int = 2048,
 ) -> dict:
@@ -787,11 +836,13 @@ def evaluate_official_split(
     # persisted into the checkpoint by LocusCLSJointTrainer._save_checkpoint.
     scratch_root = Path(output).parent / ".eval_runs"
     trainer = LocusCLSJointTrainer(
-        canonical_root=canonical_root, scope="chr1", recipe_path=recipe_path,
+        canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
         feature_cache=feature_cache, rna_cache=rna_cache, registry=registry,
         cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
         output_root=scratch_root, mode="final", run_id=f"eval-{Path(checkpoint).stem}-{os.getpid()}",
         use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
+        use_raw_product=lc.get("use_raw_product", True), product_mlp=lc.get("product_mlp", False),
+        include_raw_rna=lc.get("include_raw_rna", True), include_raw_cpg=lc.get("include_raw_cpg", True),
         fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
         track=False,
@@ -813,7 +864,7 @@ def evaluate_official_split(
         result = view_results["val_cpg_x_val_sample"]
         summary = {
             "model": "feature_fusion_locus_cls", "checkpoint": str(checkpoint), "checkpoint_epoch": ckpt.get("epoch"),
-            "eval_scope": "chr1", "view": "val_cpg_x_val_sample", "metrics": result,
+            "eval_scope": scope, "view": "val_cpg_x_val_sample", "metrics": result,
             "views": view_results,
         }
         write_json(Path(output), summary)

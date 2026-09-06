@@ -1,5 +1,12 @@
 # Comparison: simplified baselines vs Ours vs MethylProphet (chr1)
 
+> **Historical provenance note**: `RNAMethylationPredictor` and the three non-CpG-Prior
+> baselines below were trained via `--engine matched_chr1` (`MethylProphetTrainer`), both
+> since removed from the codebase (see `CLAUDE.md`'s "Model compatibility note"). These
+> numbers remain frozen, valid provenance; reproducing them requires a fresh run under the
+> current `FeatureFusionArchitectureVariantModel`-based baselines (see
+> `docs/PAPER_EXPERIMENTS.md`'s "Baseline models" section), not yet done as of this note.
+
 - **MethylProphet**: published Table 5 results (single mixed-source model, chr1) —
   see [`table5_chr1.md`](table5_chr1.md).
 - **Ours**: `RNAMethylationPredictor`, chr1, seed 17, LR 5e-5 constant, 80 epochs —

@@ -1,20 +1,22 @@
 """RNA-conditioned methylation models.
 
-The canonical architecture is the variance-normalized residual model:
+The reference architecture is the single-stage shared-backbone model,
+``FeatureFusionArchitectureVariantModel`` (``encoder.kind=locus_attention``
+selects its primary configuration; ``encoder.kind=linear`` reduces it to the
+earlier ``FeatureFusionLocusCLSModel`` topology, kept as a comparison arm):
 
-    RNA (25,017 genes)
-      -> LayerNorm -> Linear(..., 256)
-      -> RNA latent z
+    CpG reference context -> frozen NTv3 embedding e_l -> CpGTrunk -> h_mean_l
+    patient RNA x_s -> RNA encoder -> locus-conditioned representation r_s,l
+    [r_s,l, e_l] -> raw interaction branch h_raw_s,l
+    [h_mean_l, h_raw_s,l] -> fusion -> beta_hat_s,l
 
-    [z, frozen NTv3 CpG embedding, proj(z) * proj(CpG)]
-      -> MLP -> raw_delta
-
-    beta_hat = sigmoid(logit(mu_i) + sigma_i * raw_delta)
-
-The variability gate, mean-RNA anchor, direct-prediction branch and no-product
-variants were research ablations.  They are intentionally not executable in
-the canonical model. ``RNA2DNAmModel`` remains only as the historical flat-
-residual compatibility baseline.
+See ``docs/RNA_METHYLATION.md`` for the full architecture history and the
+ongoing RNA-encoder comparison harness (``EncoderConfig.kind``/
+``build_rna_encoder``). The earlier two-stage frozen-prior + residual
+generation (``RNAMethylationPredictor``, ``VarianceNormalizedResidualModel``,
+``RNA2DNAmModel``, ``ArchitectureVariantModel``, ``MethylProphetTrainer``) has
+been retired; its frozen numbers remain under
+``results/reference/methylprophet_comparison/`` for historical provenance.
 """
 from __future__ import annotations
 
@@ -112,119 +114,6 @@ class ProductInteraction(nn.Module):
             )
             pieces.append(product)
         joint = torch.cat(pieces, dim=-1)
-        return self.network(joint).squeeze(-1)
-
-    def zero_output(self) -> None:
-        nn.init.zeros_(self.network[-1].weight)
-        nn.init.zeros_(self.network[-1].bias)
-
-
-class FiLMInteraction(nn.Module):
-    """Fusion-mechanism ablation: RNA modulates the CpG embedding via FiLM.
-
-    RNA latent -> Linear -> (gamma, beta) of ``locus_dim``; the CpG embedding
-    is affinely modulated (``loci' = loci * (1 + gamma) + beta``) before the
-    joint MLP. Not used by any canonical model path -- see
-    ``InteractionConfig.kind`` / docs/RNA_METHYLATION.md ablation note.
-    """
-
-    def __init__(self, rna_dim: int, locus_dim: int, hidden_dim: int, dropout: float):
-        super().__init__()
-        self.film = nn.Linear(rna_dim, 2 * locus_dim)
-        joint_dim = rna_dim + locus_dim
-        self.network = nn.Sequential(
-            nn.LayerNorm(joint_dim),
-            nn.Linear(joint_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
-
-    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
-        batch = rna.global_vector.shape[0]
-        n_loci = loci.shape[0]
-        gamma, beta = self.film(rna.global_vector).chunk(2, dim=-1)  # each (batch, locus_dim)
-        modulated = loci[None, :, :] * (1.0 + gamma[:, None, :]) + beta[:, None, :]
-        joint = torch.cat(
-            [rna.global_vector[:, None, :].expand(batch, n_loci, -1), modulated], dim=-1
-        )
-        return self.network(joint).squeeze(-1)
-
-    def zero_output(self) -> None:
-        nn.init.zeros_(self.network[-1].weight)
-        nn.init.zeros_(self.network[-1].bias)
-
-
-class CrossAttentionInteraction(nn.Module):
-    """Fusion-mechanism ablation: single-head scaled dot-product cross attention.
-
-    query = W_q(rna), key/value = W_k(loci)/W_v(loci); the (sample, locus)
-    attention score is the scaled dot product of query and key (same pairwise
-    shape as ``ProductInteraction``'s product term). Unlike sequence
-    attention there is no token axis to pool over -- each locus is scored
-    independently per sample within the Cartesian minibatch -- so the score
-    gates the value via a sigmoid rather than a softmax. Not used by any
-    canonical model path -- see ``InteractionConfig.kind`` /
-    docs/RNA_METHYLATION.md ablation note.
-    """
-
-    def __init__(
-        self,
-        rna_dim: int,
-        locus_dim: int,
-        hidden_dim: int,
-        dropout: float,
-        attn_dim: int | None = None,
-        n_heads: int = 1,
-    ):
-        super().__init__()
-        attn_dim = attn_dim or min(rna_dim, locus_dim)
-        if attn_dim % n_heads != 0:
-            raise ValueError(f"attn_dim {attn_dim} must be divisible by attn_heads {n_heads}")
-        self.attn_dim = attn_dim
-        # n_heads > 1 splits the gate: each head scores its own attn_dim/n_heads
-        # slice, so the sample-locus pair gets ``n_heads`` independent gates
-        # instead of one scalar. The 2026-08 arm ran n_heads=1; this is the
-        # capacity axis that arm never had, not a different mechanism.
-        self.n_heads = int(n_heads)
-        self.head_dim = attn_dim // self.n_heads
-        self.query = nn.Linear(rna_dim, attn_dim)
-        self.key = nn.Linear(locus_dim, attn_dim)
-        self.value = nn.Linear(locus_dim, attn_dim)
-        joint_dim = rna_dim + locus_dim + attn_dim
-        self.network = nn.Sequential(
-            nn.LayerNorm(joint_dim),
-            nn.Linear(joint_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
-
-    def forward(self, rna: RNARepresentation, loci: torch.Tensor) -> torch.Tensor:
-        batch = rna.global_vector.shape[0]
-        n_loci = loci.shape[0]
-        q = self.query(rna.global_vector)  # (batch, attn_dim)
-        k = self.key(loci)  # (n_loci, attn_dim)
-        v = self.value(loci)  # (n_loci, attn_dim)
-        if self.n_heads == 1:
-            score = (q[:, None, :] * k[None, :, :]).sum(-1) / (self.attn_dim ** 0.5)  # (batch, n_loci)
-            gate = torch.sigmoid(score)
-            attended = gate[:, :, None] * v[None, :, :]  # (batch, n_loci, attn_dim)
-        else:
-            qh = q.view(batch, self.n_heads, self.head_dim)
-            kh = k.view(n_loci, self.n_heads, self.head_dim)
-            score = torch.einsum("bhd,lhd->bhl", qh, kh) / (self.head_dim ** 0.5)
-            gate = torch.sigmoid(score)  # (batch, n_heads, n_loci)
-            vh = v.view(n_loci, self.n_heads, self.head_dim)
-            attended = (gate.permute(0, 2, 1)[..., None] * vh[None]).reshape(batch, n_loci, self.attn_dim)
-        joint = torch.cat(
-            [
-                rna.global_vector[:, None, :].expand(batch, n_loci, -1),
-                loci[None, :, :].expand(batch, n_loci, -1),
-                attended,
-            ],
-            dim=-1,
-        )
         return self.network(joint).squeeze(-1)
 
     def zero_output(self) -> None:
@@ -331,21 +220,16 @@ class GlobalShiftInteraction(nn.Module):
 
 
 # InteractionConfig.kind -> interaction module constructor. "concat" is the
-# canonical ProductInteraction (its own include_rna/include_cpg/include_product
-# flags cover the concat/product-only ablation axis); the remaining kinds are
-# fusion-mechanism ablations -- see docs/RNA_METHYLATION.md.
+# reference ProductInteraction (its own include_rna/include_cpg/include_product
+# flags cover the concat/product-only ablation axis); "bilinear"/"global_shift"
+# back the Bilinear RNA-CpG / Global RNA Shift required baselines
+# (docs/PAPER_EXPERIMENTS.md) via FeatureFusionArchitectureVariantModel's
+# ``interaction.kind`` axis.
 def build_interaction(config: "InteractionConfig", rna_dim: int, locus_dim: int) -> nn.Module:
     if config.kind == "concat":
         return ProductInteraction(
             rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout,
             include_rna=config.include_rna, include_cpg=config.include_cpg, include_product=config.include_product,
-        )
-    if config.kind == "film":
-        return FiLMInteraction(rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout)
-    if config.kind == "cross_attention":
-        return CrossAttentionInteraction(
-            rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout,
-            n_heads=config.attn_heads,
         )
     if config.kind == "bilinear":
         return BilinearInteraction(
@@ -355,255 +239,6 @@ def build_interaction(config: "InteractionConfig", rna_dim: int, locus_dim: int)
     if config.kind == "global_shift":
         return GlobalShiftInteraction(rna_dim=rna_dim, locus_dim=locus_dim, hidden_dim=config.hidden_dim, dropout=config.dropout)
     raise ValueError(f"unknown interaction.kind: {config.kind!r}")
-
-
-class RNA2DNAmModel(nn.Module):
-    """Historical flat-residual compatibility baseline.
-
-    ``variability``/``reference_rna``/cancer arguments remain optional only to
-    keep the existing evaluation stack source-compatible.  They are ignored:
-    the selected production architecture has neither a variability gate nor a
-    mean-RNA anchor.
-    """
-
-    def __init__(
-        self,
-        input_dim: int,
-        locus_dim: int,
-        config: ModelConfig,
-        epsilon: float = 1e-4,
-        gene_embeddings: torch.Tensor | None = None,
-        raw_rna_dim: int | None = None,
-    ):
-        super().__init__()
-        if gene_embeddings is not None or raw_rna_dim is not None:
-            raise ValueError(
-                "pretrained/gene-token RNA inputs are not part of the canonical model"
-            )
-        if config.encoder.kind != "linear":
-            raise ValueError(
-                f"canonical model requires model.encoder.kind='linear'; got {config.encoder.kind!r}"
-            )
-        if config.encoder.latent_dim != 256:
-            raise ValueError(
-                "canonical model requires a 256-D RNA latent; "
-                f"got {config.encoder.latent_dim}"
-            )
-        if config.interaction.kind != "concat":
-            raise ValueError(
-                f"canonical model requires model.interaction.kind='concat'; got {config.interaction.kind!r}"
-            )
-        if not config.zero_init_residual:
-            raise ValueError("canonical model requires zero_init_residual=true")
-
-        self.config = config
-        self.epsilon = float(epsilon)
-        self.rna_encoder = LinearRNAEncoder(
-            input_dim=input_dim,
-            latent_dim=256,
-            layer_norm=config.encoder.layer_norm,
-        )
-        self.interaction = ProductInteraction(
-            rna_dim=256,
-            locus_dim=locus_dim,
-            hidden_dim=config.interaction.hidden_dim,
-            dropout=config.interaction.dropout,
-        )
-        self.interaction.zero_output()
-
-    @property
-    def supports_factorized_inference(self) -> bool:
-        return False
-
-    def forward(
-        self,
-        rna: torch.Tensor,
-        loci: torch.Tensor,
-        prior: torch.Tensor,
-        variability: torch.Tensor | None = None,
-        reference_rna: torch.Tensor | None = None,
-        cancer_codes: torch.Tensor | None = None,
-        cancer_centroids: torch.Tensor | None = None,
-    ) -> dict[str, torch.Tensor]:
-        del variability, reference_rna, cancer_codes, cancer_centroids
-
-        representation = self.rna_encoder(rna)
-        delta_logit = self.interaction(representation, loci)
-        prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
-        prior_logit = torch.logit(prior)
-        prediction_logit = prior_logit.unsqueeze(0) + delta_logit
-        beta = torch.sigmoid(prediction_logit)
-
-        # ``gate`` is a diagnostic compatibility field, not a model component.
-        # Returning ones lets historical metric/evaluation code consume the
-        # canonical output dictionary without carrying a gate implementation.
-        gate = torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
-        return {
-            "beta": beta,
-            "delta_logit": delta_logit,
-            "raw_delta_logit": delta_logit,
-            "prediction_logit": prediction_logit,
-            "gate": gate,
-            "prior_logit": prior_logit,
-        }
-
-
-class VarianceNormalizedResidualModel(nn.Module):
-    """canonical variance-normalized residual formulation: the residual is parametrized as
-    ``sigma_i * raw_delta`` instead of a flat ``delta_logit``, so the network's
-    raw output lives in a locus-variance-standardized space rather than
-    directly in logit space.  ``sigma_i`` is the per-CpG inter-sample std of
-    logit(beta) (exact for train CpGs, NTv3-probe-predicted for held-out/
-    auxiliary CpGs -- see scripts/benchmark_methylprophet/prepare.py).
-
-    Motivation (see docs/METHYLPROPHET_TABLE5.md V1 experiment note): under
-    plain beta-MSE, a fixed absolute error contributes far more gradient on a
-    high-variance locus than on a near-constant one, while the headline
-    MAS-PCC metric weighs every locus equally regardless of its variance.
-    Standardizing the residual target removes that scale mismatch.
-
-    This is the current reference formulation. RNA2DNAmModel is retained
-    only as a flat-residual ablation/control.  Reuses the same LinearRNAEncoder/ProductInteraction
-    building blocks so results stay comparable to the frozen architecture.
-    """
-
-    def __init__(
-        self,
-        input_dim: int,
-        locus_dim: int,
-        config: ModelConfig,
-        epsilon: float = 1e-4,
-    ):
-        super().__init__()
-        if config.encoder.kind != "linear":
-            raise ValueError("V1 variant requires model.encoder.kind='linear'")
-        if not config.zero_init_residual:
-            raise ValueError("V1 variant requires zero_init_residual=true (starts exactly at the prior)")
-
-        # 256 is the canonical/production RNA latent width. A different
-        # config.encoder.latent_dim is an architecture-scaling ablation only
-        # (does the model benefit from a wider RNA projection) -- not used by
-        # any canonical model path unless the recipe explicitly opts in.
-        latent_dim = config.encoder.latent_dim
-        self.config = config
-        self.epsilon = float(epsilon)
-        self.rna_encoder = LinearRNAEncoder(
-            input_dim=input_dim, latent_dim=latent_dim, layer_norm=config.encoder.layer_norm,
-        )
-        # config.interaction.kind selects the fusion mechanism: "concat" is the
-        # canonical ProductInteraction; "film"/"cross_attention"/"bilinear" are
-        # fusion-mechanism ablations -- see build_interaction/docs/RNA_METHYLATION.md.
-        self.interaction = build_interaction(config.interaction, rna_dim=latent_dim, locus_dim=locus_dim)
-        self.interaction.zero_output()  # raw_delta = 0 at init => beta_hat = prior, same safe start as RNA2DNAmModel
-
-    @property
-    def supports_factorized_inference(self) -> bool:
-        return False
-
-    def forward(
-        self,
-        rna: torch.Tensor,
-        loci: torch.Tensor,
-        prior: torch.Tensor,
-        sigma: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
-        representation = self.rna_encoder(rna)
-        raw_delta = self.interaction(representation, loci)  # standardized-residual space
-        sigma_safe = sigma.clamp_min(1e-6)  # numerical safety only, not the loss-side sigma_min floor
-        delta_logit = sigma_safe.unsqueeze(0) * raw_delta
-        prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
-        prior_logit = torch.logit(prior)
-        prediction_logit = prior_logit.unsqueeze(0) + delta_logit
-        beta = torch.sigmoid(prediction_logit)
-
-        gate = torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
-        return {
-            "beta": beta,
-            "delta_logit": delta_logit,
-            "raw_delta": raw_delta,
-            "raw_delta_logit": delta_logit,
-            "prediction_logit": prediction_logit,
-            "gate": gate,
-            "prior_logit": prior_logit,
-        }
-
-
-class RNAMethylationPredictor(VarianceNormalizedResidualModel):
-    """Canonical public name for the frozen variance-normalized architecture.
-
-    This subclass deliberately adds no parameters or buffers, so historical
-    ``VarianceNormalizedResidualModel`` checkpoints load with identical state-
-    dict keys.  The old class name remains a compatibility alias at call sites;
-    new code should use ``RNAMethylationPredictor``.
-    """
-    pass
-
-
-class DirectPredictionModel(nn.Module):
-    """Architecture-ablation model: no CpG-statistics prior/anchor at all.
-
-    ``prediction_logit = raw_delta`` directly (no ``prior_logit`` added, no
-    sigma scaling) -- measures how much the mu/sigma prior contributes versus
-    predicting methylation from RNA+CpG embedding alone. Selected only via
-    ``ModelConfig.use_prior_anchor=False``, matched_chr1 engine only (see
-    ``benchmark/methylprophet/trainer.py``). Not part of the canonical model;
-    see docs/RNA_METHYLATION.md ablation note.
-    """
-
-    def __init__(
-        self,
-        input_dim: int,
-        locus_dim: int,
-        config: ModelConfig,
-        epsilon: float = 1e-4,
-    ):
-        super().__init__()
-        if config.use_prior_anchor:
-            raise ValueError("DirectPredictionModel requires model.use_prior_anchor=false")
-        if config.zero_init_residual:
-            raise ValueError(
-                "DirectPredictionModel requires model.zero_init_residual=false "
-                "(there is no anchor to start safely 'at zero' relative to)"
-            )
-        if config.encoder.kind != "linear":
-            raise ValueError("DirectPredictionModel requires model.encoder.kind='linear'")
-
-        self.config = config
-        self.epsilon = float(epsilon)
-        self.rna_encoder = LinearRNAEncoder(
-            input_dim=input_dim, latent_dim=config.encoder.latent_dim, layer_norm=config.encoder.layer_norm,
-        )
-        self.interaction = build_interaction(
-            config.interaction, rna_dim=config.encoder.latent_dim, locus_dim=locus_dim
-        )
-
-    @property
-    def supports_factorized_inference(self) -> bool:
-        return False
-
-    def forward(
-        self,
-        rna: torch.Tensor,
-        loci: torch.Tensor,
-        prior: torch.Tensor,
-        sigma: torch.Tensor | None = None,
-    ) -> dict[str, torch.Tensor]:
-        del sigma  # unused: no prior/sigma anchor in this ablation
-        representation = self.rna_encoder(rna)
-        raw_delta = self.interaction(representation, loci)
-        prediction_logit = raw_delta
-        beta = torch.sigmoid(prediction_logit)
-
-        gate = torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device)
-        return {
-            "beta": beta,
-            "delta_logit": prediction_logit,
-            "raw_delta": raw_delta,
-            "raw_delta_logit": prediction_logit,
-            "prediction_logit": prediction_logit,
-            "gate": gate,
-            "prior_logit": None,
-        }
 
 
 class CpGTrunk(nn.Module):
@@ -636,9 +271,8 @@ class FeatureFusionLocusCLSModel(nn.Module):
     2026-09-03 (see docs/RNA_METHYLATION.md) -- selected via the
     ``shared_backbone_locus_cls_2026_09`` ablation ladder
     (``results/reference/ablations.yaml``) over the earlier two-stage
-    frozen-prior + residual pipeline (``VarianceNormalizedResidualModel``/
-    ``RNAMethylationPredictor``, kept below, frozen, for old-checkpoint
-    compatibility only -- see CLAUDE.md's "Model compatibility note"). Trained
+    frozen-prior + residual pipeline (retired; its frozen numbers remain
+    under ``results/reference/methylprophet_comparison/``). Trained
     via ``rna_training.locus_cls_trainer.LocusCLSJointTrainer``, wired into
     ``scripts/train.py --engine matched_chr1_shared_backbone``.
 
@@ -792,16 +426,15 @@ class FeatureFusionLocusCLSModel(nn.Module):
 # ---------------------------------------------------------------------------
 # Architecture-novelty ablation suite (architecture_novelty_2026_09).
 #
-# Everything below is opt-in and unreachable from the canonical model classes
-# above: it is selected only when a recipe sets a non-default
-# ``model.encoder.kind``, ``model.trunk`` or ``model.axial`` block, which routes
-# construction to ``ArchitectureVariantModel``. The canonical
-# ``RNAMethylationPredictor`` keeps its exact parameter set and state-dict keys
-# (CLAUDE.md's model-compatibility note), so historical checkpoints still load.
+# Everything below is opt-in and unreachable from the reference
+# ``FeatureFusionLocusCLSModel`` above: it is selected only when a recipe sets
+# a non-default ``model.encoder.kind``, ``model.trunk`` or ``model.axial``
+# block, which routes construction to ``FeatureFusionArchitectureVariantModel``
+# instead.
 #
-# Motivation for the suite (postdoc review, 2026-09-03): the canonical model is
-# a single Linear(25017 -> 256) RNA projection feeding a depth-1 fusion head,
-# and every drop-in fusion swap has already been measured and lost
+# Motivation for the suite (postdoc review, 2026-09-03): the reference model
+# encoder was a single Linear RNA projection feeding a depth-1 fusion head, and
+# every drop-in fusion swap had already been measured and lost
 # (results/reference/ablations.yaml::fusion_mechanism_2026_08). The two axes
 # that were never touched are the RNA encoder itself and the depth/topology of
 # the trunk -- which is also the prerequisite for Hyper-Connections/mHC to have
@@ -955,9 +588,101 @@ class LocusConditionedRNAEncoder(nn.Module):
         return self.out(attended)
 
 
+class _BottleneckMLPBlock(nn.Module):
+    """One pre-norm residual block: ``x + Linear(GELU(Linear(LayerNorm(x))))``."""
+
+    def __init__(self, width: int, inner_width: int, dropout: float):
+        super().__init__()
+        self.norm = nn.LayerNorm(width)
+        self.fc1 = nn.Linear(width, inner_width)
+        self.fc2 = nn.Linear(inner_width, width)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.fc2(self.dropout(torch.nn.functional.gelu(self.fc1(self.norm(x)))))
+        return x + h
+
+
+class BottleneckMLPEncoder(nn.Module):
+    """MethylProphet-style RNA branch: input projection + N pre-norm residual
+    bottleneck-MLP blocks.
+
+    Reproduces the *architecture* of MethylProphet's published RNA encoder
+    (bioRxiv 2025.02.05.636730, github.com/xk-huang/methylprophet,
+    ``BottleneckMLP`` "B_6-Wi_1024": 6 blocks, width 1024, GELU, LayerNorm
+    pre-norm, ``x = x + Linear(GELU(Linear(LayerNorm(x))))``). Deliberately
+    *not* a full reproduction of their pipeline: (1) preprocessing -- they
+    log-quantize raw counts to [0,1]; this encoder consumes the same frozen
+    z-scored RNA cache as every other arm here, so it stays comparable to
+    ``linear``/``mlp``/``program_bottleneck``/``locus_attention`` on the same
+    ablation protocol rather than confounding architecture with preprocessing;
+    (2) fusion -- they concatenate this branch's output as a token into a
+    DistilBERT sequence, whereas here it plugs into this harness's existing
+    fixed branch/fusion architecture as a locus-invariant global vector, the
+    same contract ``MLPRNAEncoder`` already uses. This arm is trained from
+    scratch (unlike ``frozen_embedding`` below), replacing the encoder only.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        hidden_dim: int,
+        n_blocks: int,
+        mlp_ratio: int,
+        dropout: float,
+        layer_norm: bool = True,
+    ):
+        super().__init__()
+        self.norm = nn.LayerNorm(input_dim) if layer_norm else nn.Identity()
+        self.input_proj = nn.Linear(input_dim, hidden_dim)
+        self.blocks = nn.ModuleList(
+            _BottleneckMLPBlock(hidden_dim, hidden_dim * mlp_ratio, dropout) for _ in range(n_blocks)
+        )
+        self.output_proj = nn.Linear(hidden_dim, latent_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        h = self.input_proj(self.norm(x))
+        for block in self.blocks:
+            h = block(h)
+        return RNARepresentation(self.output_proj(h))
+
+
+class FrozenEmbeddingEncoder(nn.Module):
+    """Thin trainable adapter over a precomputed, frozen embedding.
+
+    Unlike every other encoder above, this one never sees raw/z-scored gene
+    expression: ``x`` is expected to already be a per-sample embedding
+    produced *offline* by a frozen pretrained transcriptome foundation model
+    (e.g. BulkRNABert -- github.com/instadeepai/multiomics-open-research,
+    CC BY-NC-SA 4.0, non-commercial; see
+    ``scripts/prepare_bulkrnabert_embeddings.py`` and
+    ``EncoderConfig.frozen_embedding_source`` for provenance) and cached in
+    the same on-disk contract ``RNACache`` already reads (``storage.py``) --
+    only ``input_dim`` differs from the reference 25017-gene width, which is
+    why this always routes through ``FeatureFusionArchitectureVariantModel``
+    rather than the fixed-25017 reference classes. Structurally identical to
+    ``LinearRNAEncoder`` (LayerNorm + one Linear projection, no other trainable
+    capacity); kept as its own class so the encoder registry documents, by
+    name, that its input is a frozen embedding rather than expression, and so
+    future frozen foundation-model arms (Geneformer, scGPT -- see
+    docs/RNA_METHYLATION.md's "Forward direction") can share this one class
+    via ``frozen_embedding_source`` rather than each needing a bespoke encoder.
+    """
+
+    def __init__(self, input_dim: int, latent_dim: int, layer_norm: bool = True):
+        super().__init__()
+        self.norm = nn.LayerNorm(input_dim) if layer_norm else nn.Identity()
+        self.projection = nn.Linear(input_dim, latent_dim)
+
+    def forward(self, x: torch.Tensor) -> RNARepresentation:
+        return RNARepresentation(self.projection(self.norm(x)))
+
+
 def build_rna_encoder(config: "EncoderConfig", input_dim: int, locus_dim: int) -> nn.Module:
-    """``EncoderConfig.kind`` dispatch. ``linear`` is canonical; the rest are
-    architecture-novelty ablations reachable only via ``ArchitectureVariantModel``."""
+    """``EncoderConfig.kind`` dispatch. ``linear`` is the reference encoder; the
+    rest are architecture-novelty ablations reachable only via
+    ``FeatureFusionArchitectureVariantModel``."""
     if config.kind == "linear":
         return LinearRNAEncoder(input_dim=input_dim, latent_dim=config.latent_dim, layer_norm=config.layer_norm)
     if config.kind == "mlp":
@@ -976,23 +701,15 @@ def build_rna_encoder(config: "EncoderConfig", input_dim: int, locus_dim: int) -
             program_dim=config.program_dim, n_heads=config.n_heads, dropout=config.dropout,
             layer_norm=config.layer_norm, bottleneck_dim=config.latent_dim,
         )
+    if config.kind == "bottleneck_mlp":
+        return BottleneckMLPEncoder(
+            input_dim=input_dim, latent_dim=config.latent_dim, hidden_dim=config.hidden_dim,
+            n_blocks=config.n_blocks, mlp_ratio=config.mlp_ratio, dropout=config.dropout,
+            layer_norm=config.layer_norm,
+        )
+    if config.kind == "frozen_embedding":
+        return FrozenEmbeddingEncoder(input_dim=input_dim, latent_dim=config.latent_dim, layer_norm=config.layer_norm)
     raise ValueError(f"unknown encoder.kind: {config.kind!r}")
-
-
-def sinkhorn_knopp(logits: torch.Tensor, iterations: int) -> torch.Tensor:
-    """Project a square matrix onto the Birkhoff polytope (doubly stochastic).
-
-    Exactly the operator mHC (arXiv:2512.24880, Eq. 9) uses: exponentiate to make
-    every entry positive, then alternately renormalize rows and columns. Run in
-    float32 regardless of autocast -- the alternating normalization is
-    ill-conditioned in bfloat16 and the whole point of the constraint is
-    numerical conservation.
-    """
-    matrix = torch.exp(logits.float())
-    for _ in range(max(1, iterations)):
-        matrix = matrix / matrix.sum(dim=-1, keepdim=True).clamp_min(1e-12)
-        matrix = matrix / matrix.sum(dim=-2, keepdim=True).clamp_min(1e-12)
-    return matrix
 
 
 class _ResidualFunction(nn.Module):
@@ -1015,9 +732,9 @@ class _ResidualFunction(nn.Module):
 class PlainTrunk(nn.Module):
     """Depth control: ``depth`` pre-norm residual blocks, one residual stream.
 
-    This is the arm that separates "depth helped" from "multi-stream mixing
-    helped". Without it, any HC/mHC gain over the canonical depth-1 head is
-    confounded with simply having added layers.
+    This is the arm that separates "depth helped" from "the reference depth-1
+    head is enough" -- see the architecture-novelty suite's `trunk_plain_dX`
+    arms.
     """
 
     n_streams = 1
@@ -1035,133 +752,6 @@ class PlainTrunk(nn.Module):
             else:
                 x = x + block(x)
         return self.out_norm(x)
-
-    def composite_gain(self) -> dict[str, float]:
-        # A single unconstrained identity stream: the composite residual mapping
-        # is exactly 1 by construction, reported for schema symmetry with HC/mHC.
-        return {"forward_amax_gain": 1.0, "backward_amax_gain": 1.0}
-
-
-class HyperConnectionTrunk(nn.Module):
-    """Hyper-Connections (``kind="hc"``) and Manifold-Constrained HC (``kind="mhc"``).
-
-    Implements the single-layer HC recursion of arXiv:2409.19606 / arXiv:2512.24880
-    Eq. 3::
-
-        x_{l+1} = H^res x_l + (H^post)^T F(H^pre x_l)
-
-    over ``n_streams`` parallel residual streams. ``mhc`` additionally constrains
-    the mappings onto the manifold of Eq. 6-8: ``H^res`` is projected onto the
-    Birkhoff polytope by Sinkhorn-Knopp (doubly stochastic, so its spectral norm
-    is <= 1, the set is closed under composition, and the composite mapping
-    across depth therefore preserves the signal mean instead of exploding), and
-    ``H^pre``/``H^post`` are made non-negative via sigmoid to prevent signal
-    cancellation.
-
-    Only the *static* mappings are learned -- see ``TrunkConfig``'s docstring for
-    why the dynamic, input-dependent form is not affordable on Cartesian blocks.
-
-    ``stream_semantics`` is the novel arm: instead of ``n`` anonymous copies of
-    the residual width, the caller seeds each stream with a different modality
-    (RNA, CpG, RNA x CpG product, locus prior). Under the doubly stochastic
-    constraint the residual mapping is then a *mass-conserving cross-modal
-    exchange operator*: ``H^res`` is a convex combination of permutations of the
-    modalities, readable per depth as an interpretable exchange matrix. That
-    reading is only meaningful because of the manifold constraint -- an
-    unconstrained HC matrix has no conservation interpretation.
-    """
-
-    def __init__(
-        self,
-        width: int,
-        depth: int,
-        expansion: int,
-        dropout: float,
-        n_streams: int,
-        manifold: bool,
-        sinkhorn_iters: int = 20,
-        identity_init_scale: float = 4.0,
-        gradient_checkpointing: bool = False,
-    ):
-        super().__init__()
-        if n_streams < 1:
-            raise ValueError("trunk.n_streams must be >= 1")
-        self.n_streams = int(n_streams)
-        self.manifold = bool(manifold)
-        self.sinkhorn_iters = int(sinkhorn_iters)
-        self.gradient_checkpointing = bool(gradient_checkpointing)
-        self.blocks = nn.ModuleList(_ResidualFunction(width, expansion, dropout) for _ in range(depth))
-
-        n = self.n_streams
-        eye = torch.eye(n)
-        # Init near the identity mapping in both parameterizations, so the trunk
-        # starts as ``depth`` independent plain-residual streams and any stream
-        # mixing has to be learned (mHC section 4.1: n=1 degenerates to the
-        # scalar 1, recovering the ordinary residual connection).
-        self.res_param = nn.Parameter(eye.repeat(depth, 1, 1) * float(identity_init_scale))
-        if manifold:
-            pre_init = torch.logit(torch.full((depth, n), 1.0 / n))
-            post_init = torch.zeros(depth, n)  # 2 * sigmoid(0) = 1
-        else:
-            pre_init = torch.full((depth, n), 1.0 / n)
-            post_init = torch.ones(depth, n)
-        self.pre_param = nn.Parameter(pre_init)
-        self.post_param = nn.Parameter(post_init)
-        self.out_norm = nn.LayerNorm(width)
-
-    def _mappings(self, layer: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if self.manifold:
-            h_res = sinkhorn_knopp(self.res_param[layer], self.sinkhorn_iters)
-            h_pre = torch.sigmoid(self.pre_param[layer].float())
-            h_post = 2.0 * torch.sigmoid(self.post_param[layer].float())
-        else:
-            h_res = self.res_param[layer].float()
-            h_pre = self.pre_param[layer].float()
-            h_post = self.post_param[layer].float()
-        return h_res, h_pre, h_post
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch, n_loci, n_streams, width)
-        for layer, block in enumerate(self.blocks):
-            h_res, h_pre, h_post = self._mappings(layer)
-            dtype = x.dtype
-            h_res, h_pre, h_post = h_res.to(dtype), h_pre.to(dtype), h_post.to(dtype)
-            merged = torch.einsum("j,bljc->blc", h_pre, x)
-            if self.gradient_checkpointing and self.training:
-                update = torch.utils.checkpoint.checkpoint(block, merged, use_reentrant=False)
-            else:
-                update = block(merged)
-            x = torch.einsum("ij,bljc->blic", h_res, x) + h_post[None, None, :, None] * update[:, :, None, :]
-        return self.out_norm(x.mean(dim=2))
-
-    @torch.no_grad()
-    def composite_gain(self) -> dict[str, float]:
-        """mHC's *Amax Gain Magnitude* of the composite residual mapping.
-
-        The product of ``H^res`` across depth governs how a signal injected at
-        one layer is scaled by the time it reaches the output (max abs row sum,
-        forward) and how a gradient is scaled on the way back (max abs column
-        sum). For a doubly stochastic composite both are exactly 1; the mHC paper
-        measures peaks near 3000 for unconstrained HC, which is what its
-        stability claim rests on. Logged per epoch so the stability figure exists
-        even if the headline metric does not move.
-        """
-        depth = len(self.blocks)
-        if depth == 0:
-            return {"forward_amax_gain": 1.0, "backward_amax_gain": 1.0}
-        composite = torch.eye(self.n_streams, device=self.res_param.device, dtype=torch.float32)
-        for layer in range(depth):
-            h_res, _, _ = self._mappings(layer)
-            composite = h_res @ composite
-        return {
-            "forward_amax_gain": float(composite.abs().sum(dim=1).max()),
-            "backward_amax_gain": float(composite.abs().sum(dim=0).max()),
-        }
-
-    @torch.no_grad()
-    def residual_mappings(self) -> list[list[list[float]]]:
-        """Per-depth ``H^res`` matrices, for the cross-modal exchange figure."""
-        return [self._mappings(layer)[0].cpu().tolist() for layer in range(len(self.blocks))]
 
 
 class AxialCpGAttention(nn.Module):
@@ -1255,234 +845,6 @@ class AxialCpGAttention(nn.Module):
         return h + self.out(attended)
 
 
-class ArchitectureVariantModel(nn.Module):
-    """Configurable model for the architecture-novelty suite.
-
-    Keeps the canonical prediction contract exactly -- the RNA-conditioned
-    network produces a variance-standardized residual that is anchored on the
-    frozen CpG statistics::
-
-        logit(beta_hat_{s,i}) = logit(mu_i) + sigma_i * raw_delta_{s,i}
-
-    -- so every arm's MAS-PCC is directly comparable to the canonical 0.5613 and
-    to the ``fusion_mechanism_2026_08`` arms, all of which ran on this same
-    matched_chr1 engine and official split. What varies is only *how*
-    ``raw_delta`` is computed:
-
-      * ``model.encoder.kind`` -- the RNA branch (``linear`` canonical,
-        ``mlp``/``program_bottleneck`` capacity controls, ``locus_attention``
-        the locus-conditioned token-set encoder).
-      * ``model.trunk`` -- depth and residual topology after fusion
-        (``none`` canonical depth-1 head, ``plain`` the depth control, ``hc``
-        and ``mhc`` the multi-stream arms).
-      * ``model.axial`` -- optional windowed attention along the CpG axis.
-
-    With all three at their defaults this class is architecturally identical to
-    ``RNAMethylationPredictor`` (same joint input, same depth-1 head, same
-    anchor), which makes it a valid same-code control -- but it is a separate
-    class with separate state-dict keys on purpose: the canonical predictor must
-    keep its exact parameter set for historical checkpoint loading.
-    """
-
-    def __init__(self, input_dim: int, locus_dim: int, config: ModelConfig, epsilon: float = 1e-4):
-        super().__init__()
-        if not config.zero_init_residual:
-            raise ValueError("architecture-variant models require zero_init_residual=true (start exactly at the prior)")
-        if not config.use_prior_anchor:
-            raise ValueError(
-                "architecture-variant models require use_prior_anchor=true; dropping the anchor is a separate, "
-                "already-measured ablation (ablations.yaml::prior_anchor_2026_08)"
-            )
-        if not config.variance_normalized_residual:
-            raise ValueError(
-                "architecture-variant models require variance_normalized_residual=true so their MAS-PCC stays "
-                "comparable to the canonical chr1 number"
-            )
-        self.config = config
-        self.epsilon = float(epsilon)
-
-        encoder_cfg, interaction_cfg = config.encoder, config.interaction
-        trunk_cfg, axial_cfg = config.trunk, config.axial
-        self.rna_encoder = build_rna_encoder(encoder_cfg, input_dim=input_dim, locus_dim=locus_dim)
-        self.locus_conditioned = encoder_cfg.kind == "locus_attention"
-        rna_pair_dim = encoder_cfg.program_dim if self.locus_conditioned else encoder_cfg.latent_dim
-
-        self.include_rna = bool(interaction_cfg.include_rna)
-        self.include_cpg = bool(interaction_cfg.include_cpg)
-        self.include_product = bool(interaction_cfg.include_product)
-        if not (self.include_rna or self.include_cpg or self.include_product):
-            raise ValueError("at least one of interaction.include_rna/include_cpg/include_product must be true")
-        product_dim = min(rna_pair_dim, locus_dim)
-        self.rna_product = nn.Linear(rna_pair_dim, product_dim) if self.include_product else None
-        self.locus_product = nn.Linear(locus_dim, product_dim) if self.include_product else None
-
-        self.stream_semantics = bool(trunk_cfg.stream_semantics)
-        piece_dims = {"rna": rna_pair_dim, "cpg": locus_dim, "product": product_dim, "prior": 2}
-        joint_dim = (
-            (rna_pair_dim if self.include_rna else 0)
-            + (locus_dim if self.include_cpg else 0)
-            + (product_dim if self.include_product else 0)
-        )
-
-        self.trunk_kind = trunk_cfg.kind
-        if self.trunk_kind == "none":
-            if self.stream_semantics:
-                raise ValueError("trunk.stream_semantics requires an actual trunk (trunk.kind != 'none')")
-            width = interaction_cfg.hidden_dim
-            # Byte-for-byte the canonical head's feature stage, so the all-default
-            # configuration of this class reproduces the canonical architecture.
-            self.feature_stage = nn.Sequential(
-                nn.LayerNorm(joint_dim),
-                nn.Linear(joint_dim, width),
-                nn.GELU(),
-                nn.Dropout(interaction_cfg.dropout),
-            )
-            self.trunk = None
-            self.stream_projections = None
-        else:
-            if trunk_cfg.depth < 1:
-                raise ValueError(f"trunk.kind={trunk_cfg.kind!r} requires trunk.depth >= 1")
-            width = trunk_cfg.width
-            if self.stream_semantics:
-                if trunk_cfg.kind == "plain":
-                    raise ValueError("trunk.stream_semantics is only meaningful for a multi-stream trunk (hc/mhc)")
-                if trunk_cfg.n_streams != 4:
-                    raise ValueError(
-                        "trunk.stream_semantics assigns one stream per modality (rna, cpg, product, prior); "
-                        f"trunk.n_streams must be 4, got {trunk_cfg.n_streams}"
-                    )
-                if not (self.include_rna and self.include_cpg and self.include_product):
-                    raise ValueError("trunk.stream_semantics needs all three interaction pieces enabled")
-                self.feature_stage = None
-                self.stream_projections = nn.ModuleDict(
-                    {name: nn.Linear(dim, width) for name, dim in piece_dims.items()}
-                )
-            else:
-                self.feature_stage = nn.Sequential(nn.LayerNorm(joint_dim), nn.Linear(joint_dim, width))
-                self.stream_projections = None
-            if trunk_cfg.kind == "plain":
-                self.trunk = PlainTrunk(
-                    width=width, depth=trunk_cfg.depth, expansion=trunk_cfg.expansion,
-                    dropout=trunk_cfg.dropout, gradient_checkpointing=trunk_cfg.gradient_checkpointing,
-                )
-            elif trunk_cfg.kind in {"hc", "mhc"}:
-                self.trunk = HyperConnectionTrunk(
-                    width=width, depth=trunk_cfg.depth, expansion=trunk_cfg.expansion,
-                    dropout=trunk_cfg.dropout, n_streams=trunk_cfg.n_streams,
-                    manifold=(trunk_cfg.kind == "mhc"), sinkhorn_iters=trunk_cfg.sinkhorn_iters,
-                    identity_init_scale=trunk_cfg.identity_init_scale,
-                    gradient_checkpointing=trunk_cfg.gradient_checkpointing,
-                )
-            else:
-                raise ValueError(f"unknown trunk.kind: {trunk_cfg.kind!r}")
-
-        self.axial = (
-            AxialCpGAttention(
-                width=width, n_heads=axial_cfg.n_heads, window=axial_cfg.window,
-                n_distance_buckets=axial_cfg.n_distance_buckets, dropout=axial_cfg.dropout,
-            )
-            if axial_cfg.enabled
-            else None
-        )
-        self.head = nn.Linear(width, 1)
-        self.concentration_head = nn.Linear(width, 1) if config.beta_likelihood_head else None
-        self.zero_output()
-
-    @property
-    def supports_factorized_inference(self) -> bool:
-        return False
-
-    @property
-    def requires_cpg_positions(self) -> bool:
-        """True when the axial arm can use genomic ordinals (optional, not required)."""
-        return self.axial is not None
-
-    def zero_output(self) -> None:
-        nn.init.zeros_(self.head.weight)
-        nn.init.zeros_(self.head.bias)
-
-    def _pieces(self, rna: torch.Tensor, loci: torch.Tensor, prior_logit: torch.Tensor, sigma: torch.Tensor):
-        representation = self.rna_encoder(rna)
-        batch = rna.shape[0]
-        n_loci = loci.shape[0]
-        if self.locus_conditioned:
-            assert representation.program_tokens is not None
-            rna_pair = self.rna_encoder.attend(representation.program_tokens, loci)  # (batch, n_loci, program_dim)
-        else:
-            rna_pair = representation.global_vector[:, None, :].expand(batch, n_loci, -1)
-        pieces = {"rna": rna_pair}
-        pieces["cpg"] = loci[None, :, :].expand(batch, n_loci, -1)
-        if self.include_product:
-            assert self.rna_product is not None and self.locus_product is not None
-            pieces["product"] = self.rna_product(rna_pair) * self.locus_product(loci)[None, :, :]
-        pieces["prior"] = torch.stack([prior_logit, sigma], dim=-1)[None, :, :].expand(batch, n_loci, -1)
-        return pieces
-
-    def forward(
-        self,
-        rna: torch.Tensor,
-        loci: torch.Tensor,
-        prior: torch.Tensor,
-        sigma: torch.Tensor,
-        cpg_positions: torch.Tensor | None = None,
-    ) -> dict[str, torch.Tensor]:
-        prior = prior.clamp(self.epsilon, 1.0 - self.epsilon)
-        prior_logit = torch.logit(prior)
-        sigma_safe = sigma.clamp_min(1e-6)
-        pieces = self._pieces(rna, loci, prior_logit, sigma_safe)
-
-        if self.stream_semantics:
-            assert self.stream_projections is not None
-            streams = torch.stack(
-                [self.stream_projections[name](pieces[name]) for name in ("rna", "cpg", "product", "prior")],
-                dim=2,
-            )  # (batch, n_loci, 4, width)
-            hidden = self.trunk(streams)
-        else:
-            selected = []
-            if self.include_rna:
-                selected.append(pieces["rna"])
-            if self.include_cpg:
-                selected.append(pieces["cpg"])
-            if self.include_product:
-                selected.append(pieces["product"])
-            joint = torch.cat(selected, dim=-1)
-            hidden = self.feature_stage(joint)
-            if self.trunk is not None:
-                if self.trunk.n_streams > 1:
-                    hidden = hidden[:, :, None, :].expand(-1, -1, self.trunk.n_streams, -1)
-                hidden = self.trunk(hidden)
-
-        if self.axial is not None:
-            hidden = self.axial(hidden, positions=cpg_positions)
-
-        raw_delta = self.head(hidden).squeeze(-1)
-        delta_logit = sigma_safe.unsqueeze(0) * raw_delta
-        prediction_logit = prior_logit.unsqueeze(0) + delta_logit
-        beta = torch.sigmoid(prediction_logit)
-
-        outputs = {
-            "beta": beta,
-            "delta_logit": delta_logit,
-            "raw_delta": raw_delta,
-            "raw_delta_logit": delta_logit,
-            "prediction_logit": prediction_logit,
-            "gate": torch.ones(loci.shape[0], dtype=loci.dtype, device=loci.device),
-            "prior_logit": prior_logit,
-        }
-        if self.concentration_head is not None:
-            # Softplus keeps the Beta concentration positive; the loss applies the
-            # configured floor (below ~2 the density turns U-shaped).
-            outputs["concentration"] = torch.nn.functional.softplus(self.concentration_head(hidden).squeeze(-1))
-        return outputs
-
-    def diagnostics(self) -> dict[str, float]:
-        """Per-epoch architecture diagnostics for history.json (never a loss term)."""
-        if self.trunk is None or not hasattr(self.trunk, "composite_gain"):
-            return {}
-        return self.trunk.composite_gain()
-
-
 def is_architecture_variant(config: ModelConfig) -> bool:
     """True when a recipe opted into the architecture-novelty suite.
 
@@ -1498,34 +860,12 @@ def is_architecture_variant(config: ModelConfig) -> bool:
     )
 
 
-def architecture_variant_label(config: ModelConfig) -> str:
-    """Compact, checkpoint-safe description of a variant's topology.
-
-    Appended to the trainer's ``architecture_label`` so two different variants
-    can never resume from each other's ``latest.pt``.
-    """
-    parts = [f"enc-{config.encoder.kind}"]
-    if config.encoder.kind == "locus_attention":
-        parts.append(f"k{config.encoder.n_programs}h{config.encoder.n_heads}d{config.encoder.program_dim}")
-    if config.trunk.kind != "none":
-        parts.append(f"trunk-{config.trunk.kind}d{config.trunk.depth}w{config.trunk.width}")
-        if config.trunk.kind in {"hc", "mhc"}:
-            parts.append(f"n{config.trunk.n_streams}" + ("sem" if config.trunk.stream_semantics else ""))
-    if config.axial.enabled:
-        parts.append(f"axial-w{config.axial.window}h{config.axial.n_heads}")
-    if config.beta_likelihood_head:
-        parts.append("betahead")
-    return "_".join(parts)
-
-
 class FeatureFusionArchitectureVariantModel(nn.Module):
     """Configurable extension of ``FeatureFusionLocusCLSModel`` for the
     architecture-novelty suite (``architecture_novelty_2026_09``), retargeted
     2026-09-04 after ``FeatureFusionLocusCLSModel`` was selected as the repo's
     primary/reference architecture (``shared_backbone_locus_cls_2026_09``,
-    ``docs/RNA_METHYLATION.md``). The suite's earlier work
-    (``ArchitectureVariantModel``, above) targeted the now-superseded two-stage
-    frozen-prior model and stays only for old-checkpoint-compatible experiments.
+    ``docs/RNA_METHYLATION.md``).
 
     Same constructor signature as ``FeatureFusionLocusCLSModel`` (drop-in for
     ``LocusCLSJointTrainer``), same two branches -- a locus-only mean branch
@@ -1535,26 +875,29 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
       * ``config.encoder`` -- the RNA branch (``linear`` canonical,
         ``mlp``/``program_bottleneck`` capacity controls, ``locus_attention``
         makes the raw branch's RNA representation locus-specific).
-      * ``config.trunk`` -- how the two branch embeddings are combined. This is
-        the architecture's own core design question, and the postdoc's original
-        suggestion applies most literally here: with
-        ``trunk.stream_semantics=True`` (requires ``trunk.n_streams=2``), the
-        mean and raw embeddings themselves become the two streams of an
-        HC/mHC trunk -- they exchange information under a (for mHC) doubly
-        stochastic, mass-conserving mixing matrix for ``trunk.depth`` steps,
-        instead of being concatenated once into a single ``Linear``. Without
-        ``stream_semantics``, the trunk instead deepens the already-concatenated
-        joint representation (the depth control every HC/mHC claim needs).
+      * ``config.trunk`` -- optional extra depth after the two branch
+        embeddings are concatenated (``trunk.kind="none"``: straight to the
+        fusion head, the reference default; ``trunk.kind="plain"``: the
+        concatenated joint representation is deepened by ``trunk.depth``
+        pre-norm residual blocks first). Isolates whether depth alone helps
+        beyond the reference's single fusion `Linear`.
       * ``config.axial`` / ``config.beta_likelihood_head`` -- unchanged from the
         two-stage suite's versions (windowed CpG-axis attention on the final
         joint representation; an additional Beta-concentration output head).
 
+    A fourth axis, ``include_raw_rna``/``include_raw_cpg`` (constructor kwargs,
+    not part of ``ModelConfig`` -- same convention as ``use_raw_product``),
+    controls which raw pieces feed the raw branch's joint input independently
+    of the product term. Combined with ``use_mean_branch=False`` these
+    reproduce the paper-required simplified baselines
+    (docs/PAPER_EXPERIMENTS.md) under this engine -- see the constructor's
+    docstring-in-code for the exact per-baseline settings.
+
     At every default (``encoder.kind="linear"``, ``trunk.kind="none"``,
     ``axial.enabled=False``, no beta head) this reduces to
     ``FeatureFusionLocusCLSModel``'s exact forward computation -- verified
-    numerically in tests -- so it is a valid same-code control for the current
-    reference architecture, the same role ``ArchitectureVariantModel`` played
-    for the retired one.
+    numerically in tests -- so it is a valid same-code control for the
+    reference architecture.
 
     Unlike the two-stage suite, there is no prior/sigma anchor here to give an
     exact "starts at the prior" contract: this architecture's own established
@@ -1576,24 +919,51 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         trunk_dropout: float = 0.1,
         use_mean_branch: bool = True,
         use_fusion_product: bool = False,
+        use_raw_product: bool = True,
+        include_raw_rna: bool = True,
+        include_raw_cpg: bool = True,
+        product_mlp: bool = False,
         fusion_init_std: float = 0.01,
     ):
         super().__init__()
         self.config = config
         self.use_mean_branch = bool(use_mean_branch)
+        # Ablation-only toggle (default True preserves every existing config/checkpoint
+        # byte-for-byte): drops the raw branch's elementwise RNA*CpG product term
+        # p_{s,l} = W_r r_{s,l} ⊙ W_e e_l, isolating whether that multiplicative
+        # interaction -- inherited unconditionally from FeatureFusionLocusCLSModel --
+        # contributes anything on top of locus-conditioned attention + plain concat.
+        self.use_raw_product = bool(use_raw_product)
+        # Ablation-only toggles (both default True, preserving every existing
+        # config/checkpoint byte-for-byte): drop the raw branch's raw RNA and/or
+        # raw CpG pieces from its joint input, independently of whether the
+        # product term is included. With use_mean_branch=False these reproduce
+        # the paper-required simplified baselines (docs/PAPER_EXPERIMENTS.md)
+        # under this engine instead of the retired two-stage architecture's
+        # GlobalShiftInteraction/BilinearInteraction:
+        #   Global RNA Shift: include_raw_cpg=False, use_raw_product=False
+        #     (joint = [rna] only -- ignores the CpG embedding entirely).
+        #   Bilinear RNA-CpG: include_raw_rna=False, include_raw_cpg=False
+        #     (joint = [product] only -- "shared latent space, interaction via
+        #     dot product" with no raw pieces alongside it).
+        #   MLP RNA-CpG: use_raw_product=False (joint = [rna, cpg], no product).
+        # At least one of the three raw-branch pieces must remain enabled.
+        self.include_raw_rna = bool(include_raw_rna)
+        self.include_raw_cpg = bool(include_raw_cpg)
+        if not (self.include_raw_rna or self.include_raw_cpg or self.use_raw_product):
+            raise ValueError(
+                "at least one of include_raw_rna/include_raw_cpg/use_raw_product must be true"
+            )
+        # Default False preserves every existing checkpoint's state-dict keys/shapes
+        # byte-for-byte (rna_product/locus_product stay plain nn.Linear). True upgrades
+        # both product-term projections to a small 2-layer MLP (Linear->GELU->Linear,
+        # same in/out shape) -- the locus_attention_2026_09_05 reference recipe's choice:
+        # every non-RNA-encoder Linear that isn't a final 1-unit output head becomes a
+        # small MLP, matching CpGTrunk's existing shape. Meaningless when
+        # use_raw_product=False (no product projections exist to upgrade).
+        self.product_mlp = bool(product_mlp)
         self.use_fusion_product = bool(use_fusion_product)
         trunk_cfg, axial_cfg = config.trunk, config.axial
-        self.stream_semantics = bool(trunk_cfg.stream_semantics)
-        if self.stream_semantics:
-            if not self.use_mean_branch:
-                raise ValueError("trunk.stream_semantics needs both branches: use_mean_branch=True")
-            if trunk_cfg.kind == "plain":
-                raise ValueError("trunk.stream_semantics is only meaningful for a multi-stream trunk (hc/mhc)")
-            if trunk_cfg.n_streams != 2:
-                raise ValueError(
-                    "trunk.stream_semantics assigns one stream per branch (mean, raw); "
-                    f"trunk.n_streams must be 2, got {trunk_cfg.n_streams}"
-                )
 
         if self.use_mean_branch:
             self.trunk_cpg = CpGTrunk(cpg_input_dim, trunk_hidden_dim, bottleneck_dim, trunk_dropout)
@@ -1605,10 +975,20 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         rna_pair_dim = encoder_cfg.program_dim if self.locus_conditioned else encoder_cfg.latent_dim
         raw_hidden_dim = interaction_cfg.hidden_dim
         dropout = interaction_cfg.dropout
-        product_dim = min(rna_pair_dim, cpg_input_dim)
-        self.rna_product = nn.Linear(rna_pair_dim, product_dim)
-        self.locus_product = nn.Linear(cpg_input_dim, product_dim)
-        joint_dim = rna_pair_dim + cpg_input_dim + product_dim
+        joint_dim = (rna_pair_dim if self.include_raw_rna else 0) + (cpg_input_dim if self.include_raw_cpg else 0)
+        if self.use_raw_product:
+            product_dim = min(rna_pair_dim, cpg_input_dim)
+            if self.product_mlp:
+                self.rna_product = nn.Sequential(
+                    nn.Linear(rna_pair_dim, product_dim), nn.GELU(), nn.Linear(product_dim, product_dim),
+                )
+                self.locus_product = nn.Sequential(
+                    nn.Linear(cpg_input_dim, product_dim), nn.GELU(), nn.Linear(product_dim, product_dim),
+                )
+            else:
+                self.rna_product = nn.Linear(rna_pair_dim, product_dim)
+                self.locus_product = nn.Linear(cpg_input_dim, product_dim)
+            joint_dim += product_dim
         self.raw_branch = nn.Sequential(
             nn.LayerNorm(joint_dim),
             nn.Linear(joint_dim, raw_hidden_dim),
@@ -1637,25 +1017,12 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
             if trunk_cfg.depth < 1:
                 raise ValueError(f"trunk.kind={trunk_kind!r} requires trunk.depth >= 1")
             width = trunk_cfg.width
-            if self.stream_semantics:
-                self.mean_stream_proj = nn.Linear(bottleneck_dim, width)
-                self.raw_stream_proj = nn.Linear(raw_hidden_dim, width)
-                self.combine_stage = None
-            else:
-                fusion_dim = raw_hidden_dim + (bottleneck_dim if self.use_mean_branch else 0)
-                self.combine_stage = nn.Sequential(nn.LayerNorm(fusion_dim), nn.Linear(fusion_dim, width))
+            fusion_dim = raw_hidden_dim + (bottleneck_dim if self.use_mean_branch else 0)
+            self.combine_stage = nn.Sequential(nn.LayerNorm(fusion_dim), nn.Linear(fusion_dim, width))
             if trunk_kind == "plain":
                 self.trunk = PlainTrunk(
                     width=width, depth=trunk_cfg.depth, expansion=trunk_cfg.expansion,
                     dropout=trunk_cfg.dropout, gradient_checkpointing=trunk_cfg.gradient_checkpointing,
-                )
-            elif trunk_kind in {"hc", "mhc"}:
-                self.trunk = HyperConnectionTrunk(
-                    width=width, depth=trunk_cfg.depth, expansion=trunk_cfg.expansion,
-                    dropout=trunk_cfg.dropout, n_streams=trunk_cfg.n_streams,
-                    manifold=(trunk_kind == "mhc"), sinkhorn_iters=trunk_cfg.sinkhorn_iters,
-                    identity_init_scale=trunk_cfg.identity_init_scale,
-                    gradient_checkpointing=trunk_cfg.gradient_checkpointing,
                 )
             else:
                 raise ValueError(f"unknown trunk.kind: {trunk_kind!r}")
@@ -1702,8 +1069,15 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         else:
             rna_pair = representation.global_vector[:, None, :].expand(batch, n_loci, -1)
 
-        product = self.rna_product(rna_pair) * self.locus_product(cpg_embedding)[None, :, :]
-        joint = torch.cat([rna_pair, cpg_embedding[None, :, :].expand(batch, n_loci, -1), product], dim=-1)
+        pieces = []
+        if self.include_raw_rna:
+            pieces.append(rna_pair)
+        if self.include_raw_cpg:
+            pieces.append(cpg_embedding[None, :, :].expand(batch, n_loci, -1))
+        if self.use_raw_product:
+            product = self.rna_product(rna_pair) * self.locus_product(cpg_embedding)[None, :, :]
+            pieces.append(product)
+        joint = torch.cat(pieces, dim=-1)
         h_raw = self.raw_branch(joint)  # (batch, n_loci, raw_hidden_dim)
         residual_logit = self.residual_head(h_raw).squeeze(-1)  # auxiliary probe only
 
@@ -1721,16 +1095,9 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
                 fusion_product = self.mean_fusion_proj(h_mean)[None, :, :] * self.raw_fusion_proj(h_raw)
                 pieces.append(fusion_product)
             hidden = torch.cat(pieces, dim=-1)
-        elif self.stream_semantics:
-            mean_stream = self.mean_stream_proj(h_mean_b)
-            raw_stream = self.raw_stream_proj(h_raw)
-            streams = torch.stack([mean_stream, raw_stream], dim=2)  # (batch, n_loci, 2, width)
-            hidden = self.trunk(streams)
         else:
             pieces = [h_mean_b, h_raw] if self.use_mean_branch else [h_raw]
             hidden = self.combine_stage(torch.cat(pieces, dim=-1))
-            if self.trunk.n_streams > 1:
-                hidden = hidden[:, :, None, :].expand(-1, -1, self.trunk.n_streams, -1)
             hidden = self.trunk(hidden)
 
         if self.axial is not None:
@@ -1754,14 +1121,17 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
 
 def feature_fusion_variant_label(config: ModelConfig) -> str:
     """Compact, checkpoint-safe description of a shared-backbone variant's
-    topology -- mirrors ``architecture_variant_label`` for the two-stage suite."""
+    topology. Appended to the trainer's ``architecture_label`` so two
+    different variants can never resume from each other's ``latest.pt``."""
     parts = [f"enc-{config.encoder.kind}"]
     if config.encoder.kind == "locus_attention":
         parts.append(f"k{config.encoder.n_programs}h{config.encoder.n_heads}d{config.encoder.program_dim}")
+    if config.encoder.kind == "bottleneck_mlp":
+        parts.append(f"n{config.encoder.n_blocks}w{config.encoder.hidden_dim}r{config.encoder.mlp_ratio}")
+    if config.encoder.kind == "frozen_embedding" and config.encoder.frozen_embedding_source:
+        parts.append(f"src-{config.encoder.frozen_embedding_source}")
     if config.trunk.kind != "none":
         parts.append(f"trunk-{config.trunk.kind}d{config.trunk.depth}w{config.trunk.width}")
-        if config.trunk.kind in {"hc", "mhc"}:
-            parts.append(f"n{config.trunk.n_streams}" + ("sem" if config.trunk.stream_semantics else ""))
     if config.axial.enabled:
         parts.append(f"axial-w{config.axial.window}h{config.axial.n_heads}")
     if config.beta_likelihood_head:

@@ -1,25 +1,30 @@
 # Baseline (paper comparison, see docs/PAPER_EXPERIMENTS.md): "Bilinear RNA-CpG".
 # Projects RNA and CpG features into a shared latent space and models their
-# interaction through a (low-rank) dot product only -- include_rna/include_cpg
-# are both False so the joint MLP head sees only the bilinear term, a purer
-# baseline than the hybrid concat+bilinear form used by the
-# fusion_mechanism_2026_08 internal ablation (results/reference/ablations.yaml).
-# Represents a simple low-rank model of patient-locus interactions. Identical
-# to the canonical recipe (configs/models/rna_methylation.yaml) except
-# model.interaction.kind/include_rna/include_cpg.
+# interaction through the raw branch's product term only -- include_raw_rna
+# and include_raw_cpg are both false, so the raw branch's joint input is just
+# proj(rna) * proj(cpg), a purer baseline than the hybrid concat+bilinear form
+# used by the retired fusion_mechanism_2026_08 internal ablation
+# (results/reference/ablations.yaml). use_mean_branch: false removes the
+# locus-only mean branch, so the model really is "shared latent space,
+# interaction via dot product" alone. Represents a simple low-rank model of
+# patient-locus interactions.
+#
+# Reproduced under the reference shared-backbone engine
+# (FeatureFusionArchitectureVariantModel) -- see models.py's docstring-in-code
+# for the include_raw_rna/include_raw_cpg/use_raw_product axis. The retired
+# two-stage engine's InteractionConfig.kind=bilinear baseline (frozen chr1
+# numbers under results/reference/methylprophet_comparison/baselines_chr1.md)
+# is no longer reproducible -- see CLAUDE.md's "Model compatibility note".
+# Otherwise identical to configs/models/rna_methylation_shared_backbone.yaml.
 model:
   encoder:
     kind: linear
     latent_dim: 256
     layer_norm: true
   interaction:
-    kind: bilinear
+    kind: concat
     hidden_dim: 128
     dropout: 0.1
-    include_rna: false
-    include_cpg: false
-  zero_init_residual: true
-  variance_normalized_residual: true
 
 loss:
   beta_mse_weight: 1.0
@@ -47,18 +52,34 @@ training:
   allow_tf32: true
   matmul_precision: high
   fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 2
+  hdf5_cache_mb: 256
+  checkpoint_every: 1
+  compile: false
 
-# Scalable default. Use --engine matched_chr1 for the exact pair-complete chr1
-# E1 reproduction. For a pair-complete chr123 study, set this explicitly to
-# pair_complete in a copied recipe and record the compute budget.
-schedule_policy: axis_full_coverage
+schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true
 structured_loss_sources: [array, epic, wgbs]
 
+locus_cls:
+  use_mean_branch: false
+  use_fusion_product: false
+  use_raw_product: true
+  include_raw_rna: false
+  include_raw_cpg: false
+  fusion_init_std: 0.01
+  aux_weight: 0.15
+  residual_aux_weight: 0.0
+  raw_lr_multiplier: 1.0
+  trunk_hidden_dim: 256
+  bottleneck_dim: 64
+  trunk_dropout: 0.1
+
 batching:
-  array: {sample_size: 512, cpg_size: 512}
-  epic: {sample_size: 128, cpg_size: 4096}
-  wgbs: {sample_size: 32, cpg_size: 16384}
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
 
 development:
   fraction: 0.10

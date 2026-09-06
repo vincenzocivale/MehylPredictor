@@ -6,9 +6,9 @@ on cluster environments where libstdc++ load order matters.
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import RNAMethylationPredictor, RNA2DNAmModel, VarianceNormalizedResidualModel
+    from .models import FeatureFusionArchitectureVariantModel, FeatureFusionLocusCLSModel
 
-__all__ = ["RNAMethylationPredictor", "VarianceNormalizedResidualModel", "RNA2DNAmModel"]
+__all__ = ["FeatureFusionArchitectureVariantModel", "FeatureFusionLocusCLSModel"]
 
 
 def __getattr__(name: str):

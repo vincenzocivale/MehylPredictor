@@ -230,18 +230,6 @@ def write_ledger(records: list[dict]) -> dict:
         mse = "—" if row["official_val_cpg_x_val_sample_mse"] is None else f"{row['official_val_cpg_x_val_sample_mse']:.5f}"
         delta = "—" if row["delta_vs_reference"] is None else f"{row['delta_vs_reference']:+.4f}"
         lines.append(f"| `{row['arm']}` | {row['stage']} | {row['seed']} | {mas} | {mse} | {delta} | {row['verdict']} |")
-    diagnostics_rows = [r for r in rows if r["architecture_diagnostics"]]
-    if diagnostics_rows:
-        lines += [
-            "", "## Signal-propagation diagnostics (mHC *Amax Gain Magnitude*)", "",
-            "Max abs row sum (forward) and column sum (backward) of the composite residual mapping across",
-            "depth. Exactly 1 for a doubly stochastic (mHC) composite; unbounded for plain HC.", "",
-            "| arm | forward | backward |", "|---|---:|---:|",
-        ]
-        for row in diagnostics_rows:
-            d = row["architecture_diagnostics"]
-            lines.append(f"| `{row['arm']}` | {d.get('forward_amax_gain', float('nan')):.4f} | "
-                         f"{d.get('backward_amax_gain', float('nan')):.4f} |")
     missing = [name for name in ARMS_BY_NAME if name not in {r["arm"] for r in rows}]
     if missing:
         lines += ["", "## Not yet run", "", *(f"- `{name}`" for name in missing)]

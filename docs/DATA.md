@@ -131,6 +131,10 @@ No `/raid/...` path is hardcoded in any Python module under
 
 - HDF5 files stay open and are read lazily, in chunks -- nothing here loads
   the full WGBS matrix, a full registry, or a full source matrix into RAM.
+- Fixed, repeatedly used protocol subsets may be materialized as derived compact
+  HDF5 caches without changing the canonical bundle. The chr123 shared-backbone
+  cache and its correctness/performance contract are documented in
+  [`CHR123_TRAINING_OPTIMIZATIONS.md`](CHR123_TRAINING_OPTIMIZATIONS.md).
 - `sample_idx -> row` and `cpg_idx -> column` maps are vectorized
   (sort + `np.searchsorted`, `tcga_canonical/ids.py::UniqueIndex`), not a
   giant Python dict -- the 23M-row WGBS CpG index would cost roughly a

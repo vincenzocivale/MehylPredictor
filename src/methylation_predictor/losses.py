@@ -1,13 +1,15 @@
-"""Losses for bounded residual methylation prediction.
+"""Shared loss building blocks for the RNA-methylation pipeline.
 
-The locus-Pearson (MAS-PCC) term operates on Cartesian ``samples x CpGs``
-minibatches. It is strictly opt-in: with locus_pearson_weight=0 the objective
-reduces to the flat pointwise residual loss.
+``masked_mean``, ``masked_locus_pearson``/``locus_correlation_loss`` (the
+MAS-PCC term, opt-in via ``locus_pearson_weight``), and ``beta_nll_term`` are
+reused by ``rna_training.locus_cls_trainer._direct_beta_loss``, the sole
+RNA-methylation loss function. The earlier prior-anchored two-stage loss
+(``residual_loss``) that used to live here has been retired alongside that
+architecture generation.
 """
 from __future__ import annotations
 
 import torch
-from torch.nn import functional as F
 
 from .config import LossConfig
 
@@ -119,11 +121,10 @@ def beta_nll_term(
 
     Methylation beta values live in [0, 1] with variance that collapses towards
     both boundaries, which a plain MSE treats as homoscedastic. Parameterized by
-    the model's own prediction (whichever family produced it: the anchored
-    two-stage residual, or the shared-backbone direct prediction) as the mean,
-    and a predicted concentration (``outputs["concentration"]``, absent unless
-    the model built a concentration head): mu*phi and (1-mu)*phi are the two
-    Beta shape parameters. A no-op (returns 0) whenever the weight is zero or no
+    the model's own prediction (``outputs["beta"]``) as the mean, and a
+    predicted concentration (``outputs["concentration"]``, absent unless the
+    model built a concentration head): mu*phi and (1-mu)*phi are the two Beta
+    shape parameters. A no-op (returns 0) whenever the weight is zero or no
     concentration was produced, so it is always safe to add unconditionally.
     """
     if config.beta_nll_weight == 0.0 or outputs.get("concentration") is None:
@@ -142,87 +143,3 @@ def beta_nll_term(
         + (beta_shape - 1.0) * torch.log1p(-observation)
     )
     return masked_mean(-log_likelihood, mask)
-
-
-def residual_loss(
-    outputs: dict[str, torch.Tensor],
-    target_beta: torch.Tensor,
-    prior: torch.Tensor,
-    config: LossConfig,
-    epsilon: float = 1e-4,
-    sigma: torch.Tensor | None = None,
-    return_metrics: bool = True,
-) -> tuple[torch.Tensor, dict[str, float | int]]:
-    mask = torch.isfinite(target_beta)
-    prediction = outputs["beta"]
-    # Replace missing targets before any differentiable operation. Masking a tensor
-    # only after arithmetic with NaNs can still create NaN gradients (0 * NaN).
-    safe_target = torch.where(mask, target_beta, prior.unsqueeze(0))
-    beta_mse = masked_mean((prediction - safe_target) ** 2, mask)
-
-    clipped_target = safe_target.clamp(epsilon, 1.0 - epsilon)
-    clipped_prior = prior.clamp(epsilon, 1.0 - epsilon)
-    target_delta = torch.logit(clipped_target) - torch.logit(clipped_prior).unsqueeze(0)
-    huber = masked_mean(
-        F.huber_loss(outputs["delta_logit"], target_delta, reduction="none", delta=config.residual_huber_delta),
-        mask,
-    )
-    shrinkage = masked_mean(outputs["delta_logit"] ** 2, mask)
-
-    # V1: standardized-residual counterparts, operating on the model's raw
-    # (pre-sigma-scale) output against the sigma-normalized target. Only
-    # active when a variance-normalized model supplied both sigma and
-    # outputs["raw_delta"], and at least one weight is nonzero.
-    if (
-        sigma is not None
-        and "raw_delta" in outputs
-        and (config.standardized_residual_huber_weight != 0.0 or config.standardized_shrinkage_weight != 0.0)
-    ):
-        sigma_floor = sigma.clamp_min(config.sigma_min)
-        standardized_target = target_delta / sigma_floor.unsqueeze(0)
-        standardized_huber = masked_mean(
-            F.huber_loss(
-                outputs["raw_delta"], standardized_target,
-                reduction="none", delta=config.standardized_residual_huber_delta,
-            ),
-            mask,
-        )
-        standardized_shrinkage = masked_mean(outputs["raw_delta"] ** 2, mask)
-    else:
-        standardized_huber = prediction.sum() * 0.0
-        standardized_shrinkage = prediction.sum() * 0.0
-
-    # Beta log-likelihood (architecture-novelty ablation, opt-in). Additive
-    # rather than replacing beta_mse, so the headline MAS-PCC of this arm stays
-    # comparable to every other arm.
-    beta_nll = beta_nll_term(outputs, safe_target, mask, config)
-
-    if config.locus_pearson_weight != 0.0:
-        pearson_loss, valid_loci = locus_correlation_loss(prediction, safe_target, mask, config)
-    else:
-        pearson_loss = prediction.sum() * 0.0
-        valid_loci = 0
-
-    total = (
-        config.beta_mse_weight * beta_mse
-        + config.residual_huber_weight * huber
-        + config.shrinkage_weight * shrinkage
-        + config.standardized_residual_huber_weight * standardized_huber
-        + config.standardized_shrinkage_weight * standardized_shrinkage
-        + config.locus_pearson_weight * pearson_loss
-        + config.beta_nll_weight * beta_nll
-    )
-    if not return_metrics:
-        return total, {}
-    return total, {
-        "loss": float(total.detach().cpu()),
-        "beta_mse": float(beta_mse.detach().cpu()),
-        "residual_huber": float(huber.detach().cpu()),
-        "shrinkage": float(shrinkage.detach().cpu()),
-        "standardized_residual_huber": float(standardized_huber.detach().cpu()),
-        "standardized_shrinkage": float(standardized_shrinkage.detach().cpu()),
-        "locus_pearson_loss": float(pearson_loss.detach().cpu()),
-        "beta_nll": float(beta_nll.detach().cpu()),
-        "valid_correlation_loci": valid_loci,
-        "observed": int(mask.sum().detach().cpu()),
-    }

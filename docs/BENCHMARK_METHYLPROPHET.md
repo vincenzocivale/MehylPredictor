@@ -168,6 +168,15 @@ model inputs.
 
 ## Training exposure
 
+**Historical note**: this section describes the retired two-stage architecture's exact
+reproduction trainer (`MethylProphetTrainer`, `--engine matched_chr1`), removed along with that
+architecture generation (see CLAUDE.md's "Model compatibility note"). The frozen numbers it
+produced remain under `results/reference/methylprophet_comparison/`. The current reference
+architecture trains on this same chr1 data preparation via `--engine matched_chr1_shared_backbone`
+(`scripts/train.py`, `rna_training/locus_cls_trainer.py::LocusCLSJointTrainer`) with its own
+(pair-complete or `contiguous_blocks`, see `docs/CHR123_TRAINING_OPTIMIZATIONS.md`) schedule, not
+the one described below.
+
 The final trainer uses a complete Cartesian block schedule for each source.
 Every source matrix pair slot is visited exactly once per epoch and NaN targets
 are excluded from the loss.  At the end of every epoch it requires the finite
@@ -204,7 +213,11 @@ historical architecture progression that led to the current model) is kept at
 
 ## Table 7: training-source comparison (TCGA rows)
 
-`MethylProphetTrainer` accepts an opt-in `sources: {"array", "epic", "wgbs"}`
+**Historical note**: produced by the retired `MethylProphetTrainer` (see the "Training exposure"
+note above) — the frozen numbers below remain valid paper-comparison provenance, but are not
+reproducible by current code without reintroducing that trainer.
+
+`MethylProphetTrainer` accepted an opt-in `sources: {"array", "epic", "wgbs"}`
 subset (default: all three, so the frozen Table-5 path above is unaffected)
 plus a pluggable published-reference table for `evaluate()`/`run()`, so the
 exact same Array chr1 protocol/split can reproduce MethylProphet paper
@@ -221,36 +234,20 @@ architecture/hyperparameter ablations are tracked separately in
 
 ## Required preflight
 
-Do **not** launch the expensive training first.  Prepare and audit the protocol:
+The end-to-end `run.sh` launcher (prepare -> `MethylProphetTrainer` -> report) described in
+earlier revisions of this section has been retired along with the two-stage architecture. Data
+preparation itself is still live and required before any chr1 training:
 
 ```bash
-HG38_FASTA=/path/to/hg38.fa \
-GPU=0 \
-PREPARE_ONLY=1 \
-nohup bash scripts/benchmark_methylprophet/run.sh \
-  > table5_prepare.log 2>&1 &
+python scripts/benchmark_methylprophet/prepare.py \
+  --canonical-root "$CANONICAL_ROOT" \
+  --atlas "$CANONICAL_ROOT/cpg/ntv3/ntv3_cpg_atlas_v1.h5" \
+  --hg38-fasta "$HG38_FASTA" \
+  --config configs/benchmark_methylprophet/reference.yaml \
+  --output "$DERIVED_ROOT/methylprophet_table5_tcga_chr1" \
+  --device cuda
 ```
 
-Recommended when the released evaluation artifact is available:
-
-```bash
-HG38_FASTA=/path/to/hg38.fa \
-MP_EVAL_DIR=/path/to/eval-tcga_mix_chr1-bs_512-c2b2 \
-GPU=0 PREPARE_ONLY=1 \
-bash scripts/benchmark_methylprophet/run.sh
-```
-
-Training is allowed only after the launcher prints:
-
-```text
-Table-5 exact protocol preflight: PASS
-```
-
-Then launch the one-stage run:
-
-```bash
-HG38_FASTA=/path/to/hg38.fa \
-GPU=0 \
-nohup bash scripts/benchmark_methylprophet/run.sh \
-  > table5_train.log 2>&1 &
-```
+Then train the reference architecture against this prepared cache with `scripts/train.py --engine
+matched_chr1_shared_backbone` (see CLAUDE.md's "Optimized reference training commands") rather
+than a dedicated launcher script.

@@ -1,5 +1,10 @@
 # Comparison: MethylProphet Table 5 vs Ours
 
+> **Historical provenance note**: `RNAMethylationPredictor` and the `MethylProphetTrainer`
+> that produced the "Ours" numbers below have since been removed from the codebase (see
+> `CLAUDE.md`'s "Model compatibility note"). These numbers remain frozen, valid
+> paper-comparison provenance; they are not reproducible by current code.
+
 - **MethylProphet**: published Table 5 results (single mixed-source model,
   trained on Array + EPIC + WGBS, chr1)
 - **Ours**: `RNAMethylationPredictor`, chr1, seed 17, LR 5e-5 constant, 80

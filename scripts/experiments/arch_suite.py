@@ -1,21 +1,30 @@
 """Shared registry for the architecture-novelty suite (architecture_novelty_2026_09).
 
 Retargeted 2026-09-04: the suite originally sat on ``VarianceNormalizedResidualModel``
-(the two-stage frozen-prior architecture); that architecture is now frozen for
-old-checkpoint compatibility only (CLAUDE.md's "Model compatibility note"),
-superseded by ``FeatureFusionLocusCLSModel`` via the ``shared_backbone_locus_cls_2026_09``
-ablation ladder. Every arm here now extends
-``models.py::FeatureFusionArchitectureVariantModel`` instead, on the
-``matched_chr1_shared_backbone`` engine. The suite's earlier arms and their
-``configs/models/arch/`` recipes stay in the repo (frozen, not deleted) as a
-compatibility-only measurement of the retired architecture; they are not part of
-this registry.
+(the two-stage frozen-prior architecture), superseded by ``FeatureFusionLocusCLSModel``
+via the ``shared_backbone_locus_cls_2026_09`` ablation ladder. Every arm here now
+extends ``models.py::FeatureFusionArchitectureVariantModel`` instead, on the
+``matched_chr1_shared_backbone`` engine.
 
-Not part of the stable CLI -- delete this module together with
-scripts/experiments/{run_arch_suite,collect_arch_results}.py,
-configs/models/arch_shared_backbone/ and
-``models.py::FeatureFusionArchitectureVariantModel`` once the study concludes and
-a decision is recorded in results/reference/ablations.yaml.
+Update (2026-09-06 refactor): the two-stage architecture and its whole generation
+(``RNAMethylationPredictor``/``VarianceNormalizedResidualModel``/``RNA2DNAmModel``/
+``ArchitectureVariantModel``/``DirectPredictionModel``, the ``MethylProphetTrainer``/
+``ScopedRNATrainer`` engines, and its ``configs/models/arch/`` recipes) have since
+been **removed from the codebase entirely, including old-checkpoint compatibility**
+-- see CLAUDE.md's "Model compatibility note" and docs/RNA_METHYLATION.md's "Retired
+architecture" section. The suite's earlier arms are not part of this registry and are
+no longer runnable at all, not merely frozen.
+
+Not part of the stable CLI, but no longer purely throwaway either: since 2026-09-05
+``models.py::FeatureFusionArchitectureVariantModel`` (via ``encoder.kind=locus_attention``)
+is the live primary RNA-methylation model -- see CLAUDE.md and docs/RNA_METHYLATION.md --
+so it must NOT be deleted once this study concludes. ``configs/models/arch_shared_backbone/``
+is likewise the ongoing home for the RNA-encoder-comparison harness (docs/RNA_METHYLATION.md's
+"Forward direction" section), reused across studies, not a directory to delete either. Once
+the ``architecture_novelty_2026_09`` study itself concludes and a decision is recorded in
+results/reference/ablations.yaml, only that study's own queue-runner scaffolding --
+scripts/experiments/{run_arch_suite,collect_arch_results}.py -- and its now-closed arm
+entries/configs are candidates for removal.
 
 Every arm runs on ``matched_chr1_shared_backbone`` at ``mode=final``, evaluated on
 the official Table-5 chr1 Array views via ``evaluate_official_split`` -- the same
@@ -83,8 +92,27 @@ ARMS: tuple[Arm, ...] = (
     Arm("enc_locus_attention_k128", _arch("enc_locus_attention_k128"), "1b-locus-conditioned-rna",
         "Is the token count the binding constraint?", control="enc_locus_attention_k64"),
 
-    # -- Stage 1c: depth on the concatenated [h_mean, h_raw] joint -- the
-    # mandatory control for the HC/mHC arms below.
+    # -- Stage 1f: RNA-encoder-comparison harness (docs/RNA_METHYLATION.md's
+    # "Forward direction") -- alternative RNA encodings from the literature,
+    # evaluated against the same locus-conditioned-attention baseline
+    # (enc_locus_attention_k64 / row B).
+    Arm("enc_bottleneck_mlp", _arch("enc_bottleneck_mlp"), "1f-encoder-comparison",
+        "Does MethylProphet's published from-scratch RNA-encoder architecture (a 6-block "
+        "pre-norm residual bottleneck MLP, trained here in place of the current encoder) "
+        "match or beat locus-conditioned attention?",
+        control="enc_locus_attention_k64"),
+    Arm("enc_frozen_embedding_bulkrnabert", _arch("enc_frozen_embedding_bulkrnabert"),
+        "1f-encoder-comparison",
+        "Does a frozen pretrained transcriptome foundation-model embedding (BulkRNABert, "
+        "TCGA-pretrained checkpoint, no fine-tuning) beat a from-scratch-trained encoder?",
+        control="enc_locus_attention_k64",
+        # Generated 2026-09-05 by scripts/prepare_bulkrnabert_embeddings.py
+        # (10916, 256) real embeddings, bfloat16, all samples -- adjust this
+        # path if that cache is ever regenerated somewhere else.
+        extra_args=("--rna-cache", "MethylPredictionData/derived/bulkrnabert_embeddings/tcga")),
+
+    # -- Stage 1c: depth on the concatenated [h_mean, h_raw] joint -- isolates
+    # whether depth alone helps beyond the reference's single fusion Linear.
     Arm("trunk_plain_d2", _arch("trunk_plain_d2"), "1c-trunk-depth",
         "Does the reference architecture's single fusion Linear lose anything to depth at all?"),
     Arm("trunk_plain_d4", _arch("trunk_plain_d4"), "1c-trunk-depth",
@@ -99,23 +127,12 @@ ARMS: tuple[Arm, ...] = (
     Arm("beta_likelihood_head", _arch("beta_likelihood_head"), "1e-output-likelihood",
         "Does a bounded, heteroscedastic likelihood beat MSE on beta values?"),
 
-    # -- Stage 2: HOW THE TWO BRANCH EMBEDDINGS ARE COMBINED -- the postdoc's
-    # original question, now asked of the architecture that actually has two
-    # named branch embeddings to combine.
-    Arm("trunk_hc_n2_d4", _arch("trunk_hc_n2_d4"), "2-hyper-connections",
-        "Do two unconstrained residual streams over the joint beat one?", control="trunk_plain_d4"),
-    Arm("trunk_mhc_n2_d4", _arch("trunk_mhc_n2_d4"), "2-hyper-connections",
-        "Does the Birkhoff/doubly-stochastic constraint recover what HC loses?",
-        control="trunk_hc_n2_d4"),
-    Arm("trunk_mhc_stream_semantics_d4", _arch("trunk_mhc_stream_semantics_d4"), "2-hyper-connections",
-        "Do the mean/raw embeddings themselves, as the two mHC streams, beat a single fusion Linear? "
-        "(the literal answer to 'improve how the two branch embeddings are combined')",
-        control="trunk_mhc_n2_d4"),
-
-    # -- Stage 3: only after both components clear the promotion threshold.
-    Arm("combined_locus_attention_mhc_semantic", _arch("combined_locus_attention_mhc_semantic"),
-        "3-combination", "Do the two novelty components compose?",
-        control="trunk_mhc_stream_semantics_d4"),
+    # Stage 2 ("how the two branch embeddings are combined", via a
+    # Hyper-Connections/Manifold-Constrained-HC multi-stream trunk) was tried
+    # and removed -- see docs/RNA_METHYLATION.md and CLAUDE.md's "Model
+    # compatibility note" for why (not worth the added complexity for the
+    # measured gain). Stage 3 (combining it with locus-conditioned attention)
+    # was removed alongside it, having no remaining component to combine.
 )
 
 ARMS_BY_NAME = {arm.name: arm for arm in ARMS}
@@ -128,10 +145,9 @@ def jobs(arms: tuple[Arm, ...] = ARMS) -> list[tuple[Arm, int]]:
 
 def run_id(arm: Arm, seed: int) -> str:
     """Deterministic per (arm, seed): re-running the same unit on any machine
-    reopens the same run directory instead of creating a duplicate. Unlike the
-    two-stage suite, this engine has NO resume support (LocusCLSJointTrainer's
-    RunStore.create is never called with resume=True) -- a killed run's
-    directory is a dead end, not something a re-invocation can continue."""
+    reopens the same run directory instead of creating a duplicate.
+    ``run_arch_suite.py`` auto-resumes a killed run from its
+    ``checkpoints/last.pt`` when one exists."""
     return f"arch-{STUDY}-shared-{arm.name}-seed{seed}"
 
 

@@ -7,7 +7,7 @@ formal experiment is worth building, not a committed roadmap item. No code, conf
 
 ## Motivating question
 
-`RNAMethylationPredictor` and MethylProphet are both trained and evaluated exclusively on
+Our RNA-methylation model and MethylProphet are both trained and evaluated exclusively on
 bulk TCGA RNA + bulk WGBS. Does either model generalize **zero-shot** (no fine-tuning) to
 single-cell paired RNA+methylation data, at **per-cell** resolution? A positive result
 would be strong evidence that the learned RNA→methylation relationship is real regulatory

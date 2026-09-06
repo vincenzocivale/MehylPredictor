@@ -15,17 +15,18 @@ This suite originally sat on `VarianceNormalizedResidualModel`
 the `shared_backbone_locus_cls_2026_09` ablation ladder and
 `FeatureFusionLocusCLSModel` was promoted to the repo's primary/reference
 RNA-methylation architecture (`docs/RNA_METHYLATION.md`, CLAUDE.md's "Model
-compatibility note") — the older model is now kept only for old-checkpoint
-compatibility.
+compatibility note") — at the time of that retargeting the older model was
+kept for old-checkpoint compatibility, but see the "Update (later refactor)"
+note below: a subsequent 2026-09-06 refactor removed that whole generation
+(and its `configs/models/arch/` recipes) from the codebase entirely, dropping
+old-checkpoint compatibility too. Treat this paragraph as describing the
+2026-09-04 state only, not the current one.
 
-Every arm below was rebuilt on top of the new reference architecture. The
-original arms and their `configs/models/arch/` recipes stay in the repo,
-unmodified, as a **compatibility-only** measurement of the retired
-architecture (`scripts/experiments/{arch_suite,run_arch_suite,collect_arch_results}.py`
-now target the shared-backbone family; the retired suite's driver was stopped
-after 2 epochs of its noise-floor arm — resumable via `--resume`, `latest.pt`
-saved — but was not continued, since the new reference architecture makes it
-no longer the primary comparison).
+Every arm below was rebuilt on top of the new reference architecture.
+`scripts/experiments/{arch_suite,run_arch_suite,collect_arch_results}.py`
+target the shared-backbone family only; the retired two-stage suite's driver
+was stopped after 2 epochs of its noise-floor arm and never continued, and its
+own code/configs no longer exist at all (see below), not merely unused.
 
 ## Why this study exists
 
@@ -45,17 +46,19 @@ The critique holds up against the **new** reference architecture too:
 - No fusion-mechanism ablation has ever been run on this architecture (the
   retired `fusion_mechanism_2026_08` suite predates it).
 
+**Later update**: the mHC trunk this suggestion motivated (originally "Stage
+2" of this study) was built, run, measured, and **removed from the codebase
+entirely** — see "What was tried and removed" near the end of this file. The
+RNA-encoding half of the suggestion (Stage 1b below) is the part that
+actually moved the number and remains the repo's primary/reference
+architecture change.
+
 ## Protocol
 
 Every arm: `matched_chr1_shared_backbone` engine, `mode=final`, 80 epochs,
 `schedule_policy=pair_complete`, evaluated via
 `rna_training/locus_cls_trainer.py::evaluate_official_split` on the official
 MethylProphet Table-5 chr1 Array views (view `official_val_cpg_x_val_sample`).
-
-The stage-2 HC/mHC runs launched on 2026-09-03 use the user-selected aggressive
-optimizer profile: peak lr 2e-4, `cosine_warmup`, one warm-up epoch, and
-`min_lr_ratio=0.1` (final lr 2e-5). Other arms retain the original lr 5e-5
-constant protocol unless their recipe records an explicit override.
 
 **Two mechanical differences from the retired suite, both consequences of how
 this engine works:**
@@ -64,11 +67,10 @@ this engine works:**
    trains; the official-split number comes from a second
    `scripts/evaluate.py --engine matched_chr1_shared_backbone` call against
    the checkpoint. `run_arch_suite.py` runs both back to back per unit.
-2. **No resume support.** `LocusCLSJointTrainer`'s `RunStore.create` is never
-   called with `resume=True` — a run directory left behind by a killed
-   process is a dead end, not something a re-invocation can continue. The
-   runner reports a blocked unit and moves on rather than deleting or
-   fighting over an existing directory.
+2. **Auto-resume from a checkpoint.** `run_arch_suite.py` passes `--resume`
+   to `scripts/train.py` whenever a unit's run directory already exists with
+   a valid `checkpoints/last.pt` — see "Current status" below for the exact
+   command.
 
 ## The reference number is not converged yet
 
@@ -100,34 +102,40 @@ standard deviation.**
 | 1c-trunk-depth | `trunk_plain_d2` / `_d4` / `_d8` | Does the single fusion Linear lose anything to depth, and where does it saturate? |
 | 1d-axial-comethylation | `axial_cpg_d4` | Does attending to genomic neighbours along the CpG axis add signal? |
 | 1e-output-likelihood | `beta_likelihood_head` | Does a bounded, heteroscedastic likelihood beat MSE on beta values? |
-| 2-hyper-connections | `trunk_hc_n2_d4`, `trunk_mhc_n2_d4`, `trunk_mhc_stream_semantics_d4` | Do two residual streams over the joint help, and does the manifold constraint matter? |
-| 3-combination | `combined_locus_attention_mhc_semantic` | Do the two novelty components compose? |
 
-**The flagship arm is `trunk_mhc_stream_semantics_d4`** — instead of the
-reference architecture's single `Linear([h_mean, h_raw])`, the mean and raw
-branch embeddings themselves *are* the `n_streams=2` of an mHC trunk: they
-exchange information under a doubly stochastic (mass-conserving) mixing
-matrix for `depth` steps before the final head. This is the most literal
-possible answer to "improve how the two branch embeddings are combined" —
-asked of the architecture that actually has two named branch embeddings to
-combine, rather than of a single internal joint vector. The exchange matrix
-is directly plottable per depth
-(`models.py::HyperConnectionTrunk.residual_mappings`), an interpretability
-figure the flat single-`Linear` fusion cannot produce.
+A Hyper-Connections/Manifold-Constrained-HC multi-stream trunk stage (originally "Stage
+2", the postdoc's most literal suggestion for "how the two branch embeddings are
+combined") and a "Stage 3" composing it with locus-conditioned attention were run,
+measured, and removed — see "What was tried and removed" below.
 
-Two mHC/HC pairs exist deliberately: `trunk_hc_n2_d4`/`trunk_mhc_n2_d4` are a
-depth control on the *concatenated* joint (matched to the `trunk_plain_dX`
-ladder, isolating "did stream mixing help" from "did depth help");
-`trunk_mhc_stream_semantics_d4` is the arm where the streams have identity.
+## Current status (2026-09-06) and how to resume
 
-Unlike the retired suite, there is **no capacity-matched fusion-mechanism
-retest arm** here: the raw branch's product-term construction
-(`[rna, cpg, proj(rna)·proj(cpg)]`) is fixed inside
-`FeatureFusionLocusCLSModel`/`FeatureFusionArchitectureVariantModel` and does
-not go through `InteractionConfig.kind` dispatch the way the retired
-architecture's fusion did, so `fusion_mechanism_2026_08`'s FiLM/bilinear/
-cross-attention arms have no direct analogue to retest here. The
-`trunk_hc`/`trunk_mhc` arms are this architecture's fusion-mechanism axis.
+None of the arms below have been captured into `runs/`/`summary.yaml` yet --
+`collect_arch_results.py` has never been run. Status per arm, from
+`logs/arch_suite/queue_state_<host>.json` and each run directory:
+
+| arm | status | what's needed |
+|---|---|---|
+| `enc_bottleneck_mlp` | **complete** (train+eval) | ready to collect |
+| `enc_frozen_embedding_bulkrnabert` | training complete, **eval failed** 2026-09-06 (checkpoint/model shape mismatch: the eval step rebuilt the model against the default 25017-gene RNA cache instead of the BulkRNABert 256-d cache) | **already fixed in code** (`run_arch_suite.py::_eval_command` now mirrors `arm.extra_args`, see its comment) -- just rerun the arm, training will resume-and-immediately-finish and eval will succeed |
+| `seed_variance_reference` | queue says "training" but stalled (no process running) -- this is also the **missing chr1 convergence run** (rung_b_official_final was stopped at epoch 47/80) | rerun to auto-resume from `checkpoints/last.pt` |
+| `trunk_plain_d4` | stalled, same as above | rerun to auto-resume |
+| `p0_row_c_locus_attention_plain_trunk_d4` (does trunk depth help the reference encoder at all; run-id `p0_row_c-seed17`) | interrupted at epoch 21/80, never evaluated -- **not part of the `run_arch_suite.py` queue** (no `Arm` entry in `arch_suite.py`; it was launched as a one-off, see `logs/p0_tier1/driver.log`) | resume manually (see command below), then evaluate manually |
+| `enc_mlp`, `enc_locus_attention_k64`/`_k128`, `trunk_plain_d2`/`_d8`, `axial_cpg_d4`, `beta_likelihood_head` | not started | run via the queue once the above are done |
+
+The `trunk_hc_n2_d4`/`trunk_mhc_n2_d4`/`trunk_mhc_stream_semantics_d4`/`trunk_mhc_gated_residual_d4`/
+`locus_attention_mhc_additive_residual_d4`/`combined_locus_attention_mhc_semantic` arms that
+used to appear in this table have been **removed entirely** (code, configs, on-disk runs and
+checkpoints) — see "What was tried and removed" below.
+
+**Exact launch/resume commands for every row above (one per arm, meant to be handed to different
+machines in parallel) are in [`../../../../docs/EXPERIMENT_ROADMAP.md`](../../../../docs/EXPERIMENT_ROADMAP.md)** --
+that's the canonical copy; don't re-derive them here. Once arms finish, capture everything into
+provenance (idempotent, safe to rerun any time):
+
+```bash
+python scripts/experiments/collect_arch_results.py
+```
 
 ## Running it
 
@@ -154,29 +162,70 @@ python scripts/experiments/collect_arch_results.py \
     --output-root /mnt/m/experiments
 ```
 
-Run ids are deterministic per (arm, seed). Unlike the retired suite, a killed
-unit's run directory **cannot** be resumed on this engine — the runner
-reports it as blocked and moves to the next unit.
+Run ids are deterministic per (arm, seed). A killed unit **is** auto-resumed
+the next time its arm is selected (`run_arch_suite.py` passes `--resume` to
+`scripts/train.py` whenever the run directory already exists with a valid
+`checkpoints/last.pt`) — only a run directory that exists but has no
+`last.pt` at all (e.g. killed before the first checkpoint) is reported as
+`blocked_incomplete_run_dir` and skipped.
 
-Budget: 15 units, ~3.5–4.5 h training + a shorter evaluation pass each, on one
-RTX PRO 5000. Measured peak GPU memory at the real WGBS block size
-(32×20480, this architecture's batching) is 15–19 GB across all 13 arms
-(`--cuda-smoke --smoke-samples 32 --smoke-loci 20480`), comfortably under the
-`--min-free-gb` default of 20.
+Budget: 13 units (11 arms, `seed_variance_reference` at 3 seeds), ~3.5–4.5 h
+training + a shorter evaluation pass each, on one RTX PRO 5000. Measured peak
+GPU memory at the real WGBS block size (32×20480, this architecture's
+batching) is 15–19 GB (`--cuda-smoke --smoke-samples 32 --smoke-loci 20480`),
+comfortably under the `--min-free-gb` default of 20.
 
 ## Files here
 
 - `runs/<arm>__seed<N>.json` — one self-describing record per completed run:
-  official-split metrics, checkpoint path/epoch, training summary, and the
-  mHC signal-propagation diagnostics when the arm has a multi-stream trunk.
-  Generated; do not hand-edit.
+  official-split metrics, checkpoint path/epoch, training summary. Generated;
+  do not hand-edit.
 - `summary.yaml` / `summary.md` — generated rollup with the noise floor and
   per-arm verdict.
 
 When the study concludes, fold the verdict into `results/reference/ablations.yaml`
-as a normal study block, add the run rows to `results/reference/PROVENANCE.md`,
-and delete the suite's throwaway code
-(`scripts/experiments/{arch_suite,run_arch_suite,collect_arch_results}.py`,
-`configs/models/arch_shared_backbone/`, `configs/models/arch/` (retired arm),
-and both `ArchitectureVariantModel`/`FeatureFusionArchitectureVariantModel` in
-`models.py`) per `CLAUDE.md`'s rule on one-off experiment code.
+as a normal study block and add the run rows to `results/reference/PROVENANCE.md`.
+
+## What was tried and removed: Hyper-Connections / mHC
+
+Stage 2 (`trunk_hc_n2_d4`, `trunk_mhc_n2_d4`, `trunk_mhc_stream_semantics_d4`,
+`trunk_mhc_gated_residual_d4`, `locus_attention_mhc_additive_residual_d4`) and Stage 3
+(`combined_locus_attention_mhc_semantic`) tested a multi-stream Hyper-Connections /
+Manifold-Constrained-HC trunk (`models.py::HyperConnectionTrunk`, `TrunkConfig.kind`
+`hc`/`mhc`) as the literal answer to the postdoc's "improve how the two branch embeddings
+are combined" suggestion. Measured result (chr1, single seed, see
+`docs/RNA_METHYLATION.md`'s former "2026-09-05 update" section for the full table before
+this removal, recoverable from git history): the mHC flagship beat the reference by only
++0.0057 / +0.0087 / +0.0050 MAS-PCC across the three official views — an order of
+magnitude below the RNA-encoder effect (Stage 1b) and within the range a single seed could
+produce by chance. A checkpoint-level diagnostic reinforced this independently of any
+retraining: the flagship's learned residual mapping's off-diagonal mass (0.0152-0.0156)
+was *smaller* than at random initialization (0.0180) — training pushed the cross-stream
+exchange the mechanism exists to enable *closer* to the identity, not away from it.
+
+Given that evidence, mHC/HC were judged not worth their added complexity and code surface
+and were **removed from the codebase entirely** (`HyperConnectionTrunk`, `sinkhorn_knopp`,
+`TrunkConfig.n_streams`/`sinkhorn_iters`/`identity_init_scale`/`stream_semantics`/
+`semantic_readout`, the six arm entries and their configs/on-disk runs/checkpoints) rather
+than merely demoted to a kept ablation arm — see CLAUDE.md's "Model compatibility note".
+`TrunkConfig.kind` now supports only `none`/`plain`. If mHC is ever worth revisiting, the
+implementation is recoverable from git history before this removal; re-derive the
+measurement above rather than assuming it still holds against whatever the reference
+architecture has become by then.
+
+Note (updated 2026-09-05): `FeatureFusionArchitectureVariantModel` (`models.py`) is no
+longer throwaway code to delete once this study concludes -- since 2026-09-05 it is the
+live primary RNA-methylation model class (`encoder.kind=locus_attention`, see CLAUDE.md
+and docs/RNA_METHYLATION.md), and `configs/models/arch_shared_backbone/` is the ongoing
+home of the RNA-encoder-comparison harness that reuses this same registry across studies
+(docs/RNA_METHYLATION.md's "Forward direction" section) -- neither should be deleted.
+**Update (later refactor)**: `ArchitectureVariantModel` (the older two-stage variant class) and
+its `configs/models/arch/` recipes have since been **removed entirely**, along with the whole
+two-stage frozen-prior + residual architecture generation and its `MethylProphetTrainer`/
+`ScopedRNATrainer` engines -- see CLAUDE.md's "Model compatibility note". The Stage 2/3
+Hyper-Connections/mHC arms described above have also been removed entirely (code, configs, and
+on-disk runs/checkpoints) -- see "What was tried and removed" above. This study's own
+queue-runner scaffolding -- `scripts/experiments/{run_arch_suite,collect_arch_results}.py` --
+and its now-closed arm entries in `arch_suite.py`/`configs/models/arch_shared_backbone/`
+remain candidates for removal once the verdict above is archived, per `CLAUDE.md`'s rule on
+one-off experiment code.

@@ -110,6 +110,14 @@ def _eval_command(arm: Arm, seed: int, paths: dict[str, str], run_dir: Path) -> 
         "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
         "--feature-cache", paths["feature_cache"], "--rna-cache", paths["rna_cache"],
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
+        # Must mirror _train_command's extra_args -- an arm that overrides
+        # --rna-cache (e.g. enc_frozen_embedding_bulkrnabert) needs the same
+        # override at eval time or evaluate_official_split rebuilds the model
+        # against the wrong (default 25017-gene) cache and the checkpoint's
+        # state_dict fails to load with a shape mismatch (found 2026-09-06:
+        # this was the first arm to ever use extra_args, so the gap never
+        # manifested before).
+        *arm.extra_args,
     ]
 
 

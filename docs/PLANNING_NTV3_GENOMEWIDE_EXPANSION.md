@@ -9,7 +9,7 @@ re-deriving the numbers below.
 
 Two related but distinct goals surfaced in the same conversation:
 
-1. Compare `RNAMethylationPredictor` against MethylProphet's **ENCODE** benchmark (Table 7
+1. Compare our RNA-methylation model against MethylProphet's **ENCODE** benchmark (Table 7
    E-rows), analogous to the already-completed TCGA T(A)/T(A+W)/T(A+E) comparison
    ([`table7_source_ablation.md`](../results/reference/methylprophet_comparison/table7_source_ablation.md)).
 2. Redefine this repo's own `genomewide` scope so it means what the name implies: **the union

@@ -166,6 +166,10 @@ class MethylationSource:
     def has_cpg(self, cpg_idx) -> np.ndarray:
         return self._cpg_index.contains(cpg_idx)
 
+    def cpg_positions(self, cpg_idx: Sequence[int]) -> np.ndarray:
+        """Physical HDF5 column positions for locality-aware scheduling."""
+        return self._cpg_index.positions_of(cpg_idx)
+
     def rows_of_measurements(self, measurement_idx: Sequence[int]) -> np.ndarray:
         return self._measurement_index.positions_of(measurement_idx)
 
