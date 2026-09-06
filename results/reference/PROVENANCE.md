@@ -1,17 +1,16 @@
 # Provenance: recorded numbers → raw run directories
 
 Every number in `results/reference/` traces back to a raw run under
-`/dune/DATASETS/MethylPredictionData/experiments/` (this machine; gitignored,
-not version-controlled). This file is the index from one to the other, so a
+`results/experiments/` (gitignored, not version-controlled). This file is the index from one to the other, so a
 paper table/figure can always be traced back to its exact checkpoint. Update
 it whenever a `results/reference/**` file is added or a referenced run is
 superseded/deleted.
 
-Layout note (2026-08-28 reorg): new runs from `scripts/{train,tune,evaluate}.py`
-should land under `experiments/runs/` (the `RunStore` layout,
+Layout note: new runs from `scripts/{train,tune,evaluate}.py` should land under
+`results/experiments/runs/` (the `RunStore` layout,
 `runs/<model>/<scope>/<run-id>/`) by passing `--output-root
-/dune/DATASETS/MethylPredictionData/experiments` (RunStore appends the `runs/`
-segment itself -- do not also put `/runs` in `--output-root` or it double-nests).
+results/experiments` (RunStore appends the `runs/` segment itself -- do not also
+put `/runs` in `--output-root` or it double-nests).
 Everything below predates that convention and lives under older ad hoc paths;
 entries are updated to `experiments/runs/...` as each is redone.
 
@@ -112,6 +111,13 @@ verified 2026-09-02" section for the full record, including the missing/extra sa
 | `training_search` | *(deleted 2026-08-28 — cleanup pass, closed ablation)* | was `experiments/training_search/tcga_chr1_v1*` |
 | `interaction_concat_and_latent_dim_2026_08` | *(deleted 2026-08-28 — cleanup pass, closed ablation)* | was `runs/runs/rna_methylation/chr1/ablation-*` (this repo's local `runs/`, not `/dune`) |
 | `structured_loss_objective_variants_2026_08` | `experiments/MethylPredictor/tcga_chr1/{tail_aware_pcc,large_sample_pcc,array_only_structured}/` | live, `.done` + `evaluation/headline.json` present in each |
+
+## `ablations/<study>/` (per-study directories, distinct from `ablations.yaml` above)
+
+| study | run path(s) | status |
+|---|---|---|
+| `architecture_novelty_2026_09` (`enc_bottleneck_mlp`, `enc_frozen_embedding_bulkrnabert`) | `results/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-{enc_bottleneck_mlp,enc_frozen_embedding_bulkrnabert}-seed17/checkpoints/best.pt` | **live**, collected 2026-09-06 via `scripts/experiments/collect_arch_results.py`; both underperform the `locus_attention` reference (row B) and are not promoted — see that study's `summary.md`/`README.md` and `docs/RNA_METHYLATION.md`'s "Forward direction" section. Remaining arms in the suite (`seed_variance_reference` etc.) not yet collected. |
+| `query_representation_2026_09` (`q0_ntv3`/`q1_mean_only`/`q2_hybrid_detached`/`q3_hybrid_joint`) | `results/experiments/runs/locus_cls_joint/chr1/` (query-representation run ids, seed17) | **live**, collected via `scripts/experiments/collect_query_representation.py`; winner `q0_ntv3` (0.5352) on the development split — see that study's `README.md`/`summary.md`. |
 
 ## `methylprophet_comparison/`
 

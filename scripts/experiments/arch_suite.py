@@ -41,6 +41,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY = "architecture_novelty_2026_09"
+# Raw experiment outputs belong to the repository's results area.  Keep this
+# independent from MethylPredictionData: that tree is reserved for canonical
+# inputs and derived caches, not paper runs/checkpoints.
+DEFAULT_EXPERIMENT_ROOT = REPO_ROOT / "results" / "experiments"
 
 # PROVISIONAL reference: rung_b_official_final (results/reference/ablations.yaml)
 # was stopped by user request at epoch 47/80, still improving 0.3-0.8%/epoch --
@@ -173,8 +177,15 @@ def select(names: str | None, stages: str | None, shard: str | None) -> tuple[Ar
     return chosen
 
 
-def data_paths(data_root: str | None = None) -> dict[str, str]:
+def data_paths(
+    data_root: str | None = None,
+    experiment_root: str | None = None,
+) -> dict[str, str]:
     root = Path(data_root or os.environ.get("METHYL_DATA_ROOT", "/dune/DATASETS/MethylPredictionData"))
+    output_root = Path(
+        experiment_root
+        or os.environ.get("METHYL_EXPERIMENT_ROOT", str(DEFAULT_EXPERIMENT_ROOT))
+    )
     prepared = root / "derived" / "methylprophet_table5_tcga_chr1"
     canonical = root / "datasets" / "methylprophet_repro_v1"
     return {
@@ -184,5 +195,5 @@ def data_paths(data_root: str | None = None) -> dict[str, str]:
         "rna_cache": str(prepared / "rna"),
         "registry": str(canonical / "cpg" / "registries" / "array_cpg_map.parquet"),
         "cpg_targets_dir": str(root / "derived" / "cpg_statistics" / "chr1"),
-        "output_root": str(root / "experiments"),
+        "output_root": str(output_root),
     }

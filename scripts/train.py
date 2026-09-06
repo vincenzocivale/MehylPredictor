@@ -33,10 +33,11 @@ def _rna(args):
         use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
         use_raw_product=lc.get("use_raw_product", True), product_mlp=lc.get("product_mlp", False),
         include_raw_rna=lc.get("include_raw_rna", True), include_raw_cpg=lc.get("include_raw_cpg", True),
+        query_source=args.query_source or lc.get("query_source", "ntv3"),
         fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
         mode=args.mode, early_stop_patience=args.early_stop_patience, run_id=args.run_id,
-        overrides=overrides or None, resume=args.resume,
+        overrides=overrides or None, development_split_seed=args.development_split_seed, resume=args.resume,
     )
     try:
         return trainer.run()
@@ -56,7 +57,7 @@ def _stats(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--query-source",choices=["ntv3","mean_only","hybrid_detached","hybrid_joint"],default=None,help="locus-attention query representation; experimental, default preserves recipe/reference"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); args=p.parse_args()
     if args.model=="rna_methylation":
         for name in ("canonical_root","feature_cache","rna_cache"):
             if getattr(args,name) is None: p.error(f"--{name.replace('_','-')} is required for RNA training")

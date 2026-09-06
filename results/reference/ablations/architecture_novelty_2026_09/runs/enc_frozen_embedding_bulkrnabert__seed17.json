@@ -1,0 +1,32 @@
+{
+  "study": "architecture_novelty_2026_09",
+  "engine": "matched_chr1_shared_backbone",
+  "arm": "enc_frozen_embedding_bulkrnabert",
+  "stage": "1f-encoder-comparison",
+  "question": "Does a frozen pretrained transcriptome foundation-model embedding (BulkRNABert, TCGA-pretrained checkpoint, no fine-tuning) beat a from-scratch-trained encoder?",
+  "control_arm": "enc_locus_attention_k64",
+  "seed": 17,
+  "run_id": "arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17",
+  "run_dir": "/data2/home/vcivale/projects/methylation/MehylPredictor/results/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17",
+  "recipe": "configs/models/arch_shared_backbone/enc_frozen_embedding_bulkrnabert.yaml",
+  "architecture": "feature_fusion_locus_cls",
+  "checkpoint": "/data2/home/vcivale/projects/methylation/MehylPredictor/MethylPredictionData/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17/checkpoints/best.pt",
+  "checkpoint_epoch": 80,
+  "training": {
+    "mode": "final",
+    "best_epoch": 80,
+    "epochs_planned": 80,
+    "epochs_run": 80,
+    "elapsed_seconds": 4682.722109079361
+  },
+  "metrics": {
+    "rows": 6129992,
+    "mse": 0.01580098136860119,
+    "mae": 0.07651375521813115,
+    "prior_mse": 0.027223526572326653,
+    "skill_vs_prior": 0.41958359705449566,
+    "mas_pcc": 0.5164328824978921,
+    "mac_pcc": 0.9465226817219969
+  },
+  "architecture_diagnostics": null
+}

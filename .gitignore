@@ -1,8 +1,11 @@
 # Generated and downloaded training material
-artifacts/
-runs/
-searches/
-checkpoints/
+# (anchored to repo root: unanchored "runs/" also matched the small,
+# version-controlled results/reference/ablations/*/runs/ ledgers)
+/artifacts/
+/runs/
+/searches/
+/checkpoints/
+results/experiments/
 *.pt
 *.h5
 *.hdf5

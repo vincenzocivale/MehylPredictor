@@ -74,7 +74,7 @@ python scripts/train.py \
   --registry /path/to/array_cpg_map.parquet \
   --cpg-targets-dir /path/to/derived/cpg_statistics/chr1 \
   --recipe configs/models/rna_methylation_locus_attention.yaml \
-  --output-root /path/to/experiments
+  --output-root /path/to/repository/results/experiments
 ```
 
 For genome-wide training the scalable default is `axis_full_coverage`: every
@@ -97,7 +97,7 @@ official MethylProphet-matched validation cells are not used for model selection
 Search output:
 
 ```
-searches/<model>/<scope>/<search-id>/
+results/experiments/searches/<model>/<scope>/<search-id>/
   search_config.yaml
   candidates.csv
   selected.json
@@ -129,7 +129,7 @@ python scripts/evaluate.py --model rna_methylation \
 Training output is never mixed with search output:
 
 ```
-runs/<model>/<train-scope>/<run-id>/
+results/experiments/runs/<model>/<train-scope>/<run-id>/
   config.resolved.yaml
   metadata.json
   checkpoints/{best.pt,last.pt}
@@ -142,5 +142,5 @@ runs/<model>/<train-scope>/<run-id>/
 Git commit and the feature/RNA cache provenance available at launch. Evaluation
 manifests additionally record checkpoint SHA256 and evaluation scope.
 
-`runs/` and `searches/` are gitignored. Small frozen reference numbers live in
-`results/reference/` and are version controlled.
+The raw `runs/` and `searches/` contents are gitignored. Small frozen reference
+numbers live in `results/reference/` and are version controlled.

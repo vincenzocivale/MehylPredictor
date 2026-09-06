@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import pytest
 
 from methylation_predictor.benchmark.foundation_models.verify import (
     fingerprint_state_dict,
@@ -120,6 +121,7 @@ def test_remap_flash_attn_qkv_keys_renames_only_attention_weights():
 
 
 def test_one_hot_dna_window_centers_correctly_and_sums_to_window_length(tmp_path):
+    pytest.importorskip("pyfaidx")
     fasta_path = tmp_path / "toy.fa"
     fasta_path.write_text(">chr1\n" + "ACGT" * 50 + "\n")
 
@@ -131,6 +133,7 @@ def test_one_hot_dna_window_centers_correctly_and_sums_to_window_length(tmp_path
 
 
 def test_one_hot_dna_window_pads_out_of_bounds_with_zero_rows(tmp_path):
+    pytest.importorskip("pyfaidx")
     fasta_path = tmp_path / "toy.fa"
     fasta_path.write_text(">chr1\n" + "ACGT" * 3 + "\n")  # 12bp contig
 

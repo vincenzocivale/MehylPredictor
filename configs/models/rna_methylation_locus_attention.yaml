@@ -85,7 +85,8 @@ training:
   min_delta: 1.0e-05
   num_workers: 0
   schedule_layout: contiguous_blocks
-  prefetch_depth: 2
+  prefetch_depth: 8
+  prefetch_workers: 4
   hdf5_cache_mb: 256
   checkpoint_every: 1
   compile: false

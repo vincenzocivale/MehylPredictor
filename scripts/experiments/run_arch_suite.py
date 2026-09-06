@@ -264,6 +264,10 @@ def main() -> int:
     ap.add_argument("--shard", help="i/n -- run this machine's slice of the selected arms")
     ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--data-root", help="overrides METHYL_DATA_ROOT for a machine with a different mount")
+    ap.add_argument(
+        "--output-root",
+        help="where raw runs are stored (default: results/experiments; or METHYL_EXPERIMENT_ROOT)",
+    )
     ap.add_argument("--min-free-gb", type=float, default=20.0)
     ap.add_argument("--max-wait-hours", type=float, default=24.0)
     ap.add_argument("--poll-seconds", type=int, default=300)
@@ -287,7 +291,7 @@ def main() -> int:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
         return cuda_smoke(arms, args.gpu, args.smoke_samples, args.smoke_loci)
 
-    paths = data_paths(args.data_root)
+    paths = data_paths(args.data_root, args.output_root)
     units = jobs(arms)
     if args.print_commands:
         for arm, seed in units:
