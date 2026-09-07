@@ -1,7 +1,11 @@
-# B.2 — RNA encoder comparison, official chr1 (P1)
+# B.2 — RNA encoder comparison, official chr1 (P1), extended to chr123
 #
 # Same harness throughout (mean branch ON, raw product OFF, same loss/training budget) --
-# only the RNA encoder (model.encoder.kind) changes per arm.
+# only the RNA encoder (model.encoder.kind) changes per arm. chr1 is the primary
+# comparison; a chr123 metrics block (--engine shared_backbone against the chr123
+# compact cache, scripts/prepare_chr123_compact.py) was added per-arm for gene_pathway
+# and bulkformer_147m to check the comparison generalizes past chr1 -- not a separate
+# paper table, see docs/PAPER_ROADMAP.md's chr1->chr123 generalization framing.
 
 study: rna_encoder_comparison
 source: ours
@@ -38,7 +42,17 @@ arms:
         train_cpg_x_val_sample: {mas_pcc: 0.6631, mac_pcc: 0.9588, mse: 0.0122, mae: 0.0679}
         val_cpg_x_train_sample: {mas_pcc: 0.6127, mac_pcc: 0.9516, mse: 0.0139, mae: 0.0703}
         val_cpg_x_val_sample:   {mas_pcc: 0.5810, mac_pcc: 0.9499, mse: 0.0145, mae: 0.0720}
-    verdict: underperforms cross-attention reference on every view; not promoted.
+      chr123:   # run_id: rnaenc-enc_bottleneck_mlp-final-seed17 (chr123 dir, different run than the
+                # chr1 row above -- launched via this study's harness, not arch_suite.py), CLOSED
+                # 2026-09-07 06:30 UTC
+        train_cpg_x_val_sample: {mas_pcc: 0.6264, mac_pcc: 0.9543, mse: 0.0138, mae: 0.0726}
+        val_cpg_x_train_sample: {mas_pcc: 0.5877, mac_pcc: 0.9484, mse: 0.0149, mae: 0.0729}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5414, mac_pcc: 0.9452, mse: 0.0159, mae: 0.0752}
+    verdict: >
+      underperforms cross-attention reference on every chr1 view; not promoted. On chr123 it's
+      the best of the three RNA-encoder comparators (0.5414 vs gene_pathway's 0.4939 and
+      bulkformer_147m's 0.4471) while still trailing the chr1 cross-attention reference (0.5838) --
+      same qualitative ranking as chr1, no reordering at the harder scope.
 
   - arm: frozen_embedding_bulkrnabert
     status: confirmed_official
@@ -58,31 +72,41 @@ arms:
     verdict: underperforms cross-attention reference, larger gap than bottleneck_mlp; not promoted.
 
   - arm: gene_pathway
-    status: dev_only_needs_official_run
+    status: confirmed_official   # CLOSED 2026-09-06 23:xx UTC
     description: >
       Trainable SurvPath-style biologically sparse gene→pathway encoder (our own implementation,
       NOT MethylProphet's gene-pathway variant from Table 9 -- see paper/table9_rna_encoder_ablation.md).
     recipe: configs/models/rna_encoder_comparison/enc_gene_pathway.yaml
-    run_id_dev: rnaenc-gene_pathway-development-seed17
-    checkpoint: null   # dev run lived under a different host's $METHYL_DATA_ROOT, not present here
-    checkpoint_exists_on_this_host: false
-    metrics_development_only:
-      # inner proxy split (carved out of the training pool) -- NOT the official split, do not
-      # report as a paper number
-      val_cpg_x_val_sample_inner: {mas_pcc: 0.5072}
-    next_step: >
-      python scripts/experiments/run_rna_encoder_comparison.py --arms gene_pathway --mode final --gpu 0
-      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final
+    run_id: rnaenc-gene_pathway-final-seed17
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/rnaenc-gene_pathway-final-seed17/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.5873, mac_pcc: 0.9510, mse: 0.0144, mae: 0.0751}
+        val_cpg_x_train_sample: {mas_pcc: 0.5845, mac_pcc: 0.9492, mse: 0.0146, mae: 0.0735}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5347, mac_pcc: 0.9466, mse: 0.0155, mae: 0.0760}
+      chr123:   # run_id: rnaenc-gene_pathway-final-seed17 (chr123 dir), CLOSED 2026-09-06 23:xx UTC
+        val_cpg_x_val_sample: {mas_pcc: 0.4939, mac_pcc: 0.9435, mse: 0.0168, mae: 0.0788}
+    dev_run_for_reference: {run_id_dev: rnaenc-gene_pathway-development-seed17, val_cpg_x_val_sample_inner_mas_pcc: 0.5072}
+    verdict: underperforms cross-attention reference (0.5838) but clears the MethylProphet
+      gene-pathway context number (0.3959) on every chr1 view; holds up on chr123
+      (0.4939), no collapse moving to the harder scope; not promoted.
 
   - arm: bulkformer_147m
-    status: dev_only_needs_official_run
+    status: confirmed_official   # CLOSED 2026-09-06 23:xx UTC
     description: Frozen BulkFormer-147M sample embedding + trainable LayerNorm/Linear adapter.
     recipe: configs/models/rna_encoder_comparison/enc_frozen_bulkformer_147m.yaml
-    run_id_dev: rnaenc-bulkformer_147m-development-seed17
-    checkpoint: null
-    checkpoint_exists_on_this_host: false
-    metrics_development_only:
-      val_cpg_x_val_sample_inner: {mas_pcc: 0.4516}
-    next_step: >
-      python scripts/experiments/run_rna_encoder_comparison.py --arms bulkformer_147m --mode final --gpu 0
-      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final
+    run_id: rnaenc-bulkformer_147m-final-seed17
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/rnaenc-bulkformer_147m-final-seed17/checkpoints/best.pt
+    checkpoint_exists_on_this_host: true
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.5148, mac_pcc: 0.9467, mse: 0.0162, mae: 0.0804}
+        val_cpg_x_train_sample: {mas_pcc: 0.4599, mac_pcc: 0.9436, mse: 0.0169, mae: 0.0800}
+        val_cpg_x_val_sample:   {mas_pcc: 0.4586, mac_pcc: 0.9444, mse: 0.0169, mae: 0.0800}
+      chr123:   # run_id: rnaenc-bulkformer_147m-final-seed17 (chr123 dir), CLOSED 2026-09-06 23:xx UTC
+        val_cpg_x_val_sample: {mas_pcc: 0.4471, mac_pcc: 0.9412, mse: 0.0178, mae: 0.0819}
+    dev_run_for_reference: {run_id_dev: rnaenc-bulkformer_147m-development-seed17, val_cpg_x_val_sample_inner_mas_pcc: 0.4516}
+    verdict: underperforms cross-attention reference and gene_pathway on every chr1 view;
+      on chr123 it's last of the three RNA-encoder comparators (0.4471 vs gene_pathway's
+      0.4939 and enc_bottleneck_mlp's 0.5414); not promoted.

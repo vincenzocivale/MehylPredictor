@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Run gene-pathway and frozen BulkFormer RNA comparators sequentially.
+"""Run RNA-encoder comparators (gene-pathway, frozen BulkFormer, MethylProphet
+BottleneckMLP) sequentially.
 
-Default: development mode on the same fixed split seed=17 used for architecture
-selection. Use --mode final only after the architecture is frozen; final mode
-also runs scripts/evaluate.py on all three official chr1 views.
+Default: chr1, development mode on the same fixed split seed=17 used for
+architecture selection. Use --mode final only after the architecture is
+frozen; final mode also runs scripts/evaluate.py on all three official views
+for the chosen scope. --scope chr123 reuses the same recipes and the same
+(scope-independent) canonical-RNA/BulkFormer sample caches, but trains
+through --engine shared_backbone against the chr123 compact cache (see
+scripts/prepare_chr123_compact.py) instead of the chr1-matched cache.
+
+enc_bottleneck_mlp already has a confirmed_official chr1 number produced via
+the separate arch_suite.py/run_arch_suite.py queue runner (see
+results/reference/ours/02_rna_encoder_comparison.yaml) -- it's included here
+only so chr123 can reuse this harness instead of extending that chr1-only
+suite.
 """
 from __future__ import annotations
 
@@ -27,6 +38,11 @@ ARMS = {
         "cache": "bulkformer",
         "membership": None,
     },
+    "enc_bottleneck_mlp": {
+        "recipe": "configs/models/arch_shared_backbone/enc_bottleneck_mlp.yaml",
+        "cache": "canonical",
+        "membership": None,
+    },
 }
 
 
@@ -38,11 +54,15 @@ def resolve_root(value: str | None) -> Path:
     return Path("/dune/DATASETS/MethylPredictionData")
 
 
+SCOPE_ENGINE = {"chr1": "matched_chr1_shared_backbone", "chr123": "shared_backbone"}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--arms", default="gene_pathway,bulkformer_147m")
     ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--data-root")
+    ap.add_argument("--scope", choices=sorted(SCOPE_ENGINE), default="chr1")
     ap.add_argument("--mode", choices=["development", "final"], default="development")
     ap.add_argument("--seed", type=int, default=17)
     ap.add_argument("--early-stop-patience", type=int, default=6)
@@ -54,11 +74,24 @@ def main() -> int:
 
     root = resolve_root(args.data_root); os.chdir(REPO_ROOT)
     canonical = root / "datasets/methylprophet_repro_v1"
-    prepared = root / "derived/methylprophet_table5_tcga_chr1"
-    feature_cache = prepared / "features"; canonical_rna = prepared / "rna"
+    chr1_prepared = root / "derived/methylprophet_table5_tcga_chr1"
+    engine = SCOPE_ENGINE[args.scope]
+    if args.scope == "chr1":
+        prepared = chr1_prepared; feature_cache = prepared / "features"
+    else:
+        prepared = root / "derived/methylprophet_compact_chr123"
+        feature_cache = root / "derived/rna_feature_cache/chr123"
+        if not prepared.is_dir() or not feature_cache.is_dir():
+            print(f"[rna-encoder] missing chr123 cache ({prepared} / {feature_cache})\nBuild it first:\n  python scripts/prepare_chr123_compact.py --canonical-root {canonical} --output {prepared}")
+            return 2
+    # The canonical (non-frozen) RNA z-score cache is per-sample, not per-CpG-scope,
+    # so it's built once under the chr1 prep and reused unchanged for chr123 training
+    # (same pattern as docs/PAPER_ROADMAP.md's chr123-ref run); BulkFormer's cache is
+    # equally scope-independent.
+    canonical_rna = chr1_prepared / "rna"
     bulkformer = root / "derived/bulkformer_embeddings/tcga_147m"
     registry = canonical / "cpg/registries/array_cpg_map.parquet"
-    cpg_targets = root / "derived/cpg_statistics/chr1"; output_root = root / "experiments"
+    cpg_targets = root / f"derived/cpg_statistics/{args.scope}"; output_root = root / "experiments"
     log_dir = REPO_ROOT / "logs/rna_encoder_comparison_2026_09"; log_dir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(args.gpu), "PYTHONPATH": str(REPO_ROOT / "src")}
 
@@ -75,9 +108,9 @@ def main() -> int:
             return 2
 
         run_id = f"rnaenc-{arm}-{args.mode}-seed{args.seed}"
-        run_dir = output_root / "runs/locus_cls_joint/chr1" / run_id
+        run_dir = output_root / "runs/locus_cls_joint" / args.scope / run_id
         summary = run_dir / "training/summary.json"; best = run_dir / "checkpoints/best.pt"
-        eval_out = run_dir / "evaluation/chr1/metrics.json"
+        eval_out = run_dir / "evaluation" / args.scope / "metrics.json"
         complete = summary.is_file() and best.is_file() and (args.mode == "development" or eval_out.is_file())
         if complete:
             print(f"[rna-encoder] {arm}: already complete, skipping", flush=True); continue
@@ -92,8 +125,8 @@ def main() -> int:
             shutil.rmtree(run_dir)
 
         cmd = [
-            sys.executable, "scripts/train.py", "--model", "rna_methylation", "--scope", "chr1",
-            "--engine", "matched_chr1_shared_backbone", "--mode", args.mode,
+            sys.executable, "scripts/train.py", "--model", "rna_methylation", "--scope", args.scope,
+            "--engine", engine, "--mode", args.mode,
             "--recipe", spec["recipe"], "--seed", str(args.seed),
             "--canonical-root", str(canonical), "--prepared-root", str(prepared),
             "--feature-cache", str(feature_cache), "--rna-cache", str(rna_cache),
@@ -104,7 +137,7 @@ def main() -> int:
             cmd += ["--early-stop-patience", str(args.early_stop_patience)]
         if resume: cmd.append("--resume")
         if not summary.is_file():
-            log = log_dir / f"{run_id}.train.log"; print(f"[rna-encoder] {arm}: {'resuming' if resume else 'training'} -> {log}", flush=True)
+            log = log_dir / f"{args.scope}-{run_id}.train.log"; print(f"[rna-encoder] {arm}: {'resuming' if resume else 'training'} -> {log}", flush=True)
             with log.open("a") as h:
                 h.write("\n=== " + shlex.join(cmd) + "\n"); h.flush()
                 rc = subprocess.run(cmd, cwd=REPO_ROOT, env=env, stdout=h, stderr=subprocess.STDOUT).returncode
@@ -115,20 +148,20 @@ def main() -> int:
             eval_out.parent.mkdir(parents=True, exist_ok=True)
             cmd = [
                 sys.executable, "scripts/evaluate.py", "--model", "rna_methylation",
-                "--engine", "matched_chr1_shared_backbone", "--checkpoint", str(best),
-                "--eval-scope", "chr1", "--output", str(eval_out), "--recipe", spec["recipe"],
+                "--engine", engine, "--checkpoint", str(best),
+                "--eval-scope", args.scope, "--output", str(eval_out), "--recipe", spec["recipe"],
                 "--canonical-root", str(canonical), "--prepared-root", str(prepared),
                 "--feature-cache", str(feature_cache), "--rna-cache", str(rna_cache),
                 "--registry", str(registry), "--cpg-targets-dir", str(cpg_targets),
             ]
-            log = log_dir / f"{run_id}.eval.log"; print(f"[rna-encoder] {arm}: official evaluation -> {log}", flush=True)
+            log = log_dir / f"{args.scope}-{run_id}.eval.log"; print(f"[rna-encoder] {arm}: official evaluation -> {log}", flush=True)
             with log.open("a") as h:
                 h.write("\n=== " + shlex.join(cmd) + "\n"); h.flush()
                 rc = subprocess.run(cmd, cwd=REPO_ROOT, env=env, stdout=h, stderr=subprocess.STDOUT).returncode
             if rc:
                 print(f"[rna-encoder] {arm}: eval FAILED rc={rc}; sequence stopped", flush=True); return rc
 
-    subprocess.run([sys.executable, "scripts/experiments/collect_rna_encoder_comparison.py", "--data-root", str(root), "--mode", args.mode, "--seed", str(args.seed)], cwd=REPO_ROOT, check=False)
+    subprocess.run([sys.executable, "scripts/experiments/collect_rna_encoder_comparison.py", "--data-root", str(root), "--scope", args.scope, "--mode", args.mode, "--seed", str(args.seed)], cwd=REPO_ROOT, check=False)
     print("[rna-encoder] sequence complete", flush=True); return 0
 
 
