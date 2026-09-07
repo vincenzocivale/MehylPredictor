@@ -1,0 +1,114 @@
+study: rna_encoder_comparison_2026_09
+protocol:
+  scope: TCGA chr123
+  mode: final
+  seed: 17
+  fixed_harness: mean branch ON; raw product OFF; same loss/training budget
+runs:
+- arm: gene_pathway
+  mode: final
+  seed: 17
+  run_id: rnaenc-gene_pathway-final-seed17
+  run_dir: /dune/DATASETS/MethylPredictionData/experiments/runs/locus_cls_joint/chr123/rnaenc-gene_pathway-final-seed17
+  best_epoch: 80
+  epochs_run: 80
+  views:
+    train_cpg_x_val_sample:
+      rows: 70305742
+      mse: 0.015960925349107747
+      mae: 0.07952456878382172
+      prior_mse: 0.024446250013636983
+      skill_vs_prior: 0.3471012797380303
+      mas_pcc: 0.548261783033834
+      mac_pcc: 0.9465836896385069
+    val_cpg_x_train_sample:
+      rows: 121647501
+      mse: 0.015474340122269854
+      mae: 0.07549582821966389
+      prior_mse: 0.02880012797701117
+      skill_vs_prior: 0.4626989111082501
+      mas_pcc: 0.5609874533666157
+      mac_pcc: 0.9465161974993974
+    val_cpg_x_val_sample:
+      rows: 13520278
+      mse: 0.0168049874354598
+      mae: 0.07880309009132302
+      prior_mse: 0.029311049871353134
+      skill_vs_prior: 0.4266671610461832
+      mas_pcc: 0.49392293241959095
+      mac_pcc: 0.9435122905291424
+  headline_mas_pcc: 0.49392293241959095
+  headline_mse: 0.0168049874354598
+- arm: bulkformer_147m
+  mode: final
+  seed: 17
+  run_id: rnaenc-bulkformer_147m-final-seed17
+  run_dir: /dune/DATASETS/MethylPredictionData/experiments/runs/locus_cls_joint/chr123/rnaenc-bulkformer_147m-final-seed17
+  best_epoch: 80
+  epochs_run: 80
+  views:
+    train_cpg_x_val_sample:
+      rows: 70305742
+      mse: 0.017513809021821987
+      mae: 0.08442595290117257
+      prior_mse: 0.024446250013636983
+      skill_vs_prior: 0.283578912428198
+      mas_pcc: 0.490636752634779
+      mac_pcc: 0.9421661883179584
+    val_cpg_x_train_sample:
+      rows: 121647501
+      mse: 0.017217688291630378
+      mae: 0.08065709822641859
+      prior_mse: 0.02880012797701117
+      skill_vs_prior: 0.4021662575467069
+      mas_pcc: 0.4590576698090955
+      mac_pcc: 0.9419920076842654
+    val_cpg_x_val_sample:
+      rows: 13520278
+      mse: 0.017767151181871308
+      mae: 0.08193982118239598
+      prior_mse: 0.029311049871353134
+      skill_vs_prior: 0.39384118754354625
+      mas_pcc: 0.44707953291185615
+      mac_pcc: 0.9411822890658752
+  headline_mas_pcc: 0.44707953291185615
+  headline_mse: 0.017767151181871308
+- arm: enc_bottleneck_mlp
+  mode: final
+  seed: 17
+  run_id: rnaenc-enc_bottleneck_mlp-final-seed17
+  run_dir: /dune/DATASETS/MethylPredictionData/experiments/runs/locus_cls_joint/chr123/rnaenc-enc_bottleneck_mlp-final-seed17
+  best_epoch: 80
+  epochs_run: 80
+  views:
+    train_cpg_x_val_sample:
+      rows: 70305742
+      mse: 0.013751881376590964
+      mae: 0.07257591569660694
+      prior_mse: 0.024446250013636983
+      skill_vs_prior: 0.4374645858191061
+      mas_pcc: 0.6263908749125566
+      mac_pcc: 0.9542866429858803
+    val_cpg_x_train_sample:
+      rows: 121647501
+      mse: 0.014895651769550454
+      mae: 0.07294478200473359
+      prior_mse: 0.02880012797701117
+      skill_vs_prior: 0.48279216740146236
+      mas_pcc: 0.5877320847955024
+      mac_pcc: 0.9483631271179771
+    val_cpg_x_val_sample:
+      rows: 13520278
+      mse: 0.015933636759300995
+      mae: 0.07515879620590207
+      prior_mse: 0.029311049871353134
+      skill_vs_prior: 0.45639488079635193
+      mas_pcc: 0.5413684488160059
+      mac_pcc: 0.9451841074135476
+  headline_mas_pcc: 0.5413684488160059
+  headline_mse: 0.015933636759300995
+reported_context:
+  methylprophet_gene_pathway_table9:
+    train_cpg_x_val_sample_mas_pcc: 0.5371
+    val_cpg_x_train_sample_mas_pcc: 0.4194
+    val_cpg_x_val_sample_mas_pcc: 0.3959

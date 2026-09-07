@@ -16,10 +16,17 @@ import sys
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mean_contribution_suite import ARMS, REPO_ROOT, SEEDS, STUDY, data_paths  # noqa: E402
+from mean_contribution_suite import ARMS, REPO_ROOT, STUDY, data_paths, seeds_for  # noqa: E402
 
-LEDGER = REPO_ROOT / "results" / "reference" / STUDY
 LOWER_BETTER = {"mse", "mae", "prior_mse"}
+
+
+def ledger_for(scope: str) -> Path:
+    # chr1 (the primary, 3-seed causal ladder) keeps the original path; chr123 (single-seed
+    # follow-up, see docs/MEAN_CONTRIBUTION_EXPERIMENTS.md) gets its own sibling ledger so neither
+    # overwrites the other.
+    name = STUDY if scope == "chr1" else f"{STUDY}_{scope}"
+    return REPO_ROOT / "results" / "reference" / "appendix" / name
 
 
 def _read_json(path: Path) -> dict | None:
@@ -46,15 +53,15 @@ def _git_head() -> str | None:
         return None
 
 
-def _run_dir(root: str, arm, seed: int) -> Path:
-    return Path(root) / "runs" / "locus_cls_joint" / "chr1" / arm.run_id(seed)
+def _run_dir(root: str, arm, seed: int, scope: str) -> Path:
+    return Path(root) / "runs" / "locus_cls_joint" / scope / arm.run_id(seed, scope)
 
 
-def collect_one(root: str, arm, seed: int) -> dict | None:
-    run_dir = _run_dir(root, arm, seed)
+def collect_one(root: str, arm, seed: int, scope: str) -> dict | None:
+    run_dir = _run_dir(root, arm, seed, scope)
     training = _read_json(run_dir / "training" / "summary.json")
-    evaluation = _read_json(run_dir / "evaluation" / "chr1" / "metrics.json")
-    diagnostics = _read_json(run_dir / "evaluation" / "chr1" / "mean_diagnostics.json")
+    evaluation = _read_json(run_dir / "evaluation" / scope / "metrics.json")
+    diagnostics = _read_json(run_dir / "evaluation" / scope / "mean_diagnostics.json")
     if not training or not evaluation or not diagnostics:
         return None
     checkpoint = run_dir / "checkpoints" / "best.pt"
@@ -62,10 +69,11 @@ def collect_one(root: str, arm, seed: int) -> dict | None:
     recipe = REPO_ROOT / arm.recipe
     return {
         "study": STUDY,
+        "scope": scope,
         "arm": arm.name,
         "question": arm.question,
         "seed": seed,
-        "run_id": arm.run_id(seed),
+        "run_id": arm.run_id(seed, scope),
         "run_dir": str(run_dir),
         "recipe": arm.recipe,
         "recipe_sha256": _sha256(recipe),
@@ -100,10 +108,10 @@ def _metric(records: list[dict], arm: str, view: str, metric: str) -> dict:
     return _mean_sd(values)
 
 
-def _paired_benefit(records: list[dict], a: str, b: str, view: str, metric: str) -> dict:
+def _paired_benefit(records: list[dict], seeds: tuple[int, ...], a: str, b: str, view: str, metric: str) -> dict:
     by = {(r["arm"], r["seed"]): r for r in records}
     values = []
-    for seed in SEEDS:
+    for seed in seeds:
         ra, rb = by.get((a, seed)), by.get((b, seed))
         if not ra or not rb:
             continue
@@ -124,13 +132,14 @@ def _get_path(record: dict, path: tuple[str, ...]) -> float:
 
 def _paired_relative_reduction(
     records: list[dict],
+    seeds: tuple[int, ...],
     a: str,
     b: str,
     path: tuple[str, ...],
 ) -> dict:
     by = {(r["arm"], r["seed"]): r for r in records}
     values = []
-    for seed in SEEDS:
+    for seed in seeds:
         ra, rb = by.get((a, seed)), by.get((b, seed))
         if not ra or not rb:
             continue
@@ -149,12 +158,12 @@ def _decile_map(record: dict, view: str) -> dict[int, dict]:
     return {int(row["decile"]): row for row in rows}
 
 
-def _paired_decile_reduction(records: list[dict], comparator: str, view: str) -> list[dict]:
+def _paired_decile_reduction(records: list[dict], seeds: tuple[int, ...], comparator: str, view: str) -> list[dict]:
     by = {(r["arm"], r["seed"]): r for r in records}
     out = []
     for decile in range(1, 11):
         mse_values, bias_values, variance_values = [], [], []
-        for seed in SEEDS:
+        for seed in seeds:
             full = by.get(("full_reference", seed))
             comp = by.get((comparator, seed))
             if not full or not comp:
@@ -185,14 +194,15 @@ def _format_mean_sd(stats: dict, digits: int) -> str:
     return f"{stats['mean']:.{digits}f} ± {stats['stdev']:.{digits}f}"
 
 
-def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
-    LEDGER.mkdir(parents=True, exist_ok=True)
-    (LEDGER / "runs").mkdir(exist_ok=True)
+def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str, seeds: tuple[int, ...]) -> None:
+    ledger = ledger_for(scope)
+    ledger.mkdir(parents=True, exist_ok=True)
+    (ledger / "runs").mkdir(exist_ok=True)
     for record in records:
-        path = LEDGER / "runs" / f"{record['arm']}__seed{record['seed']}.json"
+        path = ledger / "runs" / f"{record['arm']}__seed{record['seed']}.json"
         path.write_text(json.dumps(record, indent=2) + "\n")
     if dataset_diag:
-        (LEDGER / "dataset_variance.json").write_text(json.dumps(dataset_diag, indent=2) + "\n")
+        (ledger / "dataset_variance.json").write_text(json.dumps(dataset_diag, indent=2) + "\n")
 
     views = ("train_cpg_x_val_sample", "val_cpg_x_train_sample", "val_cpg_x_val_sample")
     arm_summary = {}
@@ -212,31 +222,34 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
     }
     for view in views:
         effects["proxy_supervision_full_vs_no_mean_supervision"][view] = {
-            "mas_pcc_benefit": _paired_benefit(records, "full_reference", "no_mean_supervision", view, "mas_pcc"),
-            "mac_pcc_benefit": _paired_benefit(records, "full_reference", "no_mean_supervision", view, "mac_pcc"),
-            "mse_benefit": _paired_benefit(records, "full_reference", "no_mean_supervision", view, "mse"),
+            "mas_pcc_benefit": _paired_benefit(records, seeds, "full_reference", "no_mean_supervision", view, "mas_pcc"),
+            "mac_pcc_benefit": _paired_benefit(records, seeds, "full_reference", "no_mean_supervision", view, "mac_pcc"),
+            "mse_benefit": _paired_benefit(records, seeds, "full_reference", "no_mean_supervision", view, "mse"),
             "mse_reduction_pct": _paired_relative_reduction(
                 records,
+                seeds,
                 "full_reference",
                 "no_mean_supervision",
                 ("official_views", view, "mse"),
             ),
         }
         effects["branch_capacity_no_supervision_vs_no_mean_branch"][view] = {
-            "mas_pcc_benefit": _paired_benefit(records, "no_mean_supervision", "no_mean_branch", view, "mas_pcc"),
-            "mse_benefit": _paired_benefit(records, "no_mean_supervision", "no_mean_branch", view, "mse"),
+            "mas_pcc_benefit": _paired_benefit(records, seeds, "no_mean_supervision", "no_mean_branch", view, "mas_pcc"),
+            "mse_benefit": _paired_benefit(records, seeds, "no_mean_supervision", "no_mean_branch", view, "mse"),
             "mse_reduction_pct": _paired_relative_reduction(
                 records,
+                seeds,
                 "no_mean_supervision",
                 "no_mean_branch",
                 ("official_views", view, "mse"),
             ),
         }
         effects["total_mean_contribution_full_vs_no_mean_branch"][view] = {
-            "mas_pcc_benefit": _paired_benefit(records, "full_reference", "no_mean_branch", view, "mas_pcc"),
-            "mse_benefit": _paired_benefit(records, "full_reference", "no_mean_branch", view, "mse"),
+            "mas_pcc_benefit": _paired_benefit(records, seeds, "full_reference", "no_mean_branch", view, "mas_pcc"),
+            "mse_benefit": _paired_benefit(records, seeds, "full_reference", "no_mean_branch", view, "mse"),
             "mse_reduction_pct": _paired_relative_reduction(
                 records,
+                seeds,
                 "full_reference",
                 "no_mean_branch",
                 ("official_views", view, "mse"),
@@ -249,6 +262,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
         for comp in ("no_mean_supervision", "no_mean_branch"):
             bias_effects[view][comp] = _paired_relative_reduction(
                 records,
+                seeds,
                 "full_reference",
                 comp,
                 ("diagnostics", "views", view, "locus_bias", "median_abs_bias"),
@@ -256,7 +270,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
 
     variance_decile_effects = {
         view: {
-            comparator: _paired_decile_reduction(records, comparator, view)
+            comparator: _paired_decile_reduction(records, seeds, comparator, view)
             for comparator in ("no_mean_supervision", "no_mean_branch")
         }
         for view in ("val_cpg_x_train_sample", "val_cpg_x_val_sample")
@@ -281,9 +295,10 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "collector_git_head": _git_head(),
         "protocol": {
-            "scope": "TCGA chr1",
-            "split": "verified MethylProphet Table-5 official split",
-            "seeds": list(SEEDS),
+            "scope": "TCGA chr1" if scope == "chr1" else f"TCGA {scope}",
+            "split": "verified MethylProphet Table-5 official split" if scope == "chr1"
+                     else "chr123 split (CpG axis verified exact; sample axis reuses chr1's split -- see docs/BENCHMARK_METHYLPROPHET.md)",
+            "seeds": list(seeds),
             "reference_recipe": "configs/models/rna_methylation_locus_attention.yaml",
             "design": {
                 "full_reference": "mean branch ON, aux_weight=0.15",
@@ -301,7 +316,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
         "h_mean_linear_probe": probe,
         "dataset_variance": dataset_diag,
     }
-    (LEDGER / "summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False))
+    (ledger / "summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False))
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -319,7 +334,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
                 metrics.get("mae"), metrics.get("skill_vs_prior"), bias.get("median_abs_bias"),
                 record.get("checkpoint_epoch"), record["run_id"],
             ])
-    (LEDGER / "paper_table.csv").write_text(buf.getvalue())
+    (ledger / "paper_table.csv").write_text(buf.getvalue())
 
     decile_buf = io.StringIO()
     decile_writer = csv.writer(decile_buf)
@@ -338,10 +353,11 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
                     row["mse_reduction_pct"]["mean"],
                     row["abs_bias_reduction_pct"]["mean"],
                 ])
-    (LEDGER / "variance_decile_effects.csv").write_text(decile_buf.getvalue())
+    (ledger / "variance_decile_effects.csv").write_text(decile_buf.getvalue())
 
+    seeds_text = ", ".join(str(s) for s in seeds)
     lines = [
-        f"# {STUDY} — paper summary",
+        f"# {STUDY} — {scope} — paper summary",
         "",
         "Generated by `scripts/experiments/collect_mean_contribution.py`; do not hand-edit generated tables.",
         "",
@@ -350,7 +366,8 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
         "- **Full**: locus-attention K=64, mean branch present, `aux_weight=0.15`.",
         "- **No mean supervision**: identical architecture, `aux_weight=0`.",
         "- **No mean branch**: same RNA encoder/training recipe, CpG-only mean branch removed.",
-        "- Paired seeds: 17, 29, 43.",
+        f"- Scope: {scope}. Seed(s): {seeds_text}"
+        + (" (single-seed follow-up, not paired across seeds)." if len(seeds) < 2 else " (paired)."),
         "",
         "Primary evidence: MSE and locus-level bias on unseen CpGs. MAS-PCC is retained as a secondary endpoint.",
         "",
@@ -401,11 +418,12 @@ def write_outputs(records: list[dict], dataset_diag: dict | None) -> None:
         "- `runs/*.json`: per-run checkpoint/config hashes and diagnostics.",
         "- `dataset_variance.json`: dataset-only variance decomposition, when computed.",
     ]
-    (LEDGER / "summary.md").write_text("\n".join(lines) + "\n")
+    (ledger / "summary.md").write_text("\n".join(lines) + "\n")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--scope", default="chr1", choices=["chr1", "chr123"])
     ap.add_argument("--output-root", action="append", dest="output_roots")
     ap.add_argument("--data-root")
     ap.add_argument(
@@ -413,27 +431,29 @@ def main() -> int:
         help="dataset_variance.json produced by analyze_mean_contribution.py dataset",
     )
     args = ap.parse_args()
-    roots = args.output_roots or [data_paths(args.data_root)["output_root"]]
+    scope = args.scope
+    seeds = seeds_for(scope)
+    roots = args.output_roots or [data_paths(args.data_root, scope=scope)["output_root"]]
 
     records = []
     for arm in ARMS:
-        for seed in SEEDS:
+        for seed in seeds:
             found = None
             for output_root in roots:
-                found = collect_one(output_root, arm, seed)
+                found = collect_one(output_root, arm, seed, scope)
                 if found:
                     break
             if found:
                 records.append(found)
             else:
-                print(f"[collect-mean] incomplete/missing: {arm.name} seed={seed}", file=sys.stderr)
+                print(f"[collect-mean] incomplete/missing: {arm.name} seed={seed} scope={scope}", file=sys.stderr)
 
     if not records:
         print("no complete mean-contribution runs found")
         return 1
     dataset_diag = _read_json(Path(args.dataset_diagnostics)) if args.dataset_diagnostics else None
-    write_outputs(records, dataset_diag)
-    print(f"[collect-mean] {len(records)} complete run(s) -> {LEDGER}")
+    write_outputs(records, dataset_diag, scope=scope, seeds=seeds)
+    print(f"[collect-mean] {len(records)} complete run(s) -> {ledger_for(scope)}")
     return 0
 
 

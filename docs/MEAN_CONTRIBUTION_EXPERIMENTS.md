@@ -81,7 +81,7 @@ python scripts/experiments/collect_mean_contribution.py \
 Generated, version-controlled outputs:
 
 ```text
-results/reference/mean_contribution_2026_09/
+results/reference/appendix/mean_contribution_2026_09/
   summary.yaml
   summary.md
   paper_table.csv
@@ -96,6 +96,46 @@ Each per-run JSON stores recipe SHA-256, resolved-config SHA-256, checkpoint
 SHA-256, checkpoint epoch, seed, run id, all official views, mean-head
 accuracy, `h_mean` linear-probe performance, locus-bias metrics, and
 variance-decile metrics.
+
+## chr123 single-seed follow-up
+
+The same three arms (`full_reference`, `no_mean_supervision`, `no_mean_branch`)
+are also run once, seed 17 only, on chr123 -- a lighter-weight check that the
+mean-contribution effect isn't chr1-specific, not a second full statistical
+ladder. It reuses the exact same recipes and the generic `shared_backbone`
+engine against the chr123 compact cache (`scripts/prepare_chr123_compact.py`,
+`derived/methylprophet_compact_chr123`), rather than the chr1-only
+`matched_chr1_shared_backbone` engine:
+
+```bash
+python scripts/experiments/run_mean_contribution.py --scope chr123 \
+  --arms full_reference,no_mean_supervision,no_mean_branch --seeds 17
+
+python scripts/experiments/collect_mean_contribution.py --scope chr123
+```
+
+Both `run_mean_contribution.py` and `collect_mean_contribution.py` take
+`--scope {chr1,chr123}` (default `chr1`); chr123 run-ids get a `-chr123` suffix
+(e.g. `ref-locus-attn-k64-noproduct-seed17-chr123`) to match the convention in
+`results/reference/ours/04_baselines.yaml`'s `chr123_arms`. Output lands in a
+sibling ledger, not mixed into the chr1 one:
+
+```text
+results/reference/appendix/mean_contribution_2026_09_chr123/
+  summary.yaml
+  summary.md
+  paper_table.csv
+  variance_decile_effects.csv
+  runs/
+    full_reference__seed17.json
+    ...
+```
+
+No dataset-variance decomposition is repeated for chr123 (chr1's already
+establishes the between-/within-locus split is real; re-running it isn't part
+of this single-seed check). Paired-effect statistics (mean/stdev across seeds)
+degenerate to n=1 point estimates here -- read them as a single-seed sanity
+check, not as statistically powered evidence, unlike the chr1 ladder.
 
 ## Statistical reporting
 

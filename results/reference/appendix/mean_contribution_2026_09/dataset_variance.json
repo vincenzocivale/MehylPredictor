@@ -1,0 +1,24 @@
+{
+  "study": "mean_contribution_2026_09",
+  "definition": "Exact missing-aware law-of-total-variance decomposition across CpGs, weighted by observed cells.",
+  "train_cpg_x_train_sample": {
+    "observed_cells": 275093377,
+    "n_cpg": 33885,
+    "grand_mean": 0.4891557720308698,
+    "within_locus_variance": 0.02343412332090068,
+    "between_locus_mean_variance": 0.11190550419144206,
+    "total_variance": 0.13533962751234274,
+    "fraction_between_locus": 0.8268495063002628,
+    "fraction_within_locus": 0.17315049369973717
+  },
+  "val_cpg_x_train_sample_confirmation": {
+    "observed_cells": 55154676,
+    "n_cpg": 6742,
+    "grand_mean": 0.3892196846704906,
+    "within_locus_variance": 0.020011645874457955,
+    "between_locus_mean_variance": 0.11778864194361051,
+    "total_variance": 0.13780028781806847,
+    "fraction_between_locus": 0.8547779094563399,
+    "fraction_within_locus": 0.14522209054366006
+  }
+}

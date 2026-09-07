@@ -1,0 +1,80 @@
+study: rna_encoder_comparison_2026_09
+protocol:
+  scope: TCGA chr1
+  mode: final
+  seed: 17
+  fixed_harness: mean branch ON; raw product OFF; same loss/training budget
+runs:
+- arm: gene_pathway
+  mode: final
+  seed: 17
+  run_id: rnaenc-gene_pathway-final-seed17
+  run_dir: /dune/DATASETS/MethylPredictionData/experiments/runs/locus_cls_joint/chr1/rnaenc-gene_pathway-final-seed17
+  best_epoch: 80
+  epochs_run: 80
+  views:
+    train_cpg_x_val_sample:
+      rows: 30563936
+      mse: 0.014409548479845468
+      mae: 0.0750672343065286
+      prior_mse: 0.023267619029304534
+      skill_vs_prior: 0.3807037814355959
+      mas_pcc: 0.5873457532303867
+      mac_pcc: 0.9509999915608425
+    val_cpg_x_train_sample:
+      rows: 55154676
+      mse: 0.014583195373394605
+      mae: 0.07346875553619787
+      prior_mse: 0.027401995828971383
+      skill_vs_prior: 0.46780535752157915
+      mas_pcc: 0.5844622634118162
+      mac_pcc: 0.9491712697825913
+    val_cpg_x_val_sample:
+      rows: 6129992
+      mse: 0.015524148211613152
+      mae: 0.0760319751578946
+      prior_mse: 0.027223526572326653
+      skill_vs_prior: 0.4297524910900482
+      mas_pcc: 0.534696513137194
+      mac_pcc: 0.946629036955223
+  headline_mas_pcc: 0.534696513137194
+  headline_mse: 0.015524148211613152
+- arm: bulkformer_147m
+  mode: final
+  seed: 17
+  run_id: rnaenc-bulkformer_147m-final-seed17
+  run_dir: /dune/DATASETS/MethylPredictionData/experiments/runs/locus_cls_joint/chr1/rnaenc-bulkformer_147m-final-seed17
+  best_epoch: 80
+  epochs_run: 80
+  views:
+    train_cpg_x_val_sample:
+      rows: 30563936
+      mse: 0.016211870425891776
+      mae: 0.08044972525635277
+      prior_mse: 0.023267619029304534
+      skill_vs_prior: 0.3032432581316703
+      mas_pcc: 0.5148261452260435
+      mac_pcc: 0.9467272281287287
+    val_cpg_x_train_sample:
+      rows: 55154676
+      mse: 0.016948542957565427
+      mae: 0.07998728188682606
+      prior_mse: 0.027401995828971383
+      skill_vs_prior: 0.38148509096384164
+      mas_pcc: 0.4598788074651613
+      mac_pcc: 0.9436330011876308
+    val_cpg_x_val_sample:
+      rows: 6129992
+      mse: 0.016884877911283222
+      mae: 0.07995785011169183
+      prior_mse: 0.027223526572326653
+      skill_vs_prior: 0.3797688970815746
+      mas_pcc: 0.45856430313906
+      mac_pcc: 0.9443562852876113
+  headline_mas_pcc: 0.45856430313906
+  headline_mse: 0.016884877911283222
+reported_context:
+  methylprophet_gene_pathway_table9:
+    train_cpg_x_val_sample_mas_pcc: 0.5371
+    val_cpg_x_train_sample_mas_pcc: 0.4194
+    val_cpg_x_val_sample_mas_pcc: 0.3959
