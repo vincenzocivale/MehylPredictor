@@ -305,7 +305,7 @@ python scripts/experiments/collect_mean_contribution.py \
 **Output (versioned)** — schema already fixed by the protocol doc, reproduced here for reference:
 
 ```text
-results/reference/mean_contribution_2026_09/
+results/reference/appendix/mean_contribution_2026_09/
   summary.yaml                    # aggregate metrics, paired effects, protocol metadata
   summary.md                      # manuscript-facing summary
   paper_table.csv                 # one row per arm × seed × official view

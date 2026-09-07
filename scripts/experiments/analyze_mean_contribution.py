@@ -200,7 +200,7 @@ def checkpoint_mode(args) -> int:
     scratch = Path(args.output).parent / ".mean_diag_eval"
     trainer = LocusCLSJointTrainer(
         canonical_root=args.canonical_root,
-        scope="chr1",
+        scope=args.scope,
         recipe_path=args.recipe,
         feature_cache=args.feature_cache,
         rna_cache=args.rna_cache,
@@ -255,6 +255,7 @@ def checkpoint_mode(args) -> int:
         }
         result = {
             "study": "mean_contribution_2026_09",
+            "scope": args.scope,
             "checkpoint": str(args.checkpoint),
             "checkpoint_epoch": ckpt.get("epoch"),
             "locus_cls": lc,
@@ -365,6 +366,7 @@ def main() -> int:
     ck = sub.add_parser("checkpoint")
     ck.add_argument("--checkpoint", required=True)
     ck.add_argument("--recipe", required=True)
+    ck.add_argument("--scope", default="chr1", choices=["chr1", "chr123"])
     ck.add_argument("--canonical-root", required=True)
     ck.add_argument("--prepared-root", required=True)
     ck.add_argument("--feature-cache", required=True)
