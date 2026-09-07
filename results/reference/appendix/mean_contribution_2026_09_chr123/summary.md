@@ -24,6 +24,38 @@ Primary evidence: MSE and locus-level bias on unseen CpGs. MAS-PCC is retained a
 - `val_cpg_x_train_sample`: MSE reduction = 16.39%; median |locus bias| reduction = 41.77%.
 - `val_cpg_x_val_sample`: MSE reduction = 15.44%; median |locus bias| reduction = 41.54%.
 
+## Where the MSE reduction comes from: bias² vs. within-locus residual variance
+
+Exact per-CpG decomposition (`mse_l = bias_l^2 + var_l`, unweighted mean over official val CpGs -- close to but not identical to the headline row-weighted MSE above). Splits each arm-pair's MSE gap into how much is a locus-level bias² correction (the part MAS-PCC cannot see, being invariant to a per-CpG constant shift) vs. a reduction in within-locus sample-to-sample residual variance (the part correlation-based metrics could in principle reflect).
+
+| view | comparator | bias² reduction | residual-variance reduction | total diag-MSE reduction | % of reduction from bias² |
+|---|---|---:|---:|---:|---:|
+| `val_cpg_x_train_sample` | vs `no_mean_supervision` | 0.002677 | 0.000227 | 0.002903 | 92.2% |
+| `val_cpg_x_train_sample` | vs `no_mean_branch` | 0.003668 | 0.000712 | 0.004381 | 83.7% |
+| `val_cpg_x_val_sample` | vs `no_mean_supervision` | 0.002670 | 0.000252 | 0.002922 | 91.4% |
+| `val_cpg_x_val_sample` | vs `no_mean_branch` | 0.003675 | 0.000698 | 0.004373 | 84.0% |
+
+## Statistical significance (paired t-test vs. 0, across seeds)
+
+n=1 seed(s) here -- a paired t-test needs at least 2 paired seeds; see the chr1 3-seed ladder for the powered version of this test.
+
+## Effect by locus difficulty (variance decile, `val_cpg_x_val_sample`, vs `no_mean_supervision`)
+
+CpGs ranked by true across-sample variance (decile 1 = hardest/lowest-variance loci, where the mean carries almost all the predictive signal). Full table for both views/comparators in `variance_decile_effects.csv`.
+
+| decile | median target variance | MSE reduction | locus-bias reduction |
+|---:|---:|---:|---:|
+| 1 | 0.00003 | 80.6% | 68.3% |
+| 2 | 0.00023 | 55.1% | 51.7% |
+| 3 | 0.00150 | 32.9% | 44.7% |
+| 4 | 0.00487 | 29.8% | 41.2% |
+| 5 | 0.01050 | 23.6% | 34.4% |
+| 6 | 0.01811 | 18.1% | 31.5% |
+| 7 | 0.02622 | 13.4% | 26.2% |
+| 8 | 0.03463 | 14.6% | 28.4% |
+| 9 | 0.04486 | 12.0% | 24.7% |
+| 10 | 0.06256 | 9.6% | 28.7% |
+
 ## Representation test
 
 - `full_reference` h_mean linear-probe Pearson on official val CpGs: 0.9908.

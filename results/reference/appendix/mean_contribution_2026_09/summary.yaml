@@ -1,6 +1,6 @@
 study: mean_contribution_2026_09
-generated_at_utc: '2026-09-06T23:12:14.270841+00:00'
-collector_git_head: 8db2b9ad07a3e6b66d55a9fe2f9c3623914d178d
+generated_at_utc: '2026-09-07T15:35:50.530879+00:00'
+collector_git_head: 61a5871fe259a360b963eefd393d93ca9aa56f2a
 protocol:
   scope: TCGA chr1
   split: verified MethylProphet Table-5 official split
@@ -401,6 +401,10 @@ paired_effects:
         - 0.00028603714140340575
         - 0.0011290571063804489
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: -0.04208740200429863
+          df: 2
+          p_two_sided: 0.9702528828593293
       mac_pcc_benefit:
         n: 3
         mean: 8.331299872018268e-05
@@ -410,6 +414,10 @@ paired_effects:
         - -1.6180282666589108e-05
         - 0.00016589924199938988
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 1.5649371471762847
+          df: 2
+          p_two_sided: 0.25806763473383254
       mse_benefit:
         n: 3
         mean: 5.5456572367459586e-05
@@ -419,6 +427,10 @@ paired_effects:
         - 7.085787848794094e-05
         - 4.433493624881983e-05
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 6.975746781991931
+          df: 2
+          p_two_sided: 0.019937790692042823
       mse_reduction_pct:
         n: 3
         mean: 0.5063033264971886
@@ -439,6 +451,10 @@ paired_effects:
         - 0.0019557937269101267
         - -0.0015199244681681767
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 0.4133444203833245
+          df: 2
+          p_two_sided: 0.7194586964998072
       mac_pcc_benefit:
         n: 3
         mean: 0.010431979761587903
@@ -448,6 +464,10 @@ paired_effects:
         - 0.010930739691658364
         - 0.010399006491970342
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 37.40022239598359
+          df: 2
+          p_two_sided: 0.0007141446928121686
       mse_benefit:
         n: 3
         mean: 0.002806887738505287
@@ -457,6 +477,10 @@ paired_effects:
         - 0.002918968751958396
         - 0.0027631611131135117
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 49.68851778033474
+          df: 2
+          p_two_sided: 0.00040478476675664954
       mse_reduction_pct:
         n: 3
         mean: 17.26583810580136
@@ -477,6 +501,10 @@ paired_effects:
         - 0.004027768502908091
         - -0.0008914309102751039
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 1.2066392158389192
+          df: 2
+          p_two_sided: 0.35092939874269324
       mac_pcc_benefit:
         n: 3
         mean: 0.01095690385713973
@@ -486,6 +514,10 @@ paired_effects:
         - 0.011332393690503206
         - 0.010810943438618659
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 57.88467878270685
+          df: 2
+          p_two_sided: 0.00029831725532081244
       mse_benefit:
         n: 3
         mean: 0.002812099588527782
@@ -495,6 +527,10 @@ paired_effects:
         - 0.0029292871211190757
         - 0.0027793720445012573
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 46.50640390290846
+          df: 2
+          p_two_sided: 0.00046203344398509927
       mse_reduction_pct:
         n: 3
         mean: 16.55308855145857
@@ -516,6 +552,10 @@ paired_effects:
         - -0.004406893094591857
         - -0.0042398632511120304
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: -6.158275594391172
+          df: 2
+          p_two_sided: 0.025369162846913595
       mse_benefit:
         n: 3
         mean: 0.0009114678229476559
@@ -525,6 +565,10 @@ paired_effects:
         - 0.0008840792814444054
         - 0.0009149646713390545
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 61.14679337022144
+          df: 2
+          p_two_sided: 0.00026734892167934454
       mse_reduction_pct:
         n: 3
         mean: 7.682285058905658
@@ -545,6 +589,10 @@ paired_effects:
         - 0.0037954274791727194
         - 0.006083413373027757
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 6.885900535311604
+          df: 2
+          p_two_sided: 0.02044552349171136
       mse_benefit:
         n: 3
         mean: 0.0011345178299931823
@@ -554,6 +602,10 @@ paired_effects:
         - 0.000984252330675086
         - 0.00122091314750011
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 15.043940992282733
+          df: 2
+          p_two_sided: 0.004389448347618896
       mse_reduction_pct:
         n: 3
         mean: 6.522792852841142
@@ -574,6 +626,10 @@ paired_effects:
         - 0.0014071708509350023
         - 0.006432645223985567
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 2.4100769135565345
+          df: 2
+          p_two_sided: 0.13752223174937772
       mse_benefit:
         n: 3
         mean: 0.001111012135441132
@@ -583,6 +639,10 @@ paired_effects:
         - 0.0009635609879115048
         - 0.0011856358653216173
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 15.069189679762962
+          df: 2
+          p_two_sided: 0.004374847781367097
       mse_reduction_pct:
         n: 3
         mean: 6.1378745732776245
@@ -604,6 +664,10 @@ paired_effects:
         - -0.0041208559531884514
         - -0.0031108061447315816
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: -11.636306700696595
+          df: 2
+          p_two_sided: 0.007304505814142326
       mse_benefit:
         n: 3
         mean: 0.0009669243953151155
@@ -613,6 +677,10 @@ paired_effects:
         - 0.0009549371599323463
         - 0.0009592996075878744
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 97.80205119867776
+          df: 2
+          p_two_sided: 0.00010452880242861617
       mse_reduction_pct:
         n: 3
         mean: 8.149828749479576
@@ -633,6 +701,10 @@ paired_effects:
         - 0.005751221206082846
         - 0.004563488904859581
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 8.206608245050335
+          df: 2
+          p_two_sided: 0.014525433540822585
       mse_benefit:
         n: 3
         mean: 0.003941405568498469
@@ -642,6 +714,10 @@ paired_effects:
         - 0.0039032210826334818
         - 0.003984074260613622
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 168.09316376996247
+          df: 2
+          p_two_sided: 3.5389696852905494e-05
       mse_reduction_pct:
         n: 3
         mean: 22.664845538372216
@@ -662,6 +738,10 @@ paired_effects:
         - 0.0054349393538430935
         - 0.005541214313710463
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 29.535824481223585
+          df: 2
+          p_two_sided: 0.001144341986696995
       mse_benefit:
         n: 3
         mean: 0.003923111723968913
@@ -671,6 +751,10 @@ paired_effects:
         - 0.0038928481090305805
         - 0.003965007909822875
         definition: positive means first arm is better; lower-better metrics are sign-flipped
+        paired_ttest_vs_zero:
+          t: 181.39456997714802
+          df: 2
+          p_two_sided: 3.0390065600238714e-05
       mse_reduction_pct:
         n: 3
         mean: 21.67731497495697
@@ -681,6 +765,153 @@ paired_effects:
         - 21.889868378031835
         definition: percent reduction achieved by first arm relative to second; positive
           is better
+mse_decomposition_bias_squared_vs_residual_variance:
+  val_cpg_x_train_sample:
+    no_mean_supervision:
+      bias_squared_component_reduction:
+        n: 3
+        mean: 0.002698574723532813
+        stdev: 4.1907918170912785e-05
+        values:
+        - 0.0026806441040651144
+        - 0.002746464874557904
+        - 0.0026686151919754204
+      residual_variance_component_reduction:
+        n: 3
+        mean: 0.00015313069543513384
+        stdev: 6.441365840220309e-05
+        values:
+        - 9.502968787570426e-05
+        - 0.00022239716717771182
+        - 0.00014196523125198542
+      total_diagnostics_mse_reduction:
+        n: 3
+        mean: 0.002851705418967947
+        stdev: 0.00010295083254004696
+        values:
+        - 0.0027756737919408195
+        - 0.002968862041735616
+        - 0.0028105804232274063
+      pct_of_mse_reduction_from_bias_squared:
+        n: 3
+        mean: 94.67808254139653
+        stdev: 2.0471434834343674
+        values:
+        - 96.57633803541238
+        - 92.50900971310553
+        - 94.94889987567171
+      definition: diagnostics-MSE (unweighted per-CpG mean) = bias^2 (squared, CpG-averaged
+        locus bias) + residual variance (within-locus, sample-to-sample); all reductions
+        are first arm minus second arm, positive = first arm better
+    no_mean_branch:
+      bias_squared_component_reduction:
+        n: 3
+        mean: 0.0034976354102461797
+        stdev: 6.0499808883807055e-06
+        values:
+        - 0.003493252807999083
+        - 0.0035045380664728357
+        - 0.00349511535626662
+      residual_variance_component_reduction:
+        n: 3
+        mean: 0.0005069297923837648
+        stdev: 3.828747668237789e-05
+        values:
+        - 0.0005068485270892202
+        - 0.00046868301303090894
+        - 0.0005452578370311652
+      total_diagnostics_mse_reduction:
+        n: 3
+        mean: 0.004004565202629945
+        stdev: 3.3797872445228565e-05
+        values:
+        - 0.004000101335088305
+        - 0.003973221079503745
+        - 0.004040373193297786
+      pct_of_mse_reduction_from_bias_squared:
+        n: 3
+        mean: 87.3459422171468
+        stdev: 0.8497189901669163
+        values:
+        - 87.32910782426384
+        - 88.20395332520869
+        - 86.50476550196785
+      definition: diagnostics-MSE (unweighted per-CpG mean) = bias^2 (squared, CpG-averaged
+        locus bias) + residual variance (within-locus, sample-to-sample); all reductions
+        are first arm minus second arm, positive = first arm better
+  val_cpg_x_val_sample:
+    no_mean_supervision:
+      bias_squared_component_reduction:
+        n: 3
+        mean: 0.002701224708573408
+        stdev: 4.6207480563889795e-05
+        values:
+        - 0.0026861759119561615
+        - 0.0027530806030257645
+        - 0.0026644176107382986
+      residual_variance_component_reduction:
+        n: 3
+        mean: 0.00015579222549577895
+        stdev: 7.44488048062746e-05
+        values:
+        - 7.789065881202636e-05
+        - 0.0002262252890639256
+        - 0.0001632607286113849
+      total_diagnostics_mse_reduction:
+        n: 3
+        mean: 0.0028570169340691883
+        stdev: 0.00011057828094079692
+        values:
+        - 0.0027640665707681887
+        - 0.002979305892089692
+        - 0.002827678339349684
+      pct_of_mse_reduction_from_bias_squared:
+        n: 3
+        mean: 94.60504615879816
+        stdev: 2.410044800629872
+        values:
+        - 97.18202666911962
+        - 92.40677871766793
+        - 94.22633308960691
+      definition: diagnostics-MSE (unweighted per-CpG mean) = bias^2 (squared, CpG-averaged
+        locus bias) + residual variance (within-locus, sample-to-sample); all reductions
+        are first arm minus second arm, positive = first arm better
+    no_mean_branch:
+      bias_squared_component_reduction:
+        n: 3
+        mean: 0.003529143732559801
+        stdev: 1.3255975592314273e-05
+        values:
+        - 0.0035334682839032383
+        - 0.0035396973752844273
+        - 0.003514265538491737
+      residual_variance_component_reduction:
+        n: 3
+        mean: 0.00045626296407705845
+        stdev: 4.4355187758707234e-05
+        values:
+        - 0.0004387735514094736
+        - 0.00042331866689052956
+        - 0.0005066966739311722
+      total_diagnostics_mse_reduction:
+        n: 3
+        mean: 0.00398540669663686
+        stdev: 3.113558802823774e-05
+        values:
+        - 0.003972241835312713
+        - 0.003963016042174958
+        - 0.004020962212422909
+      pct_of_mse_reduction_from_bias_squared:
+        n: 3
+        mean: 88.55696620142643
+        stdev: 1.0195557857581783
+        values:
+        - 88.95400709219578
+        - 89.3182701663199
+        - 87.39862134576362
+      definition: diagnostics-MSE (unweighted per-CpG mean) = bias^2 (squared, CpG-averaged
+        locus bias) + residual variance (within-locus, sample-to-sample); all reductions
+        are first arm minus second arm, positive = first arm better
 unseen_cpg_locus_bias_reduction:
   val_cpg_x_train_sample:
     no_mean_supervision:

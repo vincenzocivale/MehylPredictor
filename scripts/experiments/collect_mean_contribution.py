@@ -97,6 +97,40 @@ def _mean_sd(values: list[float]) -> dict:
     }
 
 
+def _student_t_two_sided_p(t: float, df: int) -> float | None:
+    """Two-sided p-value for Student's t, dependency-free (no scipy in this env).
+
+    Closed form for df=1 and df=2 (the only df this study ever has, n in {2,3});
+    falls back to a normal approximation otherwise rather than guessing.
+    """
+    import math
+
+    at = abs(t)
+    if df == 1:
+        return 1.0 - (2.0 / math.pi) * math.atan(at)
+    if df == 2:
+        return 1.0 - at / math.sqrt(at * at + 2.0)
+    # Conservative fallback (not used by this study's n=2/3 seed ladders).
+    return math.erfc(at / math.sqrt(2.0))
+
+
+def _paired_ttest(values: list[float]) -> dict:
+    """One-sample paired t-test of `values` against 0 (H0: no effect)."""
+    n = len(values)
+    if n < 2:
+        return {"t": None, "df": None, "p_two_sided": None,
+                "note": "n<2, paired significance test not computable"}
+    mean = statistics.mean(values)
+    sd = statistics.stdev(values)
+    df = n - 1
+    if sd == 0:
+        return {"t": None, "df": df, "p_two_sided": None, "note": "zero variance across seeds"}
+    se = sd / (n ** 0.5)
+    t = mean / se
+    p = _student_t_two_sided_p(t, df)
+    return {"t": t, "df": df, "p_two_sided": p}
+
+
 def _metric(records: list[dict], arm: str, view: str, metric: str) -> dict:
     values = []
     for record in records:
@@ -120,7 +154,54 @@ def _paired_benefit(records: list[dict], seeds: tuple[int, ...], a: str, b: str,
         values.append((vb - va) if metric in LOWER_BETTER else (va - vb))
     out = _mean_sd(values)
     out["definition"] = "positive means first arm is better; lower-better metrics are sign-flipped"
+    out["paired_ttest_vs_zero"] = _paired_ttest(values)
     return out
+
+
+def _locus_bias_components(record: dict, view: str) -> tuple[float, float, float]:
+    """(bias_squared, residual_variance, diagnostics_mse) for one run/view.
+
+    From `analyze_mean_contribution.py::_view_diagnostics`: per-CpG MSE is an exact
+    bias^2 + within-locus-residual-variance decomposition (mse_l = bias_l^2 + var_l),
+    and `rmse_locus_mean` is already sqrt(mean(bias_l^2)) over CpGs, so
+    bias_squared = rmse_locus_mean^2 and residual_variance = mean_per_cpg_mse - bias_squared.
+    This diagnostics-MSE is an unweighted per-CpG average and is numerically close to,
+    but not identical to, the row-weighted official-view MSE (headline_metrics).
+    """
+    lb = record["diagnostics"]["views"][view]["locus_bias"]
+    bias_squared = float(lb["rmse_locus_mean"]) ** 2
+    total = float(lb["mean_per_cpg_mse"])
+    return bias_squared, total - bias_squared, total
+
+
+def _paired_mse_decomposition(records: list[dict], seeds: tuple[int, ...], a: str, b: str, view: str) -> dict:
+    """How much of arm `a`'s diagnostics-MSE advantage over `b` is a bias^2 correction
+    (invisible to MAS-PCC, see docs/MEAN_CONTRIBUTION_EXPERIMENTS.md) vs a reduction in
+    within-locus residual variance (the part MAS-PCC could in principle reflect)."""
+    by = {(r["arm"], r["seed"]): r for r in records}
+    bias2_red, resid_red, total_red, frac_bias2 = [], [], [], []
+    for seed in seeds:
+        ra, rb = by.get((a, seed)), by.get((b, seed))
+        if not ra or not rb:
+            continue
+        bias2_a, resid_a, tot_a = _locus_bias_components(ra, view)
+        bias2_b, resid_b, tot_b = _locus_bias_components(rb, view)
+        bias2_red.append(bias2_b - bias2_a)
+        resid_red.append(resid_b - resid_a)
+        total_red.append(tot_b - tot_a)
+        if tot_b != tot_a:
+            frac_bias2.append(100.0 * (bias2_b - bias2_a) / (tot_b - tot_a))
+    return {
+        "bias_squared_component_reduction": _mean_sd(bias2_red),
+        "residual_variance_component_reduction": _mean_sd(resid_red),
+        "total_diagnostics_mse_reduction": _mean_sd(total_red),
+        "pct_of_mse_reduction_from_bias_squared": _mean_sd(frac_bias2),
+        "definition": (
+            "diagnostics-MSE (unweighted per-CpG mean) = bias^2 (squared, CpG-averaged locus bias) "
+            "+ residual variance (within-locus, sample-to-sample); all reductions are first arm "
+            "minus second arm, positive = first arm better"
+        ),
+    }
 
 
 def _get_path(record: dict, path: tuple[str, ...]) -> float:
@@ -256,6 +337,14 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
             ),
         }
 
+    mse_decomposition = {}
+    for view in ("val_cpg_x_train_sample", "val_cpg_x_val_sample"):
+        mse_decomposition[view] = {}
+        for comp in ("no_mean_supervision", "no_mean_branch"):
+            mse_decomposition[view][comp] = _paired_mse_decomposition(
+                records, seeds, "full_reference", comp, view
+            )
+
     bias_effects = {}
     for view in ("val_cpg_x_train_sample", "val_cpg_x_val_sample"):
         bias_effects[view] = {}
@@ -311,6 +400,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
         "completed_runs": len(records),
         "arm_summary": arm_summary,
         "paired_effects": effects,
+        "mse_decomposition_bias_squared_vs_residual_variance": mse_decomposition,
         "unseen_cpg_locus_bias_reduction": bias_effects,
         "variance_decile_effects": variance_decile_effects,
         "h_mean_linear_probe": probe,
@@ -390,6 +480,82 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
         mse_text = "—" if mse_pct is None else f"{mse_pct:.2f}%"
         bias_text = "—" if bias_pct is None else f"{bias_pct:.2f}%"
         lines.append(f"- `{view}`: MSE reduction = {mse_text}; median |locus bias| reduction = {bias_text}.")
+
+    lines += ["", "## Where the MSE reduction comes from: bias² vs. within-locus residual variance", ""]
+    lines.append(
+        "Exact per-CpG decomposition (`mse_l = bias_l^2 + var_l`, unweighted mean over official val "
+        "CpGs -- close to but not identical to the headline row-weighted MSE above). Splits each "
+        "arm-pair's MSE gap into how much is a locus-level bias² correction (the part MAS-PCC "
+        "cannot see, being invariant to a per-CpG constant shift) vs. a reduction in within-locus "
+        "sample-to-sample residual variance (the part correlation-based metrics could in principle "
+        "reflect)."
+    )
+    lines += [
+        "",
+        "| view | comparator | bias² reduction | residual-variance reduction | total diag-MSE reduction | % of reduction from bias² |",
+        "|---|---|---:|---:|---:|---:|",
+    ]
+    for view in ("val_cpg_x_train_sample", "val_cpg_x_val_sample"):
+        for comp in ("no_mean_supervision", "no_mean_branch"):
+            d = mse_decomposition[view][comp]
+            pct = d["pct_of_mse_reduction_from_bias_squared"]["mean"]
+            pct_text = "—" if pct is None else f"{pct:.1f}%"
+            lines.append(
+                f"| `{view}` | vs `{comp}` | {_format_mean_sd(d['bias_squared_component_reduction'], 6)} | "
+                f"{_format_mean_sd(d['residual_variance_component_reduction'], 6)} | "
+                f"{_format_mean_sd(d['total_diagnostics_mse_reduction'], 6)} | {pct_text} |"
+            )
+
+    lines += ["", "## Statistical significance (paired t-test vs. 0, across seeds)", ""]
+    if len(seeds) < 2:
+        lines.append(
+            f"n={len(seeds)} seed(s) here -- a paired t-test needs at least 2 paired seeds; "
+            "see the chr1 3-seed ladder for the powered version of this test."
+        )
+    else:
+        lines.append(
+            "Tests whether the paired per-seed difference is distinguishable from 0, for the "
+            "primary causal contrast (`full_reference` vs `no_mean_supervision`, i.e. the effect of "
+            "the proxy-task auxiliary loss alone). MAS-PCC is included specifically because it is "
+            "*expected* to show a small/non-significant effect here -- Pearson correlation across "
+            "samples within a CpG is invariant to a CpG-wise constant shift, and the mean branch's "
+            "job is exactly that kind of shift (see `docs/MEAN_CONTRIBUTION_EXPERIMENTS.md`). MSE is "
+            "the primary claim metric and is not expected to be invariant to this."
+        )
+        lines += ["", "| view | metric | mean diff | t | df | p (two-sided) | significant at 0.05? |", "|---|---|---:|---:|---:|---:|---|"]
+        contrast = effects["proxy_supervision_full_vs_no_mean_supervision"]
+        for view in ("val_cpg_x_train_sample", "val_cpg_x_val_sample"):
+            for metric, key, digits in (("MAS-PCC", "mas_pcc_benefit", 5), ("MSE", "mse_benefit", 6)):
+                benefit = contrast[view][key]
+                tt = benefit["paired_ttest_vs_zero"]
+                if tt.get("t") is None:
+                    lines.append(f"| `{view}` | {metric} | {benefit['mean']:+.{digits}f} | — | — | — | {tt.get('note', '—')} |")
+                else:
+                    sig = "yes" if tt["p_two_sided"] < 0.05 else "no"
+                    lines.append(
+                        f"| `{view}` | {metric} | {benefit['mean']:+.{digits}f} | {tt['t']:+.2f} | "
+                        f"{tt['df']} | {tt['p_two_sided']:.4f} | {sig} |"
+                    )
+
+    lines += [
+        "",
+        "## Effect by locus difficulty (variance decile, `val_cpg_x_val_sample`, vs `no_mean_supervision`)",
+        "",
+        "CpGs ranked by true across-sample variance (decile 1 = hardest/lowest-variance loci, where "
+        "the mean carries almost all the predictive signal). Full table for both views/comparators in "
+        "`variance_decile_effects.csv`.",
+        "",
+        "| decile | median target variance | MSE reduction | locus-bias reduction |",
+        "|---:|---:|---:|---:|",
+    ]
+    for row in variance_decile_effects["val_cpg_x_val_sample"]["no_mean_supervision"]:
+        var_med = row["variance_median"]["mean"]
+        mse_pct = row["mse_reduction_pct"]["mean"]
+        bias_pct = row["abs_bias_reduction_pct"]["mean"]
+        var_text = "—" if var_med is None else f"{var_med:.5f}"
+        mse_text = "—" if mse_pct is None else f"{mse_pct:.1f}%"
+        bias_text = "—" if bias_pct is None else f"{bias_pct:.1f}%"
+        lines.append(f"| {row['decile']} | {var_text} | {mse_text} | {bias_text} |")
 
     lines += ["", "## Representation test", ""]
     for arm_name in ("full_reference", "no_mean_supervision"):

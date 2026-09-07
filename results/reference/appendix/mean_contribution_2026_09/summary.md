@@ -24,6 +24,45 @@ Primary evidence: MSE and locus-level bias on unseen CpGs. MAS-PCC is retained a
 - `val_cpg_x_train_sample`: MSE reduction = 17.27%; median |locus bias| reduction = 42.29%.
 - `val_cpg_x_val_sample`: MSE reduction = 16.55%; median |locus bias| reduction = 42.32%.
 
+## Where the MSE reduction comes from: bias² vs. within-locus residual variance
+
+Exact per-CpG decomposition (`mse_l = bias_l^2 + var_l`, unweighted mean over official val CpGs -- close to but not identical to the headline row-weighted MSE above). Splits each arm-pair's MSE gap into how much is a locus-level bias² correction (the part MAS-PCC cannot see, being invariant to a per-CpG constant shift) vs. a reduction in within-locus sample-to-sample residual variance (the part correlation-based metrics could in principle reflect).
+
+| view | comparator | bias² reduction | residual-variance reduction | total diag-MSE reduction | % of reduction from bias² |
+|---|---|---:|---:|---:|---:|
+| `val_cpg_x_train_sample` | vs `no_mean_supervision` | 0.002699 ± 0.000042 | 0.000153 ± 0.000064 | 0.002852 ± 0.000103 | 94.7% |
+| `val_cpg_x_train_sample` | vs `no_mean_branch` | 0.003498 ± 0.000006 | 0.000507 ± 0.000038 | 0.004005 ± 0.000034 | 87.3% |
+| `val_cpg_x_val_sample` | vs `no_mean_supervision` | 0.002701 ± 0.000046 | 0.000156 ± 0.000074 | 0.002857 ± 0.000111 | 94.6% |
+| `val_cpg_x_val_sample` | vs `no_mean_branch` | 0.003529 ± 0.000013 | 0.000456 ± 0.000044 | 0.003985 ± 0.000031 | 88.6% |
+
+## Statistical significance (paired t-test vs. 0, across seeds)
+
+Tests whether the paired per-seed difference is distinguishable from 0, for the primary causal contrast (`full_reference` vs `no_mean_supervision`, i.e. the effect of the proxy-task auxiliary loss alone). MAS-PCC is included specifically because it is *expected* to show a small/non-significant effect here -- Pearson correlation across samples within a CpG is invariant to a CpG-wise constant shift, and the mean branch's job is exactly that kind of shift (see `docs/MEAN_CONTRIBUTION_EXPERIMENTS.md`). MSE is the primary claim metric and is not expected to be invariant to this.
+
+| view | metric | mean diff | t | df | p (two-sided) | significant at 0.05? |
+|---|---|---:|---:|---:|---:|---|
+| `val_cpg_x_train_sample` | MAS-PCC | +0.00042 | +0.41 | 2 | 0.7195 | no |
+| `val_cpg_x_train_sample` | MSE | +0.002807 | +49.69 | 2 | 0.0004 | yes |
+| `val_cpg_x_val_sample` | MAS-PCC | +0.00172 | +1.21 | 2 | 0.3509 | no |
+| `val_cpg_x_val_sample` | MSE | +0.002812 | +46.51 | 2 | 0.0005 | yes |
+
+## Effect by locus difficulty (variance decile, `val_cpg_x_val_sample`, vs `no_mean_supervision`)
+
+CpGs ranked by true across-sample variance (decile 1 = hardest/lowest-variance loci, where the mean carries almost all the predictive signal). Full table for both views/comparators in `variance_decile_effects.csv`.
+
+| decile | median target variance | MSE reduction | locus-bias reduction |
+|---:|---:|---:|---:|
+| 1 | 0.00002 | 72.5% | 59.5% |
+| 2 | 0.00019 | 54.9% | 53.4% |
+| 3 | 0.00147 | 38.3% | 48.2% |
+| 4 | 0.00490 | 30.9% | 42.8% |
+| 5 | 0.01042 | 23.7% | 37.6% |
+| 6 | 0.01751 | 19.8% | 34.5% |
+| 7 | 0.02519 | 17.4% | 29.6% |
+| 8 | 0.03283 | 15.3% | 29.6% |
+| 9 | 0.04279 | 12.7% | 27.7% |
+| 10 | 0.05976 | 10.7% | 28.5% |
+
 ## Representation test
 
 - `full_reference` h_mean linear-probe Pearson on official val CpGs: 0.9918.
