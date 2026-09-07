@@ -1,0 +1,1362 @@
+study: mean_contribution_2026_09
+generated_at_utc: '2026-09-07T14:23:17.709354+00:00'
+collector_git_head: df0b210c8c6b327a438e8437fae0b49a240de961
+protocol:
+  scope: TCGA chr123
+  split: chr123 split (CpG axis verified exact; sample axis reuses chr1's split --
+    see docs/BENCHMARK_METHYLPROPHET.md)
+  seeds:
+  - 17
+  reference_recipe: configs/models/rna_methylation_locus_attention.yaml
+  design:
+    full_reference: mean branch ON, aux_weight=0.15
+    no_mean_supervision: mean branch ON, aux_weight=0.0
+    no_mean_branch: mean branch OFF, aux_weight=0.0
+  primary_mean_claim_metric: MSE and locus-level bias on views with official val CpGs
+  secondary_metric: 'MAS-PCC: translation-insensitive within a CpG'
+completed_runs: 3
+arm_summary:
+  full_reference:
+    train_cpg_x_val_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.6787269050755049
+        stdev: null
+        values:
+        - 0.6787269050755049
+      mac_pcc:
+        n: 1
+        mean: 0.9604792757691023
+        stdev: null
+        values:
+        - 0.9604792757691023
+      mse:
+        n: 1
+        mean: 0.012056017084259091
+        stdev: null
+        values:
+        - 0.012056017084259091
+      mae:
+        n: 1
+        mean: 0.06713396494746404
+        stdev: null
+        values:
+        - 0.06713396494746404
+      skill_vs_prior:
+        n: 1
+        mean: 0.5068357282800504
+        stdev: null
+        values:
+        - 0.5068357282800504
+    val_cpg_x_train_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.6029624375509758
+        stdev: null
+        values:
+        - 0.6029624375509758
+      mac_pcc:
+        n: 1
+        mean: 0.9493632440169313
+        stdev: null
+        values:
+        - 0.9493632440169313
+      mse:
+        n: 1
+        mean: 0.014558786575340576
+        stdev: null
+        values:
+        - 0.014558786575340576
+      mae:
+        n: 1
+        mean: 0.07095668845511018
+        stdev: null
+        values:
+        - 0.07095668845511018
+      skill_vs_prior:
+        n: 1
+        mean: 0.4944888235579479
+        stdev: null
+        values:
+        - 0.4944888235579479
+    val_cpg_x_val_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.5450910668284202
+        stdev: null
+        values:
+        - 0.5450910668284202
+      mac_pcc:
+        n: 1
+        mean: 0.9463041558655659
+        stdev: null
+        values:
+        - 0.9463041558655659
+      mse:
+        n: 1
+        mean: 0.015733194077332466
+        stdev: null
+        values:
+        - 0.015733194077332466
+      mae:
+        n: 1
+        mean: 0.07374951999671985
+        stdev: null
+        values:
+        - 0.07374951999671985
+      skill_vs_prior:
+        n: 1
+        mean: 0.46323334897979385
+        stdev: null
+        values:
+        - 0.46323334897979385
+  no_mean_supervision:
+    train_cpg_x_val_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.6785246888620545
+        stdev: null
+        values:
+        - 0.6785246888620545
+      mac_pcc:
+        n: 1
+        mean: 0.9600899296907013
+        stdev: null
+        values:
+        - 0.9600899296907013
+      mse:
+        n: 1
+        mean: 0.012116587927698253
+        stdev: null
+        values:
+        - 0.012116587927698253
+      mae:
+        n: 1
+        mean: 0.06861009325241091
+        stdev: null
+        values:
+        - 0.06861009325241091
+      skill_vs_prior:
+        n: 1
+        mean: 0.5043580131537888
+        stdev: null
+        values:
+        - 0.5043580131537888
+    val_cpg_x_train_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.5989864352460591
+        stdev: null
+        values:
+        - 0.5989864352460591
+      mac_pcc:
+        n: 1
+        mean: 0.9391224912402052
+        stdev: null
+        values:
+        - 0.9391224912402052
+      mse:
+        n: 1
+        mean: 0.017412015820319426
+        stdev: null
+        values:
+        - 0.017412015820319426
+      mae:
+        n: 1
+        mean: 0.08178101668453315
+        stdev: null
+        values:
+        - 0.08178101668453315
+      skill_vs_prior:
+        n: 1
+        mean: 0.3954188038949674
+        stdev: null
+        values:
+        - 0.3954188038949674
+    val_cpg_x_val_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.5391506370852401
+        stdev: null
+        values:
+        - 0.5391506370852401
+      mac_pcc:
+        n: 1
+        mean: 0.9359830567202074
+        stdev: null
+        values:
+        - 0.9359830567202074
+      mse:
+        n: 1
+        mean: 0.018606074892575146
+        stdev: null
+        values:
+        - 0.018606074892575146
+      mae:
+        n: 1
+        mean: 0.08434052956737498
+        stdev: null
+        values:
+        - 0.08434052956737498
+      skill_vs_prior:
+        n: 1
+        mean: 0.3652197729444141
+        stdev: null
+        values:
+        - 0.3652197729444141
+  no_mean_branch:
+    train_cpg_x_val_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.6797125339525554
+        stdev: null
+        values:
+        - 0.6797125339525554
+      mac_pcc:
+        n: 1
+        mean: 0.9553527467047909
+        stdev: null
+        values:
+        - 0.9553527467047909
+      mse:
+        n: 1
+        mean: 0.013474125505783264
+        stdev: null
+        values:
+        - 0.013474125505783264
+      mae:
+        n: 1
+        mean: 0.07444596974346877
+        stdev: null
+        values:
+        - 0.07444596974346877
+      skill_vs_prior:
+        n: 1
+        mean: 0.44882648675085457
+        stdev: null
+        values:
+        - 0.44882648675085457
+    val_cpg_x_train_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.5942928968697372
+        stdev: null
+        values:
+        - 0.5942928968697372
+      mac_pcc:
+        n: 1
+        mean: 0.9343117988501485
+        stdev: null
+        values:
+        - 0.9343117988501485
+      mse:
+        n: 1
+        mean: 0.018895692727577414
+        stdev: null
+        values:
+        - 0.018895692727577414
+      mae:
+        n: 1
+        mean: 0.08395404720978557
+        stdev: null
+        values:
+        - 0.08395404720978557
+      skill_vs_prior:
+        n: 1
+        mean: 0.34390247353552295
+        stdev: null
+        values:
+        - 0.34390247353552295
+    val_cpg_x_val_sample:
+      mas_pcc:
+        n: 1
+        mean: 0.5397363387677472
+        stdev: null
+        values:
+        - 0.5397363387677472
+      mac_pcc:
+        n: 1
+        mean: 0.9312581325756343
+        stdev: null
+        values:
+        - 0.9312581325756343
+      mse:
+        n: 1
+        mean: 0.020064516771920626
+        stdev: null
+        values:
+        - 0.020064516771920626
+      mae:
+        n: 1
+        mean: 0.08613766967493955
+        stdev: null
+        values:
+        - 0.08613766967493955
+      skill_vs_prior:
+        n: 1
+        mean: 0.3154623645354142
+        stdev: null
+        values:
+        - 0.3154623645354142
+paired_effects:
+  proxy_supervision_full_vs_no_mean_supervision:
+    train_cpg_x_val_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: 0.0002022162134504013
+        stdev: null
+        values:
+        - 0.0002022162134504013
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mac_pcc_benefit:
+        n: 1
+        mean: 0.00038934607840102053
+        stdev: null
+        values:
+        - 0.00038934607840102053
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 6.057084343916164e-05
+        stdev: null
+        values:
+        - 6.057084343916164e-05
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 0.49990016827012845
+        stdev: null
+        values:
+        - 0.49990016827012845
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+    val_cpg_x_train_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: 0.0039760023049166815
+        stdev: null
+        values:
+        - 0.0039760023049166815
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mac_pcc_benefit:
+        n: 1
+        mean: 0.010240752776726092
+        stdev: null
+        values:
+        - 0.010240752776726092
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.0028532292449788502
+        stdev: null
+        values:
+        - 0.0028532292449788502
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 16.386553253927076
+        stdev: null
+        values:
+        - 16.386553253927076
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+    val_cpg_x_val_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: 0.005940429743180098
+        stdev: null
+        values:
+        - 0.005940429743180098
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mac_pcc_benefit:
+        n: 1
+        mean: 0.010321099145358503
+        stdev: null
+        values:
+        - 0.010321099145358503
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.00287288081524268
+        stdev: null
+        values:
+        - 0.00287288081524268
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 15.440552786279058
+        stdev: null
+        values:
+        - 15.440552786279058
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+  branch_capacity_no_supervision_vs_no_mean_branch:
+    train_cpg_x_val_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: -0.0011878450905008497
+        stdev: null
+        values:
+        - -0.0011878450905008497
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.001357537578085011
+        stdev: null
+        values:
+        - 0.001357537578085011
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 10.075144227373709
+        stdev: null
+        values:
+        - 10.075144227373709
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+    val_cpg_x_train_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: 0.004693538376321915
+        stdev: null
+        values:
+        - 0.004693538376321915
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.0014836769072579872
+        stdev: null
+        values:
+        - 0.0014836769072579872
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 7.851931806091594
+        stdev: null
+        values:
+        - 7.851931806091594
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+    val_cpg_x_val_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: -0.0005857016825070449
+        stdev: null
+        values:
+        - -0.0005857016825070449
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.0014584418793454797
+        stdev: null
+        values:
+        - 0.0014584418793454797
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 7.2687615451895775
+        stdev: null
+        values:
+        - 7.2687615451895775
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+  total_mean_contribution_full_vs_no_mean_branch:
+    train_cpg_x_val_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: -0.0009856288770504484
+        stdev: null
+        values:
+        - -0.0009856288770504484
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.0014181084215241727
+        stdev: null
+        values:
+        - 0.0014181084215241727
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 10.524678732697737
+        stdev: null
+        values:
+        - 10.524678732697737
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+    val_cpg_x_train_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: 0.008669540681238597
+        stdev: null
+        values:
+        - 0.008669540681238597
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.0043369061522368375
+        stdev: null
+        values:
+        - 0.0043369061522368375
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 22.951824073151432
+        stdev: null
+        values:
+        - 22.951824073151432
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+    val_cpg_x_val_sample:
+      mas_pcc_benefit:
+        n: 1
+        mean: 0.005354728060673053
+        stdev: null
+        values:
+        - 0.005354728060673053
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_benefit:
+        n: 1
+        mean: 0.00433132269458816
+        stdev: null
+        values:
+        - 0.00433132269458816
+        definition: positive means first arm is better; lower-better metrics are sign-flipped
+      mse_reduction_pct:
+        n: 1
+        mean: 21.58697736817489
+        stdev: null
+        values:
+        - 21.58697736817489
+        definition: percent reduction achieved by first arm relative to second; positive
+          is better
+unseen_cpg_locus_bias_reduction:
+  val_cpg_x_train_sample:
+    no_mean_supervision:
+      n: 1
+      mean: 41.77403368873781
+      stdev: null
+      values:
+      - 41.77403368873781
+      definition: percent reduction achieved by first arm relative to second; positive
+        is better
+    no_mean_branch:
+      n: 1
+      mean: 40.7998448600329
+      stdev: null
+      values:
+      - 40.7998448600329
+      definition: percent reduction achieved by first arm relative to second; positive
+        is better
+  val_cpg_x_val_sample:
+    no_mean_supervision:
+      n: 1
+      mean: 41.54185700644001
+      stdev: null
+      values:
+      - 41.54185700644001
+      definition: percent reduction achieved by first arm relative to second; positive
+        is better
+    no_mean_branch:
+      n: 1
+      mean: 40.87884398515557
+      stdev: null
+      values:
+      - 40.87884398515557
+      definition: percent reduction achieved by first arm relative to second; positive
+        is better
+variance_decile_effects:
+  val_cpg_x_train_sample:
+    no_mean_supervision:
+    - decile: 1
+      variance_median:
+        n: 1
+        mean: 4.368181204256769e-05
+        stdev: null
+        values:
+        - 4.368181204256769e-05
+      mse_reduction_pct:
+        n: 1
+        mean: 79.14919365319669
+        stdev: null
+        values:
+        - 79.14919365319669
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 67.8973051675647
+        stdev: null
+        values:
+        - 67.8973051675647
+    - decile: 2
+      variance_median:
+        n: 1
+        mean: 0.00024584494067780263
+        stdev: null
+        values:
+        - 0.00024584494067780263
+      mse_reduction_pct:
+        n: 1
+        mean: 61.38411521581032
+        stdev: null
+        values:
+        - 61.38411521581032
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 53.60148637442593
+        stdev: null
+        values:
+        - 53.60148637442593
+    - decile: 3
+      variance_median:
+        n: 1
+        mean: 0.0014788664406402913
+        stdev: null
+        values:
+        - 0.0014788664406402913
+      mse_reduction_pct:
+        n: 1
+        mean: 42.4106648949285
+        stdev: null
+        values:
+        - 42.4106648949285
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 45.616309947892724
+        stdev: null
+        values:
+        - 45.616309947892724
+    - decile: 4
+      variance_median:
+        n: 1
+        mean: 0.004837865085119075
+        stdev: null
+        values:
+        - 0.004837865085119075
+      mse_reduction_pct:
+        n: 1
+        mean: 26.783030791734983
+        stdev: null
+        values:
+        - 26.783030791734983
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 40.76626677197152
+        stdev: null
+        values:
+        - 40.76626677197152
+    - decile: 5
+      variance_median:
+        n: 1
+        mean: 0.0104190933765949
+        stdev: null
+        values:
+        - 0.0104190933765949
+      mse_reduction_pct:
+        n: 1
+        mean: 24.707530744932093
+        stdev: null
+        values:
+        - 24.707530744932093
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 33.943007122250975
+        stdev: null
+        values:
+        - 33.943007122250975
+    - decile: 6
+      variance_median:
+        n: 1
+        mean: 0.017751795708663587
+        stdev: null
+        values:
+        - 0.017751795708663587
+      mse_reduction_pct:
+        n: 1
+        mean: 19.354872924158702
+        stdev: null
+        values:
+        - 19.354872924158702
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 32.42822293788784
+        stdev: null
+        values:
+        - 32.42822293788784
+    - decile: 7
+      variance_median:
+        n: 1
+        mean: 0.025473815301283453
+        stdev: null
+        values:
+        - 0.025473815301283453
+      mse_reduction_pct:
+        n: 1
+        mean: 14.806246211966606
+        stdev: null
+        values:
+        - 14.806246211966606
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 26.996822509874036
+        stdev: null
+        values:
+        - 26.996822509874036
+    - decile: 8
+      variance_median:
+        n: 1
+        mean: 0.033803782055203985
+        stdev: null
+        values:
+        - 0.033803782055203985
+      mse_reduction_pct:
+        n: 1
+        mean: 14.99823892298112
+        stdev: null
+        values:
+        - 14.99823892298112
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 27.236926213929525
+        stdev: null
+        values:
+        - 27.236926213929525
+    - decile: 9
+      variance_median:
+        n: 1
+        mean: 0.04378485646314375
+        stdev: null
+        values:
+        - 0.04378485646314375
+      mse_reduction_pct:
+        n: 1
+        mean: 12.754875240810277
+        stdev: null
+        values:
+        - 12.754875240810277
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 25.598417403718283
+        stdev: null
+        values:
+        - 25.598417403718283
+    - decile: 10
+      variance_median:
+        n: 1
+        mean: 0.06096106787136735
+        stdev: null
+        values:
+        - 0.06096106787136735
+      mse_reduction_pct:
+        n: 1
+        mean: 10.423284512429905
+        stdev: null
+        values:
+        - 10.423284512429905
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 29.077342917468897
+        stdev: null
+        values:
+        - 29.077342917468897
+    no_mean_branch:
+    - decile: 1
+      variance_median:
+        n: 1
+        mean: 4.368181204256769e-05
+        stdev: null
+        values:
+        - 4.368181204256769e-05
+      mse_reduction_pct:
+        n: 1
+        mean: 57.04421244934713
+        stdev: null
+        values:
+        - 57.04421244934713
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 25.178740514863943
+        stdev: null
+        values:
+        - 25.178740514863943
+    - decile: 2
+      variance_median:
+        n: 1
+        mean: 0.00024584494067780263
+        stdev: null
+        values:
+        - 0.00024584494067780263
+      mse_reduction_pct:
+        n: 1
+        mean: 59.9917876289468
+        stdev: null
+        values:
+        - 59.9917876289468
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 48.591241781554814
+        stdev: null
+        values:
+        - 48.591241781554814
+    - decile: 3
+      variance_median:
+        n: 1
+        mean: 0.0014788664406402913
+        stdev: null
+        values:
+        - 0.0014788664406402913
+      mse_reduction_pct:
+        n: 1
+        mean: 48.59422202403132
+        stdev: null
+        values:
+        - 48.59422202403132
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 45.42159768513654
+        stdev: null
+        values:
+        - 45.42159768513654
+    - decile: 4
+      variance_median:
+        n: 1
+        mean: 0.004837865085119075
+        stdev: null
+        values:
+        - 0.004837865085119075
+      mse_reduction_pct:
+        n: 1
+        mean: 37.88180374696396
+        stdev: null
+        values:
+        - 37.88180374696396
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 43.18391211911398
+        stdev: null
+        values:
+        - 43.18391211911398
+    - decile: 5
+      variance_median:
+        n: 1
+        mean: 0.0104190933765949
+        stdev: null
+        values:
+        - 0.0104190933765949
+      mse_reduction_pct:
+        n: 1
+        mean: 36.20616255756823
+        stdev: null
+        values:
+        - 36.20616255756823
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 40.990225727154666
+        stdev: null
+        values:
+        - 40.990225727154666
+    - decile: 6
+      variance_median:
+        n: 1
+        mean: 0.017751795708663587
+        stdev: null
+        values:
+        - 0.017751795708663587
+      mse_reduction_pct:
+        n: 1
+        mean: 28.538275145468983
+        stdev: null
+        values:
+        - 28.538275145468983
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 39.54682954154844
+        stdev: null
+        values:
+        - 39.54682954154844
+    - decile: 7
+      variance_median:
+        n: 1
+        mean: 0.025473815301283453
+        stdev: null
+        values:
+        - 0.025473815301283453
+      mse_reduction_pct:
+        n: 1
+        mean: 23.71087908546659
+        stdev: null
+        values:
+        - 23.71087908546659
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 37.28851659399763
+        stdev: null
+        values:
+        - 37.28851659399763
+    - decile: 8
+      variance_median:
+        n: 1
+        mean: 0.033803782055203985
+        stdev: null
+        values:
+        - 0.033803782055203985
+      mse_reduction_pct:
+        n: 1
+        mean: 20.44752630276263
+        stdev: null
+        values:
+        - 20.44752630276263
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 34.055526862633364
+        stdev: null
+        values:
+        - 34.055526862633364
+    - decile: 9
+      variance_median:
+        n: 1
+        mean: 0.04378485646314375
+        stdev: null
+        values:
+        - 0.04378485646314375
+      mse_reduction_pct:
+        n: 1
+        mean: 18.5712781321647
+        stdev: null
+        values:
+        - 18.5712781321647
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 33.89949069595068
+        stdev: null
+        values:
+        - 33.89949069595068
+    - decile: 10
+      variance_median:
+        n: 1
+        mean: 0.06096106787136735
+        stdev: null
+        values:
+        - 0.06096106787136735
+      mse_reduction_pct:
+        n: 1
+        mean: 13.475263137802386
+        stdev: null
+        values:
+        - 13.475263137802386
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 35.4505050818718
+        stdev: null
+        values:
+        - 35.4505050818718
+  val_cpg_x_val_sample:
+    no_mean_supervision:
+    - decile: 1
+      variance_median:
+        n: 1
+        mean: 2.9898288010351724e-05
+        stdev: null
+        values:
+        - 2.9898288010351724e-05
+      mse_reduction_pct:
+        n: 1
+        mean: 80.6439341240136
+        stdev: null
+        values:
+        - 80.6439341240136
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 68.33944716419377
+        stdev: null
+        values:
+        - 68.33944716419377
+    - decile: 2
+      variance_median:
+        n: 1
+        mean: 0.00022542071796925267
+        stdev: null
+        values:
+        - 0.00022542071796925267
+      mse_reduction_pct:
+        n: 1
+        mean: 55.09531332135947
+        stdev: null
+        values:
+        - 55.09531332135947
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 51.732710168789914
+        stdev: null
+        values:
+        - 51.732710168789914
+    - decile: 3
+      variance_median:
+        n: 1
+        mean: 0.0014974544840750006
+        stdev: null
+        values:
+        - 0.0014974544840750006
+      mse_reduction_pct:
+        n: 1
+        mean: 32.86420830377971
+        stdev: null
+        values:
+        - 32.86420830377971
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 44.71934031866708
+        stdev: null
+        values:
+        - 44.71934031866708
+    - decile: 4
+      variance_median:
+        n: 1
+        mean: 0.004865019817078653
+        stdev: null
+        values:
+        - 0.004865019817078653
+      mse_reduction_pct:
+        n: 1
+        mean: 29.776383444996103
+        stdev: null
+        values:
+        - 29.776383444996103
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 41.1798647596611
+        stdev: null
+        values:
+        - 41.1798647596611
+    - decile: 5
+      variance_median:
+        n: 1
+        mean: 0.010502308727746157
+        stdev: null
+        values:
+        - 0.010502308727746157
+      mse_reduction_pct:
+        n: 1
+        mean: 23.55375485101067
+        stdev: null
+        values:
+        - 23.55375485101067
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 34.43903256968732
+        stdev: null
+        values:
+        - 34.43903256968732
+    - decile: 6
+      variance_median:
+        n: 1
+        mean: 0.018108144633358414
+        stdev: null
+        values:
+        - 0.018108144633358414
+      mse_reduction_pct:
+        n: 1
+        mean: 18.05883913075358
+        stdev: null
+        values:
+        - 18.05883913075358
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 31.49256426499397
+        stdev: null
+        values:
+        - 31.49256426499397
+    - decile: 7
+      variance_median:
+        n: 1
+        mean: 0.02621970550377753
+        stdev: null
+        values:
+        - 0.02621970550377753
+      mse_reduction_pct:
+        n: 1
+        mean: 13.38898675998368
+        stdev: null
+        values:
+        - 13.38898675998368
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 26.229263599023408
+        stdev: null
+        values:
+        - 26.229263599023408
+    - decile: 8
+      variance_median:
+        n: 1
+        mean: 0.03463441823407958
+        stdev: null
+        values:
+        - 0.03463441823407958
+      mse_reduction_pct:
+        n: 1
+        mean: 14.646846272910846
+        stdev: null
+        values:
+        - 14.646846272910846
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 28.41718094349542
+        stdev: null
+        values:
+        - 28.41718094349542
+    - decile: 9
+      variance_median:
+        n: 1
+        mean: 0.04486016026621735
+        stdev: null
+        values:
+        - 0.04486016026621735
+      mse_reduction_pct:
+        n: 1
+        mean: 12.015564177864457
+        stdev: null
+        values:
+        - 12.015564177864457
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 24.68241864682115
+        stdev: null
+        values:
+        - 24.68241864682115
+    - decile: 10
+      variance_median:
+        n: 1
+        mean: 0.06256373031570656
+        stdev: null
+        values:
+        - 0.06256373031570656
+      mse_reduction_pct:
+        n: 1
+        mean: 9.550597731364368
+        stdev: null
+        values:
+        - 9.550597731364368
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 28.746539744671743
+        stdev: null
+        values:
+        - 28.746539744671743
+    no_mean_branch:
+    - decile: 1
+      variance_median:
+        n: 1
+        mean: 2.9898288010351724e-05
+        stdev: null
+        values:
+        - 2.9898288010351724e-05
+      mse_reduction_pct:
+        n: 1
+        mean: 43.61764776132574
+        stdev: null
+        values:
+        - 43.61764776132574
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 21.598937642459212
+        stdev: null
+        values:
+        - 21.598937642459212
+    - decile: 2
+      variance_median:
+        n: 1
+        mean: 0.00022542071796925267
+        stdev: null
+        values:
+        - 0.00022542071796925267
+      mse_reduction_pct:
+        n: 1
+        mean: 56.84947121711796
+        stdev: null
+        values:
+        - 56.84947121711796
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 48.793742044462775
+        stdev: null
+        values:
+        - 48.793742044462775
+    - decile: 3
+      variance_median:
+        n: 1
+        mean: 0.0014974544840750006
+        stdev: null
+        values:
+        - 0.0014974544840750006
+      mse_reduction_pct:
+        n: 1
+        mean: 40.234895376742315
+        stdev: null
+        values:
+        - 40.234895376742315
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 44.23981003154963
+        stdev: null
+        values:
+        - 44.23981003154963
+    - decile: 4
+      variance_median:
+        n: 1
+        mean: 0.004865019817078653
+        stdev: null
+        values:
+        - 0.004865019817078653
+      mse_reduction_pct:
+        n: 1
+        mean: 37.73915963505314
+        stdev: null
+        values:
+        - 37.73915963505314
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 43.18966373629385
+        stdev: null
+        values:
+        - 43.18966373629385
+    - decile: 5
+      variance_median:
+        n: 1
+        mean: 0.010502308727746157
+        stdev: null
+        values:
+        - 0.010502308727746157
+      mse_reduction_pct:
+        n: 1
+        mean: 34.137868360439136
+        stdev: null
+        values:
+        - 34.137868360439136
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 41.965084530884056
+        stdev: null
+        values:
+        - 41.965084530884056
+    - decile: 6
+      variance_median:
+        n: 1
+        mean: 0.018108144633358414
+        stdev: null
+        values:
+        - 0.018108144633358414
+      mse_reduction_pct:
+        n: 1
+        mean: 28.373572410340078
+        stdev: null
+        values:
+        - 28.373572410340078
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 39.71273510326387
+        stdev: null
+        values:
+        - 39.71273510326387
+    - decile: 7
+      variance_median:
+        n: 1
+        mean: 0.02621970550377753
+        stdev: null
+        values:
+        - 0.02621970550377753
+      mse_reduction_pct:
+        n: 1
+        mean: 22.165973101556496
+        stdev: null
+        values:
+        - 22.165973101556496
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 36.65386896513
+        stdev: null
+        values:
+        - 36.65386896513
+    - decile: 8
+      variance_median:
+        n: 1
+        mean: 0.03463441823407958
+        stdev: null
+        values:
+        - 0.03463441823407958
+      mse_reduction_pct:
+        n: 1
+        mean: 18.64557850132985
+        stdev: null
+        values:
+        - 18.64557850132985
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 33.86476515274709
+        stdev: null
+        values:
+        - 33.86476515274709
+    - decile: 9
+      variance_median:
+        n: 1
+        mean: 0.04486016026621735
+        stdev: null
+        values:
+        - 0.04486016026621735
+      mse_reduction_pct:
+        n: 1
+        mean: 17.816595249325204
+        stdev: null
+        values:
+        - 17.816595249325204
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 33.67515789359462
+        stdev: null
+        values:
+        - 33.67515789359462
+    - decile: 10
+      variance_median:
+        n: 1
+        mean: 0.06256373031570656
+        stdev: null
+        values:
+        - 0.06256373031570656
+      mse_reduction_pct:
+        n: 1
+        mean: 12.51251098474637
+        stdev: null
+        values:
+        - 12.51251098474637
+      abs_bias_reduction_pct:
+        n: 1
+        mean: 35.03040213363495
+        stdev: null
+        values:
+        - 35.03040213363495
+h_mean_linear_probe:
+  full_reference:
+    pearson:
+      n: 1
+      mean: 0.9907796789066312
+      stdev: null
+      values:
+      - 0.9907796789066312
+    r2:
+      n: 1
+      mean: 0.9815568330297589
+      stdev: null
+      values:
+      - 0.9815568330297589
+  no_mean_supervision:
+    pearson:
+      n: 1
+      mean: 0.9722185995453323
+      stdev: null
+      values:
+      - 0.9722185995453323
+    r2:
+      n: 1
+      mean: 0.9447463663691753
+      stdev: null
+      values:
+      - 0.9447463663691753
+dataset_variance: null

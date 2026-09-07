@@ -2,60 +2,69 @@
 #
 # Protocol: docs/MEAN_CONTRIBUTION_EXPERIMENTS.md. Three arms, same RNA encoder (locus attention
 # K=64), same raw product=false throughout -- only the mean branch / its auxiliary supervision
-# changes.
+# changes. Generated ledgers (do not hand-edit): chr1 = 3 paired seeds (17/29/43), the paper's
+# statistically-powered causal ladder; chr123 = single seed (17), a lighter-weight check that the
+# effect isn't chr1-specific.
 
+status: confirmed_official   # CLOSED 2026-09-07
 study: mean_contribution
 source: ours
-primary_contrast: full_reference vs no_mean_supervision (proxy-task supervision, the paper's
-  causal claim)
+primary_contrast: full_reference vs no_mean_supervision (proxy-task supervision, the paper's causal claim)
 secondary_contrast: no_mean_supervision vs no_mean_branch (branch capacity alone)
+total_contrast: full_reference vs no_mean_branch (branch capacity + proxy supervision combined)
+
+ledgers:
+  chr1: "results/reference/appendix/mean_contribution_2026_09/ (3 paired seeds: 17, 29, 43)"
+  chr123: "results/reference/appendix/mean_contribution_2026_09_chr123/ (single seed: 17)"
+
 arms:
 
   - arm: full_reference
     mean_branch: true
     mean_aux_weight: 0.15
     raw_product: false
-    status: confirmed_official   # CLOSED 2026-09-06 21:39 UTC
+    status: confirmed_official
     note: >
-      Same run as B.1 (../ours/01_final_chr1_model.yaml): reference-locus_attention_no_product-
-      seed17, full 80/80 epochs, official split. p0_row_b-seed17 is NOT this arm -- it has
-      use_raw_product=true (codebase default when unset), confirmed by grepping models.py/
-      locus_cls_trainer.py/config.py. See 01_final_chr1_model.yaml's history note for the full
-      correction story.
-    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
-    checkpoint_exists_on_this_host: true
+      chr1 seed17 is the same run as B.1 (../ours/01_final_chr1_model.yaml):
+      reference-locus_attention_no_product-seed17, full 80/80 epochs, official split.
+    checkpoints:
+      chr1_seed17: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
+      chr1_seed29: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/ref-locus-attn-k64-noproduct-seed29/checkpoints/best.pt
+      chr1_seed43: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/ref-locus-attn-k64-noproduct-seed43/checkpoints/best.pt
+      chr123_seed17: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/ref-locus-attn-k64-noproduct-seed17-chr123/checkpoints/best.pt
     metrics:
-      chr1:
-        train_cpg_x_val_sample: {mas_pcc: 0.7004, mse: 0.0109, mae: 0.0632}
-        val_cpg_x_train_sample: {mas_pcc: 0.6311, mse: 0.0135, mae: 0.0684}
-        val_cpg_x_val_sample:   {mas_pcc: 0.5838, mse: 0.0143, mae: 0.0705}
+      chr1_val_cpg_x_val_sample_mean_over_seeds: {mas_pcc: 0.5864, stdev: 0.0006, mac_pcc: 0.9511, mse: 0.01417, mse_stdev: 0.00004}
+      chr123_val_cpg_x_val_sample_seed17: {mas_pcc: 0.5451, mac_pcc: 0.9463, mse: 0.01573}
 
   - arm: no_mean_supervision
     mean_branch: true
     mean_aux_weight: 0
     raw_product: false
-    status: not_started
-    note: >
-      Not found anywhere on this host. p0_row_b_no_mean_only-seed17 is NOT this arm despite the
-      similar name -- it has use_mean_branch=FALSE and use_raw_product=TRUE, a different cell
-      entirely (see the arm below, kept for completeness but out of this ladder).
-    checkpoint: null
-    next_step: >
-      python scripts/experiments/run_mean_contribution.py --arms no_mean_supervision --gpu <N>
+    status: confirmed_official
+    note: Same architecture/capacity as full_reference, aux_weight=0 -- isolates the proxy-task supervision.
+    checkpoints:
+      chr1_seed17: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/mean-no-supervision-seed17/checkpoints/best.pt
+      chr1_seed29: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/mean-no-supervision-seed29/checkpoints/best.pt
+      chr1_seed43: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/mean-no-supervision-seed43/checkpoints/best.pt
+      chr123_seed17: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/mean-no-supervision-seed17-chr123/checkpoints/best.pt
+    metrics:
+      chr1_val_cpg_x_val_sample_mean_over_seeds: {mas_pcc: 0.5846, stdev: 0.0031, mac_pcc: 0.9402, mse: 0.01699, mse_stdev: 0.00009}
+      chr123_val_cpg_x_val_sample_seed17: {mas_pcc: 0.5392, mac_pcc: 0.9360, mse: 0.01861}
 
   - arm: no_mean_branch
     mean_branch: false
     mean_aux_weight: null
     raw_product: false
-    status: found_matches_protocol_exactly
-    note: Config matches this arm's spec exactly (use_mean_branch=false, use_raw_product=false).
-    checkpoint: results/experiments/runs/locus_cls_joint/chr1/p0_row_b_ablation-seed17/checkpoints/best.pt
-    checkpoint_exists_on_this_host: true
+    status: confirmed_official
+    note: h_mean removed entirely (CpG-only mean branch) -- isolates branch capacity alone, with no auxiliary supervision possible.
+    checkpoints:
+      chr1_seed17: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/mean-no-branch-seed17/checkpoints/best.pt
+      chr1_seed29: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/mean-no-branch-seed29/checkpoints/best.pt
+      chr1_seed43: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/mean-no-branch-seed43/checkpoints/best.pt
+      chr123_seed17: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/mean-no-branch-seed17-chr123/checkpoints/best.pt
     metrics:
-      chr1:
-        train_cpg_x_val_sample: {mas_pcc: 0.7046, mse: 0.0119, mae: 0.0695}
-        val_cpg_x_train_sample: {mas_pcc: 0.6232, mse: 0.0174, mae: 0.0810}
-        val_cpg_x_val_sample:   {mas_pcc: 0.5812, mse: 0.0181, mae: 0.0826}
+      chr1_val_cpg_x_val_sample_mean_over_seeds: {mas_pcc: 0.5811, stdev: 0.0005, mac_pcc: 0.9367, mse: 0.01810, mse_stdev: 0.00004}
+      chr123_val_cpg_x_val_sample_seed17: {mas_pcc: 0.5397, mac_pcc: 0.9313, mse: 0.02006}
 
 # Not part of the 3-arm ladder above, but a real official run sitting on disk -- kept here for
 # provenance since it's directly adjacent (same mean/product isolation family, referenced by
@@ -70,26 +79,50 @@ extra_cell_not_in_protocol:
     chr1:
       val_cpg_x_val_sample: {mas_pcc: 0.5860, mse: 0.0179, mae: 0.0822}
 
-paired_seed_note: >
-  All three found/needed cells above are currently single-seed (17). The written protocol calls
-  for seeds 17/29/43 per arm for the causal claim's statistical power -- decide whether the
-  single-seed numbers above are sufficient for a first paper draft or whether the other two seeds
-  are needed before treating "no_mean_supervision" and the causal contrast as settled.
+paired_effects_chr1_3seed:
+  # From results/reference/appendix/mean_contribution_2026_09/summary.md -- the paper's primary,
+  # statistically-powered evidence (paired across seeds 17/29/43).
+  proxy_task_supervision_full_reference_vs_no_mean_supervision:
+    val_cpg_x_train_sample: {mse_reduction_pct: 17.27, median_abs_locus_bias_reduction_pct: 42.29}
+    val_cpg_x_val_sample:   {mse_reduction_pct: 16.55, median_abs_locus_bias_reduction_pct: 42.32}
+  total_mean_contribution_full_reference_vs_no_mean_branch:
+    val_cpg_x_val_sample: {mse_ours: 0.01417, mse_no_mean_branch: 0.01810, mse_increase_pct: 27.7}
+  h_mean_linear_probe_pearson_on_official_val_cpgs:
+    full_reference: 0.9918
+    no_mean_supervision: 0.9731
+    interpretation: >
+      h_mean is far more linearly predictive of true locus mean when the proxy-task auxiliary
+      loss is present, directly supporting claim 3 (the proxy makes h_mean methylation-aware).
 
-total_mean_contribution_full_reference_vs_no_mean_branch: >
-  Now computable with real official numbers for both endpoints (2026-09-06):
-  val_cpg_x_val_sample MSE 0.0143 (full_reference) vs 0.0181 (no_mean_branch) = +26.6% MSE with
-  the mean branch entirely removed -- consistent with the "~28% MSE increase on unseen CpGs"
-  figure already cited as motivation before this ladder was run. This is the "total contribution"
-  bound (branch capacity + proxy supervision combined); it does NOT yet isolate how much of that
-  26.6% is the proxy-task supervision specifically (the paper's actual causal claim) vs. just
-  having the extra branch capacity -- that isolation is exactly what the missing
-  "no_mean_supervision" arm above answers. Do not report 26.6% as evidence for the supervision
-  claim specifically until that arm exists.
+paired_effects_chr123_1seed:
+  # From results/reference/appendix/mean_contribution_2026_09_chr123/summary.md -- single-seed
+  # (17) follow-up; n=1, read as a sanity check that the effect generalizes beyond chr1, not as
+  # independently statistically powered evidence.
+  proxy_task_supervision_full_reference_vs_no_mean_supervision:
+    val_cpg_x_train_sample: {mse_reduction_pct: 16.39, median_abs_locus_bias_reduction_pct: 41.77}
+    val_cpg_x_val_sample:   {mse_reduction_pct: 15.44, median_abs_locus_bias_reduction_pct: 41.54}
+  h_mean_linear_probe_pearson_on_official_val_cpgs:
+    full_reference: 0.9908
+    no_mean_supervision: 0.9722
+  conclusion: >
+    Same sign and similar magnitude as the chr1 3-seed ladder (~15-17% MSE reduction, ~42% bias
+    reduction on unseen CpGs in both scopes) -- the mean-contribution effect is not a chr1
+    artifact.
 
-secondary_evidence_from_variance_decile_and_bias_metrics: >
-  Not yet computed for these runs -- docs/MEAN_CONTRIBUTION_EXPERIMENTS.md's collector
-  (scripts/experiments/collect_mean_contribution.py) produces locus-bias and variance-decile
-  metrics beyond plain MAS-PCC/MSE; none of that has been run against
-  reference-locus_attention_no_product-seed17 / p0_row_b_ablation-seed17 since neither was ever
-  registered as a mean_contribution_2026_09 run.
+dataset_variance_decomposition:
+  # From analyze_mean_contribution.py dataset (chr1 official training matrix; not re-run for
+  # chr123 -- see docs/MEAN_CONTRIBUTION_EXPERIMENTS.md's chr123 section).
+  scope: chr1, train_cpg x train_sample (official training matrix)
+  fraction_between_locus_mean_variance: 0.8268
+  fraction_within_locus_patient_variance: 0.1732
+  interpretation: >
+    82.7% of observed methylation variance across the official training matrix is between-locus
+    (mean) rather than within-locus (patient), directly supporting claim 5 (the biological
+    motivation for a locus-mean signal exists in the data).
+
+claims_verdict:
+  1_proxy_supervision_improves_unseen_cpg_prediction: supported (chr1 3-seed + chr123 1-seed, ~15-17% MSE reduction)
+  2_effect_is_not_merely_branch_capacity: supported (no_mean_supervision vs no_mean_branch still shows a gap on both scopes)
+  3_proxy_makes_h_mean_methylation_aware: supported (linear-probe Pearson 0.99 vs 0.97 with/without aux supervision)
+  4_mean_primarily_corrects_absolute_calibration: supported (locus-bias reduction ~42%, larger than MSE reduction ~16%)
+  5_biological_motivation_exists_in_data: supported (82.7% between-locus variance on chr1)

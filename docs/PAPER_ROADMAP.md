@@ -279,6 +279,13 @@ single paper table into a new file — this is bookkeeping, not new pipeline cod
 
 ## 3. P1: Mean-contribution causal ablation
 
+**DONE (2026-09-07).** All three arms × 3 seeds (17/29/43) on chr1 completed and collected into
+`results/reference/appendix/mean_contribution_2026_09/`; a single-seed (17) chr123 follow-up
+(same arms, generic `shared_backbone` engine) completed and collected into
+`results/reference/appendix/mean_contribution_2026_09_chr123/`, confirming the effect isn't
+chr1-specific. Manuscript-facing verdict recorded in `results/reference/ours/03_mean_contribution.yaml`.
+Commands below kept for reference/reproduction only.
+
 Full protocol already written: `docs/MEAN_CONTRIBUTION_EXPERIMENTS.md`. Three arms × 3 seeds
 (17/29/43); `full_reference` reuses the already-launched `ref-locus-attn-k64-noproduct-seed{N}`
 runs (verify these exist on the training host before assuming the runner will skip training for
