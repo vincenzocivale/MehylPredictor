@@ -1,6 +1,6 @@
-# B.4 — Simplified baselines, current architecture (P2)
-# chr1 arms below; chr123 arms (queued 2026-09-06, run after chr123-ref + cross-scope evals
-# finish -- see logs/b1_final_reference/queue_chr123_baselines.log) at the bottom of this file.
+# B.4 — Simplified baselines, current architecture, chr1 AND chr123 (P2) — ALL 8 CELLS CLOSED
+# chr1 arms below; chr123 arms (all 4 closed 2026-09-07) at the bottom of this file -- see
+# logs/b1_final_reference/queue_chr123_baselines.log.
 
 study: baselines
 source: ours
@@ -108,33 +108,57 @@ chr123_arms:
   # queued 2026-09-06 to run automatically after chr123-ref + the two cross-scope evals finish.
 
   - arm: cpg_prior
-    status: queued
+    status: confirmed_official   # CLOSED 2026-09-06 22:54 UTC
     description: Zero-parameter, no training -- CpGPriorEvaluator against chr123's targets.
     checkpoint: null
-    output: MethylPredictionData/experiments/baselines/cpg_prior/chr123/metrics.json
-    metrics: null
+    output: MethylPredictionData/experiments/baselines/cpg_prior/chr123/metrics.json/metrics.json   # evaluator wrote its own metrics.json inside the given --output path (nested, not a naming bug in this file -- a quirk of CpGPriorEvaluator's own output layout)
+    metrics:
+      chr123:
+        train_cpg_x_val_sample: {mas_pcc: 0.0, mac_pcc: 0.9240, mse: 0.02445, mae: 0.10083}
+        val_cpg_x_train_sample: {mas_pcc: 0.0, mac_pcc: 0.9068, mse: 0.02880, mae: 0.10993}
+        val_cpg_x_val_sample:   {mas_pcc: 0.0, mac_pcc: 0.9055, mse: 0.02931, mae: 0.11080}
+    note: >
+      mas_pcc reported as 0.0 here rather than null (chr1's cpg_prior arm reports null for the same
+      mathematically-undefined 0/0 case) -- an evaluator-version/code-path difference in how the
+      guard defaults, not a real result; treat both as "undefined," not "zero correlation."
 
   - arm: global_rna_shift
-    status: queued
+    status: confirmed_official   # CLOSED 2026-09-07 01:05 UTC
     run_id: baseline-global-shift-chr123
     recipe: configs/models/baselines/baseline_global_rna_shift.yaml
     checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-global-shift-chr123/checkpoints/best.pt
-    metrics: null
-    expected_pattern: >
-      The chr1 arm of this same baseline has high MSE and mac_pcc=null by construction (constant
-      prediction per patient across all CpGs -- see its reassessment_2026_09_06 note) -- expect
-      the same pattern here on chr123, not a sign this run is broken.
+    checkpoint_sha256: 33145552eee27f07de471a5973f52c5158a2992199d0297a445937265091ad19
+    metrics:
+      chr123:
+        train_cpg_x_val_sample: {mas_pcc: 0.2810, mac_pcc: null, mse: 0.1357, mae: 0.3410}
+        val_cpg_x_train_sample: {mas_pcc: 0.2107, mac_pcc: null, mse: 0.1518, mae: 0.3630}
+        val_cpg_x_val_sample:   {mas_pcc: 0.1975, mac_pcc: null, mse: 0.1526, mae: 0.3645}
+    note: >
+      Confirmed the expected_pattern predicted from the chr1 arm's reassessment: high MSE and
+      NaN mac_pcc, same mathematically-necessary shape (constant prediction per patient across
+      every CpG) -- not a bug, consistent with chr1.
 
   - arm: bilinear_rna_cpg
-    status: queued
+    status: confirmed_official   # CLOSED 2026-09-07 03:16 UTC
     run_id: baseline-bilinear-chr123
     recipe: configs/models/baselines/baseline_bilinear_rna_cpg.yaml
     checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-bilinear-chr123/checkpoints/best.pt
-    metrics: null
+    checkpoint_sha256: 7d365ca56cc4f57bf7f5b335de54e96af5bea82c5a09a00a9b905c6439cb5696
+    metrics:
+      chr123:
+        train_cpg_x_val_sample: {mas_pcc: 0.5992, mac_pcc: 0.9413, mse: 0.0174, mae: 0.0870}
+        val_cpg_x_train_sample: {mas_pcc: 0.5680, mac_pcc: 0.9283, mse: 0.0205, mae: 0.0899}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5132, mac_pcc: 0.9248, mse: 0.0218, mae: 0.0927}
 
   - arm: mlp_rna_cpg
-    status: queued
+    status: confirmed_official   # CLOSED 2026-09-07 05:55 UTC
     run_id: baseline-mlp-chr123
     recipe: configs/models/baselines/baseline_mlp_rna_cpg.yaml
     checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/baseline-mlp-chr123/checkpoints/best.pt
+    checkpoint_sha256: a0071baa0127b754306a40d025a9f33dbe7e3ad063fa9b513f71f674cc0f4967
+    metrics:
+      chr123:
+        train_cpg_x_val_sample: {mas_pcc: 0.5228, mac_pcc: 0.9281, mse: 0.0207, mae: 0.0972}
+        val_cpg_x_train_sample: {mas_pcc: 0.5481, mac_pcc: 0.9272, mse: 0.0208, mae: 0.0928}
+        val_cpg_x_val_sample:   {mas_pcc: 0.4824, mac_pcc: 0.9221, mse: 0.0224, mae: 0.0965}
     metrics: null

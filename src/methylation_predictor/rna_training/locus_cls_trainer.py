@@ -161,6 +161,7 @@ class LocusCLSJointTrainer:
         development_split_seed: int | None = None,
         track: bool = True,
         resume: bool = False,
+        training_sources: tuple[str, ...] | None = None,
     ):
         # >1.0 gives the raw/RNA branch (raw_branch, fusion, residual_head --
         # everything that only ever gets gradient through the fusion layer,
@@ -200,12 +201,14 @@ class LocusCLSJointTrainer:
         torch.backends.cuda.matmul.allow_tf32 = cfg.allow_tf32
         torch.backends.cudnn.allow_tf32 = cfg.allow_tf32
 
+        self.training_sources = tuple(training_sources) if training_sources else ("array", "epic", "wgbs")
         self.matched_chr1_root = Path(matched_chr1_root) if matched_chr1_root else None
         if self.matched_chr1_root is not None:
             if scope == "chr1":
                 self.bundle = None
                 self.protocol, self._sources = load_matched_chr1_protocol_and_sources(
                     self.matched_chr1_root, self.root, hdf5_cache_mb=cfg.hdf5_cache_mb,
+                    sources=self.training_sources,
                 )
             else:
                 # The canonical bundle is needed only to resolve the frozen
@@ -310,6 +313,13 @@ class LocusCLSJointTrainer:
         if self.query_source != "ntv3":
             locus_resolved["query_source"] = self.query_source
         resolved_config = {**self.recipe.raw, "training": asdict(cfg), "locus_cls": locus_resolved}
+        # Same preserve-compatibility convention as query_source above: only record
+        # training_sources when it's a real restriction (paper section B.6's source
+        # ablation), so every run saved before this parameter existed still resumes
+        # (its own config.resolved.yaml has no such key, and the default here matches
+        # what those runs actually trained with).
+        if self.training_sources != ("array", "epic", "wgbs"):
+            resolved_config["training_sources"] = list(self.training_sources)
         if self.development_split_seed is not None:
             resolved_config["development"] = {
                 **dict(resolved_config.get("development", {})),

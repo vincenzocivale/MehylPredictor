@@ -23,6 +23,12 @@ def _rna(args):
     recipe_raw = yaml.safe_load(Path(args.recipe).read_text()) or {}
     lc = recipe_raw.get("locus_cls", {})
     overrides = {k: v for k, v in {"learning_rate": args.lr, "epochs": args.epochs, "scheduler": args.scheduler, "seed": args.seed}.items() if v is not None}
+    if args.training_sources:
+        training_sources = tuple(x.strip() for x in args.training_sources.split(",") if x.strip())
+    elif recipe_raw.get("training_sources"):
+        training_sources = tuple(recipe_raw["training_sources"])
+    else:
+        training_sources = None
     trainer = LocusCLSJointTrainer(
         canonical_root=args.canonical_root, scope=args.scope, recipe_path=args.recipe,
         feature_cache=args.feature_cache, rna_cache=args.rna_cache, registry=args.registry,
@@ -38,6 +44,7 @@ def _rna(args):
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
         mode=args.mode, early_stop_patience=args.early_stop_patience, run_id=args.run_id,
         overrides=overrides or None, development_split_seed=args.development_split_seed, resume=args.resume,
+        training_sources=training_sources,
     )
     try:
         return trainer.run()
@@ -57,7 +64,7 @@ def _stats(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--query-source",choices=["ntv3","mean_only","hybrid_detached","hybrid_joint"],default=None,help="locus-attention query representation; experimental, default preserves recipe/reference"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--query-source",choices=["ntv3","mean_only","hybrid_detached","hybrid_joint"],default=None,help="locus-attention query representation; experimental, default preserves recipe/reference"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); p.add_argument("--training-sources",default=None,help="comma-separated subset of array,epic,wgbs to restrict training to (paper section B.6 source ablation); array is always included; default is all three, unchanged from before this flag existed"); args=p.parse_args()
     if args.model=="rna_methylation":
         for name in ("canonical_root","feature_cache","rna_cache"):
             if getattr(args,name) is None: p.error(f"--{name.replace('_','-')} is required for RNA training")

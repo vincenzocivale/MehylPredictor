@@ -5,37 +5,81 @@
 
 study: chromosome_generalization
 source: ours
-status: not_started
+status: confirmed_official   # ALL 4 CELLS CLOSED 2026-09-06 22:12 UTC
 cells:
   - train: chr1
     eval: chr1
     status: confirmed_official   # CLOSED 2026-09-06 21:39 UTC -- = B.1, same checkpoint/metrics
     checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
     metrics:
-      train_cpg_x_val_sample: {mas_pcc: 0.7004, mse: 0.0109}
-      val_cpg_x_train_sample: {mas_pcc: 0.6311, mse: 0.0135}
-      val_cpg_x_val_sample:   {mas_pcc: 0.5838, mse: 0.0143}
-  - {train: chr123, eval: chr1, status: in_progress_queued, note: "chr123-ref training running now on host hal; cross-scope eval queued to follow automatically"}
-  - {train: chr1, eval: chr123, status: in_progress_queued, note: "queued to run right after chr123-ref finishes; cross-scope eval path (shared_backbone engine, chr1 checkpoint against chr123 data) untested before this -- watch for errors"}
-  - {train: chr123, eval: chr123, status: in_progress_queued, note: "chr123-ref training running now on host hal"}
+      train_cpg_x_val_sample: {mas_pcc: 0.7004, mac_pcc: 0.9634, mse: 0.0109, mae: 0.0632}
+      val_cpg_x_train_sample: {mas_pcc: 0.6311, mac_pcc: 0.9527, mse: 0.0135, mae: 0.0684}
+      val_cpg_x_val_sample:   {mas_pcc: 0.5838, mac_pcc: 0.9506, mse: 0.0143, mae: 0.0705}
 
-prerequisite_chr123_ref:
-  status: not_started
-  note: >
-    No chr123 checkpoint trained with the current cross-attention architecture exists anywhere --
-    verified directly (2026-09-06) against both chr123 runs found on disk, neither of which
-    qualifies:
-      - rna-methylation-chr123-retrain-2026-08-31 -- retired two-stage engine (deleted from
-        results/experiments/ 2026-09-06 once its numbers were captured into
-        ../appendix/rna_methylation/chr123.yaml as legacy_two_stage).
-      - chr123-shared-primary-aggressive-seed17 -- confirmed model.encoder.kind=linear (the
-        *previous* reference architecture, superseded 2026-09-05), not the current one. Deleted
-        2026-09-06 (superseded architecture, out of paper scope).
-  commands: see docs/PAPER_ROADMAP.md section 5a (prepare_chr123_compact.py, then scripts/train.py
-    --scope chr123 --engine shared_backbone --recipe configs/models/rna_methylation_locus_attention.yaml)
+  - train: chr123
+    eval: chr1
+    status: confirmed_official   # CLOSED 2026-09-06 22:12 UTC -- cross-scope eval, untested path before this, worked cleanly
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/chr123-ref/checkpoints/best.pt
+    checkpoint_sha256: ee2836b9c7e2e46997fb611235535b288f7fd3297ae11e401a54c1e6c2e4ba8a
+    engine: matched_chr1_shared_backbone (eval only; checkpoint trained via shared_backbone/chr123)
+    metrics:
+      train_cpg_x_val_sample: {mas_pcc: 0.7366, mac_pcc: 0.9650, mse: 0.0102, mae: 0.0616}
+      val_cpg_x_train_sample: {mas_pcc: 0.6117, mac_pcc: 0.9506, mse: 0.0141, mae: 0.0702}
+      val_cpg_x_val_sample:   {mas_pcc: 0.6177, mac_pcc: 0.9511, mse: 0.0139, mae: 0.0702}
+    note: >
+      Interesting: chr123-trained checkpoint scores HIGHER on chr1's own official split
+      (val_cpg_x_val_sample 0.6177) than the chr1-only-trained checkpoint does on itself (0.5838,
+      the chr1-eval-chr1 cell above) -- more training data (chr1+2+3) transferred back to chr1
+      generalizes better than chr1 alone, consistent with MethylProphet's own Table 8 pattern where
+      more chromosomes sometimes help the same eval chromosome, though MethylProphet's own
+      chr123->chr1 (0.3505) is LOWER than their chr1->chr1 (0.3904) -- opposite direction from what
+      we see here. Worth a comment in the manuscript, not just a table entry.
 
-cross_scope_eval_risk: >
-  Evaluating a chr1-trained checkpoint against chr123 data (or vice versa) has never been tried
-  under the current engine -- confirm scripts/evaluate.py --engine shared_backbone actually
-  accepts a checkpoint trained on one scope against another scope's --prepared-root/
-  --feature-cache/--cpg-targets-dir before assuming the two cross cells are a simple eval-only run.
+  - train: chr1
+    eval: chr123
+    status: confirmed_official   # CLOSED 2026-09-06 22:12 UTC -- cross-scope eval, untested path before this, worked cleanly
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt
+    checkpoint_sha256: 0504ecd7d330bd295f4baa2543da07b5ddd3218b0c9bceb4a21c548c0fb81095
+    engine: shared_backbone (eval only; checkpoint trained via matched_chr1_shared_backbone/chr1)
+    metrics:
+      train_cpg_x_val_sample: {mas_pcc: 0.6017, mac_pcc: 0.9192, mse: 0.0224, mae: 0.0904}
+      val_cpg_x_train_sample: {mas_pcc: 0.5386, mac_pcc: 0.9271, mse: 0.0208, mae: 0.0854}
+      val_cpg_x_val_sample:   {mas_pcc: 0.5381, mac_pcc: 0.9258, mse: 0.0212, mae: 0.0860}
+    note: >
+      As expected, a chr1-only-trained checkpoint generalizes worse to chr2/chr3 loci it never saw
+      (0.5381) than the chr123-trained checkpoint scores on its own held-out chr123 loci (0.5450,
+      the chr123-eval-chr123 cell below) -- small gap (-0.0069), meaning the architecture's
+      RNA-locus relationship transfers quite well across chromosomes even without training on them.
+
+  - train: chr123
+    eval: chr123
+    status: confirmed_official   # CLOSED 2026-09-06 22:11 UTC
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/chr123-ref/checkpoints/best.pt
+    checkpoint_sha256: ee2836b9c7e2e46997fb611235535b288f7fd3297ae11e401a54c1e6c2e4ba8a
+    epochs: 80 / 80, elapsed 12586.8s (~3h30m)
+    metrics:
+      train_cpg_x_val_sample: {mas_pcc: 0.6791, mac_pcc: 0.9600, mse: 0.0120, mae: 0.0669}
+      val_cpg_x_train_sample: {mas_pcc: 0.6010, mac_pcc: 0.9495, mse: 0.0145, mae: 0.0709}
+      val_cpg_x_val_sample:   {mas_pcc: 0.5450, mac_pcc: 0.9467, mse: 0.0157, mae: 0.0736}
+
+summary_double_ood_view_vs_methylprophet_table8:
+  # Val CpG x Val Sample (double-OOD, headline), MAS-PCC
+  chr1_to_chr1:     {ours: 0.5838, methylprophet: 0.3904, delta: +0.1934}
+  chr123_to_chr1:   {ours: 0.6177, methylprophet: 0.3505, delta: +0.2672}
+  chr1_to_chr123:   {ours: 0.5381, methylprophet: 0.2513, delta: +0.2868}
+  chr123_to_chr123: {ours: 0.5450, methylprophet: 0.3460, delta: +0.1990}
+
+qualitative_finding: >
+  MethylProphet's own Table 8 shows chr1->chr123 dropping sharply from chr1->chr1 (0.3904 -> 0.2513,
+  -0.1391) -- their model does not transfer well to unseen chromosomes. Ours drops far less
+  (0.5838 -> 0.5381, -0.0457) and both cross-scope cells beat every one of MethylProphet's own
+  4 cells outright. This is a genuinely strong result for the paper's chromosomal-generalization
+  claim -- the locus-conditioned architecture appears to learn a more transferable RNA->methylation
+  relationship, not a function memorized per observed CpG. Single-seed evidence only; see
+  01_final_chr1_model.yaml's single_seed_caveat, which applies here too.
+
+engine_note_now_confirmed: >
+  The cross-scope eval path (evaluate.py --engine shared_backbone against a matched_chr1-trained
+  checkpoint, and --engine matched_chr1_shared_backbone against a shared_backbone-trained
+  checkpoint) works cleanly with no errors or dimension mismatches -- the earlier
+  cross_scope_eval_risk caveat is resolved, not just theoretically expected.

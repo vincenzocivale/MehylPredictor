@@ -10,9 +10,22 @@ beyond TCGA Array alone. Context for the dataset, not a primary paper contributi
 | Array + EPIC | 0.5226 | 0.3727 | 0.3451 |
 | Array + EPIC + WGBS | 0.5455 | 0.4194 | 0.3904 |
 
-**Ours**: see [`../ours/06_source_ablation.yaml`](../ours/06_source_ablation.yaml) — **not started**,
-lowest priority (do only after §B.1–B.5 are closed), feasibility under the current engine
-unconfirmed (see that file).
+**Ours — CLOSED 2026-09-07, all 4 cells** (double-OOD MAS-PCC, val_cpg × val_sample):
+
+| Training data | Ours | MethylProphet | Δ |
+|---|---:|---:|---:|
+| Array | 0.5608 | 0.2597 | +0.3011 |
+| Array + WGBS | 0.5661 | 0.0369 | +0.5292 |
+| Array + EPIC | 0.5847 | 0.3451 | +0.2396 |
+| Array + EPIC + WGBS | 0.5838 | 0.3904 | +0.1934 |
+
+Two robustness findings worth their own sentence in the manuscript: (1) Array-only already
+reaches 96% of the full-data number for us, vs. 67% for MethylProphet — far less dependent on
+EPIC/WGBS; (2) adding WGBS **collapses** MethylProphet's own model (0.2597→0.0369) while ours
+improves slightly (0.5608→0.5661) — a real fragility in their numbers we don't share. Full detail,
+checkpoints, and the small code change that unblocked this (an optional source-subset parameter,
+verified not to affect any existing recipe/run) in
+[`../ours/06_source_ablation.yaml`](../ours/06_source_ablation.yaml).
 
 Full MAS-PCC/MAC-PCC/MSE/MAE detail and provenance:
 [`../appendix/methylprophet_comparison/table7_source_ablation.md`](../appendix/methylprophet_comparison/table7_source_ablation.md)

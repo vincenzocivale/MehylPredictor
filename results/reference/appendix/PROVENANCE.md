@@ -18,15 +18,16 @@ superseded/deleted.
 | file | run path | checkpoint sha256 | status |
 |---|---|---|---|
 | `ours/01_final_chr1_model.yaml`, `ours/02_rna_encoder_comparison.yaml` (cross_attention arm), `ours/03_mean_contribution.yaml` (full_reference arm), `ours/05_chromosome_generalization.yaml` (chr1→chr1 cell) | `MethylPredictionData/experiments/runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt` | `0504ecd7d330bd295f4baa2543da07b5ddd3218b0c9bceb4a21c548c0fb81095` | **live**, confirmed official 2026-09-06 21:39 UTC, 80/80 epochs |
-| `ours/05_chromosome_generalization.yaml` (chr123→chr123 cell) | `.../runs/locus_cls_joint/chr123/chr123-ref/checkpoints/best.pt` | pending — training running on host `hal` as of this write | in_progress |
-| `ours/05_chromosome_generalization.yaml` (chr123→chr1, chr1→chr123 cells) | same two checkpoints above, cross-scope eval only (no new checkpoint) | n/a | queued, runs automatically once chr123-ref finishes |
-| `ours/04_baselines.yaml` (chr123 columns, not yet added) | `.../experiments/baselines/cpg_prior/chr123/metrics.json` (no checkpoint, zero-parameter) | n/a | queued |
-| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-global-shift-chr123/checkpoints/best.pt` | pending | queued |
-| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-bilinear-chr123/checkpoints/best.pt` | pending | queued |
-| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-mlp-chr123/checkpoints/best.pt` | pending | queued |
+| `ours/05_chromosome_generalization.yaml` (chr123→chr123 cell) | `.../runs/locus_cls_joint/chr123/chr123-ref/checkpoints/best.pt` | `ee2836b9c7e2e46997fb611235535b288f7fd3297ae11e401a54c1e6c2e4ba8a` | **live**, confirmed official 2026-09-06 22:11 UTC, 80/80 epochs |
+| `ours/05_chromosome_generalization.yaml` (chr123→chr1 cell) | `.../runs/locus_cls_joint/chr123/chr123-ref/checkpoints/best.pt`, eval-only against chr1 data | `ee2836b9...` (same as above) | **live**, confirmed official 2026-09-06 22:12 UTC |
+| `ours/05_chromosome_generalization.yaml` (chr1→chr123 cell) | `.../runs/locus_cls_joint/chr1/reference-locus_attention_no_product-seed17/checkpoints/best.pt`, eval-only against chr123 data | `0504ecd7...` (same as chr1 row above) | **live**, confirmed official 2026-09-06 22:12 UTC |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../experiments/baselines/cpg_prior/chr123/metrics.json/metrics.json` (no checkpoint, zero-parameter) | n/a | **live**, confirmed official 2026-09-06 22:54 UTC |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-global-shift-chr123/checkpoints/best.pt` | `33145552eee27f07de471a5973f52c5158a2992199d0297a445937265091ad19` | **live**, confirmed official 2026-09-07 01:05 UTC |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-bilinear-chr123/checkpoints/best.pt` | `7d365ca56cc4f57bf7f5b335de54e96af5bea82c5a09a00a9b905c6439cb5696` | **live**, confirmed official 2026-09-07 03:16 UTC |
+| `ours/04_baselines.yaml` (chr123 columns) | `.../runs/locus_cls_joint/chr123/baseline-mlp-chr123/checkpoints/best.pt` | `a0071baa0127b754306a40d025a9f33dbe7e3ad063fa9b513f71f674cc0f4967` | **live**, confirmed official 2026-09-07 05:55 UTC |
 
-Update each `pending`/`queued` row with its real sha256/status as it completes (see the three
-chained driver scripts under `logs/b1_final_reference/queue_*.log` for live progress).
+B.4 (baselines) is now fully closed, chr1 + chr123, all 8 cells. See
+`logs/b1_final_reference/queue_chr123_baselines.log` for the full run history.
 
 Layout note: new runs from `scripts/{train,tune,evaluate}.py` should land under
 `results/experiments/runs/` (the `RunStore` layout,

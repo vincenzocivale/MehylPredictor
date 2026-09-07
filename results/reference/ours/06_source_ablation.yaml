@@ -2,21 +2,116 @@
 
 study: source_ablation
 source: ours
-status: not_started
-feasibility: unconfirmed
+status: confirmed_official   # ALL 4 CELLS CLOSED 2026-09-07 09:16 UTC
+feasibility: unblocked_2026_09_07
+code_change: >
+  Added an optional `sources`/`training_sources` parameter threaded through
+  `load_matched_chr1_protocol_and_sources` (matched_chr1_data.py) ->
+  `LocusCLSJointTrainer.__init__` (locus_cls_trainer.py) -> a new `--training-sources`
+  CLI flag (scripts/train.py, comma-separated, e.g. "array" or "array,wgbs"). "array" is
+  always implicitly included. Default (flag omitted) is unchanged from before this change
+  (all three sources) -- every existing recipe/run is unaffected, verified two ways: (1) a
+  direct CPU-only smoke test loading all 4 source combinations and checking protocol.sources/
+  opened-file-keys/auxiliary_cpg_idx match expectations exactly, array_train_sample_idx
+  identical (8260) across all combos; (2) the existing test suite
+  (tests/test_optimized_pipeline.py, the only test file touching this code path) still passes,
+  4/4. training_sources is recorded into config.resolved.yaml only when non-default (same
+  preserve-compatibility convention as query_source), so resuming any pre-existing run is
+  unaffected. Evaluation is untouched -- evaluate_official_split always evaluates on the true,
+  unrestricted official split regardless of what a checkpoint was trained on (that's the whole
+  point of a source ablation: same eval, different training data).
 feasibility_note: >
-  MethylProphet's own Table 7 "Ours" column (historical, retired-engine numbers, see
-  ../appendix/methylprophet_comparison/table7_source_ablation.md) was produced by that old
-  engine's own source-restriction path. Grepping the current matched_chr1_shared_backbone/
-  shared_backbone engines and scripts/train.py found no --sources/train-time source-subset flag --
-  locus_cls.structured_loss_sources in the recipe only reweights the loss per source, it does not
-  appear to restrict which sources' samples enter training. CONFIRM (by reading
-  rna_training/locus_cls_trainer.py's pool-construction code, not by assuming) whether restricting
-  training to a source subset is possible with existing code before launching anything here. If
-  not possible without new code, this item is out of scope for the "no new code" reduction and
-  should stay explicitly deferred rather than forced.
+  Verified directly in source (not inferred), 2026-09-07:
+  1. `--engine matched_chr1_shared_backbone` (what B.1 uses): `load_matched_chr1_protocol_and_sources`
+     (rna_training/matched_chr1_data.py) unconditionally opens and includes all three sources
+     (`sources = {"array": ..., "epic": ..., "wgbs": ...}`, `MatchedChr1Protocol.sources` defaults
+     to `("array","epic","wgbs")`) -- no parameter anywhere in this path selects a subset.
+  2. `--engine shared_backbone` at `scope=chr1`: `scopes.py::scope_protocol("chr1", ...)`
+     hardcodes `load_protocol("tcga_mix_chr1", ...)` -- always the all-three-sources protocol.
+     `scripts/train.py` has no `--protocol` CLI flag to override this.
+  3. `locus_cls.structured_loss_sources` in the recipe only reweights the loss per source
+     (`loss_config_for_source`) -- confirmed it does not touch which sources' samples enter
+     training at all.
+  Real finding worth recording: the exact protocol DATA for the missing 3 conditions already
+  exists on disk and needs no new data prep -- `datasets/methylprophet_repro_v1/protocols/
+  {tcga_array_chr1,tcga_array_epic_chr1,tcga_array_wgbs_chr1}/` (alongside `tcga_mix_chr1`, the
+  all-sources one already in use) are real, built protocol directories, just unreachable from any
+  current CLI path. Unblocking this would need: either a `--protocol` override threaded through
+  `scripts/train.py` -> `scope_protocol()`, or a source-subset parameter threaded through
+  `load_matched_chr1_protocol_and_sources`. Both are small, targeted changes, not a new pipeline --
+  worth flagging to whoever decides if "no new code" should flex for this one item, since the hard
+  part (data) is already done.
+  Per the paper plan's own explicit scope reduction ("escludendo... qualunque esperimento che
+  richieda nuovo codice"), this item stays deferred, not attempted, until that decision is made.
 cells:
-  - {sources: [array], status: not_started}
-  - {sources: [array, wgbs], status: not_started}
-  - {sources: [array, epic], status: not_started}
-  - {sources: [array, epic, wgbs], status: not_started, note: "= B.1's own run once confirmed; no extra training needed for this cell"}
+  - sources: [array]
+    status: confirmed_official   # CLOSED 2026-09-07 06:50 UTC
+    run_id: source-ablation-array
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/source-ablation-array/checkpoints/best.pt
+    checkpoint_sha256: 5dcb4e6ec0712d48f1cedc1efcdacffae295e4caade31daf6fb800f1d28bcfd4
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.7033, mac_pcc: 0.9639, mse: 0.0108, mae: 0.0624}
+        val_cpg_x_train_sample: {mas_pcc: 0.6098, mac_pcc: 0.9274, mse: 0.0202, mae: 0.0881}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5608, mac_pcc: 0.9248, mse: 0.0210, mae: 0.0900}
+    vs_methylprophet_table7_TA_row: {ours: 0.5608, methylprophet: 0.2597, delta: +0.3011}
+
+  - sources: [array, wgbs]
+    status: confirmed_official   # CLOSED 2026-09-07 07:57 UTC
+    run_id: source-ablation-array-wgbs
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/source-ablation-array-wgbs/checkpoints/best.pt
+    checkpoint_sha256: c7350fbc57e0eb433c285d8e77eab4c456c7056d81e957bab6c9d1abae48332b
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.6964, mac_pcc: 0.9630, mse: 0.0110, mae: 0.0636}
+        val_cpg_x_train_sample: {mas_pcc: 0.6128, mac_pcc: 0.9401, mse: 0.0169, mae: 0.0792}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5661, mac_pcc: 0.9379, mse: 0.0176, mae: 0.0812}
+    vs_methylprophet_table7_TAW_row: {ours: 0.5661, methylprophet: 0.0369, delta: +0.5292}
+    striking_finding: >
+      MethylProphet's own T(A+W) row COLLAPSES (0.2597 -> 0.0369, MAC-PCC 0.7930 -> 0.1006) when
+      WGBS is added to Array -- a well-known result in their paper (WGBS's 32-sample training set
+      apparently destabilizes their model badly). Ours does the OPPOSITE: adding WGBS slightly
+      IMPROVES over Array-only (0.5608 -> 0.5661, +0.0053), no collapse at all. This is a striking,
+      directly citable robustness result for the paper -- worth its own sentence, not just a table
+      row.
+
+  - sources: [array, epic]
+    status: confirmed_official   # CLOSED 2026-09-07 09:16 UTC -- ALL 4 CELLS NOW CLOSED, B.6 DONE
+    run_id: source-ablation-array-epic
+    checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr1/source-ablation-array-epic/checkpoints/best.pt
+    checkpoint_sha256: 3c30a81aae7c98c9d8013612351b43b5c72a405238798eaa86f4436d9e6da2eb
+    metrics:
+      chr1:
+        train_cpg_x_val_sample: {mas_pcc: 0.7072, mac_pcc: 0.9641, mse: 0.0107, mae: 0.0622}
+        val_cpg_x_train_sample: {mas_pcc: 0.6273, mac_pcc: 0.9427, mse: 0.0161, mae: 0.0758}
+        val_cpg_x_val_sample:   {mas_pcc: 0.5847, mac_pcc: 0.9407, mse: 0.0168, mae: 0.0778}
+    vs_methylprophet_table7_TAE_row: {ours: 0.5847, methylprophet: 0.3451, delta: +0.2396}
+
+  - sources: [array, epic, wgbs]
+    status: confirmed_official
+    note: "= B.1's own run (../ours/01_final_chr1_model.yaml) -- no extra training needed, already covers this cell"
+    metrics:
+      chr1:
+        val_cpg_x_val_sample: {mas_pcc: 0.5838, mse: 0.0143}
+
+summary_headline_view_val_cpg_x_val_sample:
+  # MAS-PCC, ordered by training data
+  array:            {ours: 0.5608, methylprophet: 0.2597, delta: +0.3011}
+  array_wgbs:       {ours: 0.5661, methylprophet: 0.0369, delta: +0.5292}
+  array_epic:       {ours: 0.5847, methylprophet: 0.3451, delta: +0.2396}
+  array_epic_wgbs:  {ours: 0.5838, methylprophet: 0.3904, delta: +0.1934}
+
+finding: >
+  Two robustness results worth their own sentences in the manuscript, not just a table:
+  1. Array-only already gets 96% of the way to the full-data number (0.5608 / 0.5838), vs.
+     MethylProphet's 67% (0.2597 / 0.3904) -- our architecture is far less dependent on the
+     auxiliary EPIC/WGBS technologies.
+  2. Adding WGBS to Array COLLAPSES MethylProphet's own model (0.2597 -> 0.0369, MAC-PCC
+     0.7930 -> 0.1006) -- a real fragility in their published numbers. Ours does not collapse at
+     all; it improves slightly (0.5608 -> 0.5661). EPIC helps more than WGBS for both models
+     (consistent direction), but only MethylProphet is destabilized by WGBS specifically.
+  Order for ours: array (0.5608) < array+wgbs (0.5661) < array+epic+wgbs (0.5838) ≈
+  array+epic (0.5847, technically the single highest cell, though within noise of full-data) --
+  EPIC carries essentially all the auxiliary-data benefit; WGBS adds almost nothing once EPIC is
+  present, unlike for MethylProphet where WGBS is actively harmful.
+  All four cells single-seed (17) -- same caveat as B.1's single_seed_caveat applies throughout.

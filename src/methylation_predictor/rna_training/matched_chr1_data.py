@@ -77,6 +77,7 @@ def open_methylation_source(name: str, path: Path, *, hdf5_cache_mb: int = 256) 
 
 def load_matched_chr1_protocol_and_sources(
     matched_chr1_root: Path, canonical_root: Path, *, hdf5_cache_mb: int = 256,
+    sources: tuple[str, ...] = ("array", "epic", "wgbs"),
 ) -> tuple[MatchedChr1Protocol, dict[str, MethylationSource]]:
     """Official MethylProphet-matched chr1 split + pre-extracted, well-chunked
     data files -- see docs/BENCHMARK_METHYLPROPHET.md and
@@ -87,28 +88,38 @@ def load_matched_chr1_protocol_and_sources(
     MethylProphet's own "central 1000bp window has no N bases" hg38 filter,
     e.g. 102 fewer WGBS CpGs than this repo's own reconstruction) -- using
     matched_chr1's own arrays directly removes that gap entirely rather than
-    approximating it."""
+    approximating it.
+
+    ``sources``: which training sources to open (Table 7 / paper section B.6's source
+    ablation -- Array / Array+WGBS / Array+EPIC / Array+EPIC+WGBS). "array" is always
+    implicitly required (the official split's own base); it is opened unconditionally
+    regardless of whether it's listed. Default is unchanged from before this parameter
+    existed (all three) -- existing callers/recipes are unaffected."""
     proto_dir = matched_chr1_root / "table5_protocol"
     meth_dir = matched_chr1_root / "methylation"
+    wanted = {"array", *sources}
     protocol = MatchedChr1Protocol(
         array_train_sample_idx=np.load(proto_dir / "array_train_sample_idx.npy"),
         array_val_sample_idx=np.load(proto_dir / "array_val_sample_idx.npy"),
         array_train_cpg_idx=np.load(proto_dir / "array_train_cpg_idx.npy"),
         array_val_cpg_idx=np.load(proto_dir / "array_val_cpg_idx.npy"),
         auxiliary_cpg_idx={
-            "epic": np.load(proto_dir / "epic_train_cpg_idx.npy"),
-            "wgbs": np.load(proto_dir / "wgbs_train_cpg_idx.npy"),
+            name: np.load(proto_dir / f"{name}_train_cpg_idx.npy")
+            for name in ("epic", "wgbs") if name in wanted
         },
+        sources=tuple(sorted(wanted, key=("array", "epic", "wgbs").index)),
     )
-    sources = {
+    opened: dict[str, MethylationSource] = {
         "array": open_methylation_source("array", meth_dir / "array_table5_chr1.h5", hdf5_cache_mb=hdf5_cache_mb),
-        "epic": open_methylation_source("epic", meth_dir / "epic_table5_chr1.h5", hdf5_cache_mb=hdf5_cache_mb),
+    }
+    if "epic" in wanted:
+        opened["epic"] = open_methylation_source("epic", meth_dir / "epic_table5_chr1.h5", hdf5_cache_mb=hdf5_cache_mb)
+    if "wgbs" in wanted:
         # No pre-extracted WGBS file exists (WGBS only has 32 rows, so
         # per-chr1 extraction saves little) -- read the full genome-wide
         # file directly, filtered to matched_chr1's own wgbs_train_cpg_idx.
-        "wgbs": open_methylation_source("wgbs", canonical_root / SOURCE_FILES["wgbs"], hdf5_cache_mb=hdf5_cache_mb),
-    }
-    return protocol, sources
+        opened["wgbs"] = open_methylation_source("wgbs", canonical_root / SOURCE_FILES["wgbs"], hdf5_cache_mb=hdf5_cache_mb)
+    return protocol, opened
 
 
 def load_compact_scope_sources(

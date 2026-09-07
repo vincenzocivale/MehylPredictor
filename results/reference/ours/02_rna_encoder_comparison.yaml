@@ -1,7 +1,9 @@
-# B.2 — RNA encoder comparison, official chr1 (P1)
+# B.2 — RNA encoder comparison, official chr1 AND chr123 (P1)
 #
 # Same harness throughout (mean branch ON, raw product OFF, same loss/training budget) --
-# only the RNA encoder (model.encoder.kind) changes per arm.
+# only the RNA encoder (model.encoder.kind) changes per arm. chr123 coverage added 2026-09-07:
+# gene_pathway + bulkformer_147m running on a second machine (chr1 AND chr123 both, per the
+# user), frozen_embedding_bulkrnabert's chr123 arm queued on this host to merge on next push.
 
 study: rna_encoder_comparison
 source: ours
@@ -41,48 +43,70 @@ arms:
     verdict: underperforms cross-attention reference on every view; not promoted.
 
   - arm: frozen_embedding_bulkrnabert
-    status: confirmed_official
     description: >
       Frozen (not fine-tuned) BulkRNABert sample embedding, single trainable Linear adapter.
-      15,259/19,062 (80.0%) BulkRNABert genes matched.
+      15,259/19,062 (80.0%) BulkRNABert genes matched. Embedding cache is sample-level, not
+      locus-specific, so the same cache (bulkrnabert_embeddings/tcga) serves chr1 and chr123.
     recipe: configs/models/arch_shared_backbone/enc_frozen_embedding_bulkrnabert.yaml
-    run_id: arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17
-    seed: 17
-    checkpoint: results/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17/checkpoints/best.pt
-    checkpoint_exists_on_this_host: true
-    metrics:
-      chr1:
+    chr1:
+      status: confirmed_official
+      run_id: arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17
+      checkpoint: results/experiments/runs/locus_cls_joint/chr1/arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-seed17/checkpoints/best.pt
+      metrics:
         train_cpg_x_val_sample: {mas_pcc: 0.5795, mac_pcc: 0.9515, mse: 0.0145, mae: 0.0753}
         val_cpg_x_train_sample: {mas_pcc: 0.5321, mac_pcc: 0.9466, mse: 0.0156, mae: 0.0758}
         val_cpg_x_val_sample:   {mas_pcc: 0.5164, mac_pcc: 0.9465, mse: 0.0158, mae: 0.0765}
-    verdict: underperforms cross-attention reference, larger gap than bottleneck_mlp; not promoted.
+      verdict: underperforms cross-attention reference, larger gap than bottleneck_mlp; not promoted.
+    chr123:
+      status: queued   # launched on this host 2026-09-07, chained after B.6 source ablation
+      run_id: arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-chr123-seed17
+      checkpoint: MethylPredictionData/experiments/runs/locus_cls_joint/chr123/arch-architecture_novelty_2026_09-shared-enc_frozen_embedding_bulkrnabert-chr123-seed17/checkpoints/best.pt
+      metrics: null
+      note: launched so it can merge with the other machine's chr1+chr123 gene_pathway/bulkformer_147m runs on next push.
 
   - arm: gene_pathway
-    status: dev_only_needs_official_run
     description: >
       Trainable SurvPath-style biologically sparse gene→pathway encoder (our own implementation,
       NOT MethylProphet's gene-pathway variant from Table 9 -- see paper/table9_rna_encoder_ablation.md).
     recipe: configs/models/rna_encoder_comparison/enc_gene_pathway.yaml
-    run_id_dev: rnaenc-gene_pathway-development-seed17
-    checkpoint: null   # dev run lived under a different host's $METHYL_DATA_ROOT, not present here
-    checkpoint_exists_on_this_host: false
-    metrics_development_only:
-      # inner proxy split (carved out of the training pool) -- NOT the official split, do not
-      # report as a paper number
-      val_cpg_x_val_sample_inner: {mas_pcc: 0.5072}
+    chr1:
+      status: in_progress_remote   # launched on a second machine 2026-09-07, per the user
+      run_id_dev: rnaenc-gene_pathway-development-seed17   # dev-only number below, official run now in progress elsewhere
+      checkpoint: null   # not on this host -- will arrive via git push from the other machine
+      metrics_development_only:
+        val_cpg_x_val_sample_inner: {mas_pcc: 0.5072}   # inner proxy split, NOT official -- do not cite as a paper number
+    chr123:
+      status: in_progress_remote   # launched on a second machine 2026-09-07, per the user
+      checkpoint: null
+      metrics: null
     next_step: >
+      Nothing to launch here -- wait for the other machine's push. If it doesn't arrive, resume with:
       python scripts/experiments/run_rna_encoder_comparison.py --arms gene_pathway --mode final --gpu 0
-      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final
+      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final (chr1 only --
+      that script doesn't cover chr123, a chr123 run needs the same manual scripts/train.py +
+      scripts/evaluate.py shape used for frozen_embedding_bulkrnabert's chr123 arm above).
 
   - arm: bulkformer_147m
-    status: dev_only_needs_official_run
     description: Frozen BulkFormer-147M sample embedding + trainable LayerNorm/Linear adapter.
     recipe: configs/models/rna_encoder_comparison/enc_frozen_bulkformer_147m.yaml
-    run_id_dev: rnaenc-bulkformer_147m-development-seed17
-    checkpoint: null
-    checkpoint_exists_on_this_host: false
-    metrics_development_only:
-      val_cpg_x_val_sample_inner: {mas_pcc: 0.4516}
+    chr1:
+      status: in_progress_remote   # launched on a second machine 2026-09-07, per the user
+      run_id_dev: rnaenc-bulkformer_147m-development-seed17
+      checkpoint: null
+      metrics_development_only:
+        val_cpg_x_val_sample_inner: {mas_pcc: 0.4516}
+    chr123:
+      status: in_progress_remote   # launched on a second machine 2026-09-07, per the user
+      checkpoint: null
+      metrics: null
     next_step: >
-      python scripts/experiments/run_rna_encoder_comparison.py --arms bulkformer_147m --mode final --gpu 0
-      then python scripts/experiments/collect_rna_encoder_comparison.py --mode final
+      Nothing to launch here -- wait for the other machine's push (same caveat as gene_pathway
+      above: run_rna_encoder_comparison.py only covers chr1; chr123 needs the manual command shape).
+
+merge_note_2026_09_07: >
+  Two machines are populating this file's chr123 column in parallel: the other machine covers
+  gene_pathway + bulkformer_147m (both chr1 and chr123), this host covers
+  frozen_embedding_bulkrnabert's chr123 cell. On the next `git pull` from the other machine's
+  push, merge its numbers into the chr1/chr123 blocks above by hand (or accept its version of this
+  file and re-apply this host's bulkrnabert-chr123 result if it isn't already included) -- do not
+  let one side's push silently overwrite the other's already-closed cells.
