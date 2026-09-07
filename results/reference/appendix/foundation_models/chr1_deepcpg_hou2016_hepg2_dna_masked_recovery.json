@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "model": "deepcpg",
+  "variant": "hou2016_hepg2_dna",
+  "patient_agnostic": true,
+  "evaluation_scope": "chr1",
+  "checkpoint": "external/checkpoints/deepcpg/hou2016_hepg2_dna/weights.h5",
+  "n_context_samples": 8260,
+  "n_val_cpgs": 6742,
+  "views": {
+    "val_cpg_x_train_sample": {
+      "global": {
+        "rows": 55154676,
+        "mse": 0.24986767826803066,
+        "mae": 0.37499731784576046,
+        "prior_mse": NaN,
+        "skill_vs_prior": NaN,
+        "mas_pcc": 0.0,
+        "mac_pcc": -0.4878709204463552
+      }
+    }
+  }
+}

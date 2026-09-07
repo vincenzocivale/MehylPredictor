@@ -6,6 +6,10 @@
 /searches/
 /checkpoints/
 results/experiments/
+# Working data should live under the external MethylPredictionData root, not here -- but
+# guard against a repeat of the 2026-09-07 foundation-models session, which wrote ~8GB of
+# arrow/npy/mmap intermediates to a repo-local derived/ by mistake.
+/derived/
 *.pt
 *.h5
 *.hdf5

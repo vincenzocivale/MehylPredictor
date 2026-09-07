@@ -168,6 +168,43 @@ of cells in their original single-cell training dataset, so they don't transfer 
 arbitrary new bulk samples the way the DNA-only module (sequence window in,
 methylation probability out) does.
 
+**Not on the paper roadmap.** `docs/PAPER_ROADMAP.md` (2026-09-06) explicitly reduced the
+paper's own scope to chr1 -> chr123, no ENCODE, no new code; this foundation-model comparison
+needs real new code (see below) and stays a parallel, non-paper track -- its results land under
+`results/reference/appendix/foundation_models/`, not `results/reference/ours/` or `paper/`.
+
+**Update 2026-09-07: the two 2026-09-02 blockers below were the same missing piece, now
+resolved.** CpGPT's genomic-position -> DNA-embedding-mmap-row lookup and MethylGPT's
+Illumina probe-ID -> hg38-position crosswalk both come from CpGPT's own `human_dependencies`
+bundle (already downloaded, see below) -- `illumina_metadata.db` is exactly the probe-ID <->
+position crosswalk MethylGPT needs, `ensembl_metadata.db` is exactly the position -> DNA-embedding
+row index CpGPT needs. Wired as `methylation_predictor.benchmark.foundation_models.crosswalk.
+IlluminaCrosswalk`. This repo's own registry uses a different position convention (1-based,
+`"chr"`-prefixed) than the crosswalk (0-based, unprefixed); empirically verified (swept a +/-2bp
+offset against real chr1 data) that `illumina_pos = registry_pos - 1` is correct -- at that
+offset, chr1's `val_cpg_x_train_sample` held-out CpGs hit **6741/6742 (99.99%)** of both
+crosswalks (`scripts/benchmark_foundation_models/check_crosswalk_coverage.py`, saved to
+`results/reference/appendix/foundation_models/chr1_crosswalk_coverage.json`). What's still
+missing per model, now that the lookup itself is solved:
+- **CpGPT**: **done for chr1, small variant** (2026-09-07). Real end-to-end run via
+  `scripts/benchmark_foundation_models/{prepare_cpgpt_chr1_context,
+  run_cpgpt_reconstruct_pilot,score_cpgpt_chr1_reconstruct}.py`, executed on this host's GPU
+  (NVIDIA RTX PRO 5000 Blackwell, needed a new `external/cpgpt-env-gpu` venv with
+  `torch==2.13.0+cu130` -- the original `external/cpgpt-env` had CPU-only torch). Result:
+  **MAS-PCC 0.3924** (MSE 0.0241, MAE 0.0840), zero-shot, 8,260 context samples x 6,741
+  crosswalk-covered held-out CpGs (99.99% of the official 6,742) -- saved to
+  `results/reference/appendix/foundation_models/chr1_cpgpt_small_masked_recovery.json`. A
+  real, substantial gap vs. this repo's own 0.5627 reference number, as expected for an
+  off-the-shelf zero-shot model against one trained on this exact task. The `large` variant
+  is also done (same run, `--variant large`): **MAS-PCC 0.4330** (MSE 0.0176, MAE 0.0685) --
+  better than `small` (expected, bigger pretrained model) but still well short of 0.5627 --
+  saved to `chr1_cpgpt_large_masked_recovery.json` in the same directory.
+- **MethylGPT**: still needs its own tokenizer/vocabulary-indexed forward pass wired against
+  the now-available probe crosswalk. `external/methylgpt-env`'s torch build is CPU-only on this
+  host (no CUDA) -- workable at coverage scale, likely slow for a full masked-recovery run.
+- **DeepCpG**: unaffected by this crosswalk (DNA-sequence-only); still blocked on an hg38 FASTA
+  path (see below).
+
 **Status as of 2026-09-02 (readiness only, no full-split GPU inference run yet --
 GPU was busy this session):**
 
@@ -223,8 +260,28 @@ GPU was busy this session):**
   to CpGPT/MethylGPT's per-patient masked recovery. It was also trained on
   single-cell data, so zero-shot transfer to bulk TCGA methylation may simply score
   poorly -- a legitimate result to report, not a pipeline bug.
-- **chr123**: usable once chr1 is running, inherits the same split-verification
-  caveat as the repo's own chr123 numbers (see setting 2 above).
+- **chr123**: **done for CpGPT, both variants** (2026-09-07), using the existing
+  `datasets/methylprophet_repro_v1/protocols/tcga_mix_chr123/` split (CpG axis verified
+  exact, sample axis chr1-reused, per setting 2 above -- this pipeline inherits that same
+  caveat). `protocol.py`'s loaders were generalized to read the 4 core `array_*_idx.npy`
+  files directly instead of via `benchmark.methylprophet.protocol.Table5Protocol` (whose
+  `.load()`/`.validate()` are chr1-specific -- require `epic_train_cpg_idx.npy`/
+  `wgbs_train_cpg_idx.npy`, which chr123's protocol directory doesn't have, and check
+  chr1-only expected counts), so the same scripts now work for any scope with such a
+  directory. Crosswalk coverage: 14892/14893 (99.99%),
+  `chr123_crosswalk_coverage.json`. Results: `small` **MAS-PCC 0.3883** (MSE 0.0244, MAE
+  0.0829), closely matching chr1's 0.3924 as expected; `large` in progress/done depending on
+  when this is read -- see `results/reference/appendix/foundation_models/README.md` for the
+  current number. One operational note: chr123's 14,892-location list is too long for a
+  plain CLI arg (`Argument list too long`) -- `run_cpgpt_reconstruct_pilot.py` now also
+  accepts `--genomic-locations-file` (one comma-separated line) for this reason.
+- **DeepCpG**: **done, both variants, both scopes** (2026-09-07), using the real hg38 FASTA
+  the user provided (`/dune/DATASETS/MethylPredictionData/reference/hg38/hg38.fa`). Every
+  variant/scope combination **anti-correlates** with real bulk TCGA methylation (`mac_pcc`
+  between -0.47 and -0.49) with MSE an order of magnitude worse than CpGPT's -- a legitimate
+  negative result (single-cell-trained DNA model transferring zero-shot to bulk tissue
+  methylation), not a pipeline bug. Full numbers in
+  `results/reference/appendix/foundation_models/README.md`.
 - **ENCODE**: blocked, same atlas-coverage gap as everything else (setting 3 above).
 - **Published-number comparison**: `published_reference.py` is a structured but
   currently empty template (`CPGPT_PUBLISHED`/`METHYLGPT_PUBLISHED`, same shape as

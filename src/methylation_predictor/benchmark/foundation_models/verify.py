@@ -238,9 +238,15 @@ def vocabulary_overlap(
     Used for MethylGPT, whose pretrained vocabulary is a fixed set of ~49,156 Illumina
     probe IDs -- only the subset of our chr1/chr123 val-CpGs whose hg38 position is in
     that vocabulary can be scored at all. `probe_to_position` is an external
-    probe-id -> hg38-position crosswalk (e.g. an Illumina manifest); this repo's own
-    canonical bundle only stores (chrom, pos), not Illumina probe IDs, so that crosswalk
-    is not built yet -- see `docs/PAPER_EXPERIMENTS.md`'s foundation-model section.
+    probe-id -> hg38-position crosswalk (e.g. an Illumina manifest).
+
+    **Resolved 2026-09-07**: this repo's own canonical bundle has no Illumina probe-ID
+    column, but CpGPT's own `human_dependencies` bundle (`external/checkpoints/
+    cpgpt_human_dependencies/illumina_metadata.db`) ships exactly this crosswalk (~1.19M
+    probes across 6 Illumina hg38 arrays) -- see `crosswalk.IlluminaCrosswalk`, which also
+    documents the empirically-verified 1bp offset between this repo's registry convention
+    and the crosswalk's own. Prefer `IlluminaCrosswalk.coverage()` for new callers; this
+    function is kept for the lower-level "I already have a probe_to_position dict" case.
 
     Returns `{"n_query", "n_vocab", "n_overlap", "coverage_fraction", "overlap_probe_ids"}`.
     """

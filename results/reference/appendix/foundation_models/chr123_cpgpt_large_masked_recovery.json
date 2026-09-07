@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "model": "cpgpt",
+  "variant": "large",
+  "evaluation_scope": "chr123",
+  "checkpoint": "external/checkpoints/cpgpt/weights/large.ckpt",
+  "n_context_samples": 8260,
+  "n_val_cpgs_covered": 14892,
+  "n_val_cpgs_official": 14893,
+  "crosswalk_coverage": 0.9999328543611092,
+  "views": {
+    "val_cpg_x_train_sample": {
+      "global": {
+        "rows": 121639242,
+        "mse": 0.01739767186948969,
+        "mae": 0.06801865207331007,
+        "prior_mse": NaN,
+        "skill_vs_prior": NaN,
+        "mas_pcc": 0.4346791058812294,
+        "mac_pcc": 0.9443688838998501
+      }
+    }
+  }
+}

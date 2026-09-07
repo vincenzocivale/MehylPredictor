@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scope": "chr1",
+  "view": "val_cpg_x_train_sample",
+  "n_context_samples": 8260,
+  "crosswalk_source": "/home/vcivale/MehylPredictor/external/checkpoints/cpgpt_human_dependencies",
+  "n_query": 6742,
+  "n_probe_vocab_hits": 6741,
+  "probe_vocab_coverage": 0.9998516760605162,
+  "n_dna_embedding_hits": 6741,
+  "dna_embedding_coverage": 0.9998516760605162
+}
