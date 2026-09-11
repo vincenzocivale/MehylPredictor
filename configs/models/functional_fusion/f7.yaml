@@ -1,5 +1,0 @@
-extends: base.yaml
-# Same F0 fusion, width, loss, split and 30-epoch schedule. Only the track
-# projection changes: preserve binary counts and standardize using train CpGs.
-model: {functional_fusion_variant: f7_standardized}
-tracking: {backend: none}

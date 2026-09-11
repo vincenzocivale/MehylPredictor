@@ -1,5 +1,0 @@
-Collecting pyBigWig
-  Downloading pybigwig-0.3.25-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (19 kB)
-Downloading pybigwig-0.3.25-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (185 kB)
-Installing collected packages: pyBigWig
-Successfully installed pyBigWig-0.3.25

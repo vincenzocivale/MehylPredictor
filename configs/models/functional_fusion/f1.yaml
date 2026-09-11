@@ -1,2 +1,0 @@
-extends: base.yaml
-model: {functional_fusion_variant: f1_capacity}
