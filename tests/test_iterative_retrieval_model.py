@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from methylation_predictor.config import EncoderConfig, ModelConfig
-from methylation_predictor.models import FunctionalConcatIterativeRNAModel
+from methylation_predictor.modeling import IterativeRetrievalPredictor
 
 
 def _config(n_programs=6):
@@ -15,7 +15,7 @@ def _config(n_programs=6):
 
 def _model(input_dim=48, n_programs=6, dropout=0.15):
     torch.manual_seed(17)
-    return FunctionalConcatIterativeRNAModel(input_dim, _config(n_programs), final_regressor_dropout=dropout)
+    return IterativeRetrievalPredictor(input_dim, _config(n_programs), final_regressor_dropout=dropout)
 
 
 def _functional_inputs():
@@ -32,7 +32,7 @@ def test_forward_shapes():
     assert out["beta"].shape == (3, 4)
     assert torch.all((out["beta"] >= 0) & (out["beta"] <= 1))
     assert out["mu_hat"].shape == (4,)
-    assert len(model.retrieval_attn) == FunctionalConcatIterativeRNAModel.N_BLOCKS == 4
+    assert len(model.retrieval_attn) == IterativeRetrievalPredictor.N_BLOCKS == 4
     assert len(model.retrieval_ffn) == 4
 
 

@@ -159,3 +159,31 @@ state from a pre-phase-2c in-progress run still contains the old parameter
 group layout, so resuming such a run across this boundary is not guaranteed.
 Evaluation/inference is supported. New paper runs should start from scratch on
 the refactored model.
+
+## Phase 2d status
+
+The duplicated historical J0/J1 implementation has been removed from
+`models.py`.  The only supported functional-locus paper candidates are now:
+
+```python
+methylation_predictor.modeling.SingleRetrievalPredictor
+methylation_predictor.modeling.IterativeRetrievalPredictor
+```
+
+The research-only `mas_concat_v1` and `mas_concat_v2_detached` trainer paths
+have also been removed; their configs and experiment launchers were already
+deleted in phase 1.
+
+This removes four duplicate legacy classes from the production module:
+
+- `SimpleCrossAttention`
+- `FunctionalConcatMASModel`
+- `BatchedCrossAttention`
+- `FunctionalConcatIterativeRNAModel`
+
+The relevant model tests now target the paper-facing implementations directly.
+Checkpoint migration for the removed dead RNA-attention keys remains covered
+explicitly.
+
+Historical architecture-search results remain available through Git history and
+the original research branch rather than through executable paper-facing code.

@@ -44,7 +44,6 @@ from ..config import TrainingConfig
 from ..models import (
     FeatureFusionArchitectureVariantModel,
     FeatureFusionLocusCLSModel,
-    FunctionalConcatMASModel,
     FunctionalFusionModel,
     feature_fusion_variant_label,
     is_architecture_variant,
@@ -314,45 +313,44 @@ class LocusCLSJointTrainer:
             self.architecture_label += "_functional-locus"
         if self.functional_only:
             self.architecture_label += "-only"
-        # Off-ladder focused experiment (H0/H1/H2, docs/RNA_METHYLATION.md's
-        # sample-wise-Pearson section): a distinct model class + loss, reusing
-        # the same functional_fusion_variant recipe field as a selector so no
-        # new CLI surface is needed. Checked before the FunctionalFusionModel
-        # dispatch below since its own MEAN_PROXY_VARIANTS validation doesn't
-        # apply here.
-        self.mas_concat_mode = self.functional_fusion_variant in (
-            "mas_concat_v1", "mas_concat_v2_detached", "mas_concat_v3_purecontext", "mas_concat_v4_iterative",
+        # Paper-facing functional-locus candidates. Historical H-ladder variants
+        # (mas_concat_v1 / mas_concat_v2_detached) were removed with the
+        # research-history surface and are intentionally no longer dispatchable.
+        self.paper_candidate_mode = self.functional_fusion_variant in (
+            "mas_concat_v3_purecontext",
+            "mas_concat_v4_iterative",
         )
-        if self.mas_concat_mode:
+        if self.paper_candidate_mode:
             if residual_aux_weight != 0.0:
-                raise ValueError(f"{self.functional_fusion_variant} requires the residual auxiliary loss disabled "
-                                  "(no residual_head exists on FunctionalConcatMASModel)")
+                raise ValueError(
+                    f"{self.functional_fusion_variant} requires residual_aux_weight=0 "
+                    "(the paper candidates have no residual auxiliary head)"
+                )
             if not (use_mean_branch and self.aux_weight != 0.0):
-                raise ValueError(f"{self.functional_fusion_variant} requires use_mean_branch=true and a nonzero "
-                                  "aux_weight (lambda_mean, the L_mean term's weight -- it's the ONLY gradient "
-                                  "path into functional_encoder once detach_h_c_main_path is on)")
+                raise ValueError(
+                    f"{self.functional_fusion_variant} requires the training-only "
+                    "mean proxy and a nonzero aux_weight"
+                )
+
+            # Preserve the historical architecture label in saved metadata so
+            # existing candidate checkpoints remain identifiable.
             self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
-            # Read directly off recipe.raw rather than adding a new
-            # LocusCLSJointTrainer constructor kwarg -- keeps this purely
-            # recipe-driven like the rest of the mas_concat_* dispatch above.
-            final_regressor_dropout = float(self.recipe.raw.get("locus_cls", {}).get("final_regressor_dropout", 0.0))
-            if self.functional_fusion_variant == "mas_concat_v4_iterative":
-                self.model = IterativeRetrievalPredictor(
-                    self.rna.values.shape[1], self.recipe.model,
-                    final_regressor_dropout=final_regressor_dropout,
-                ).to(self.device)
-            elif self.functional_fusion_variant == "mas_concat_v3_purecontext":
-                self.model = SingleRetrievalPredictor(
-                    self.rna.values.shape[1], self.recipe.model,
-                    final_regressor_dropout=final_regressor_dropout,
-                ).to(self.device)
-            else:
-                self.model = FunctionalConcatMASModel(
-                    self.rna.values.shape[1], self.recipe.model,
-                    detach_h_c_main_path=self.functional_fusion_variant == "mas_concat_v2_detached",
-                    separate_concat_norm=False,
-                    final_regressor_dropout=final_regressor_dropout,
-                ).to(self.device)
+            final_regressor_dropout = float(
+                self.recipe.raw.get("locus_cls", {}).get(
+                    "final_regressor_dropout", 0.0
+                )
+            )
+
+            candidate_cls = (
+                IterativeRetrievalPredictor
+                if self.functional_fusion_variant == "mas_concat_v4_iterative"
+                else SingleRetrievalPredictor
+            )
+            self.model = candidate_cls(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+            ).to(self.device)
         elif self.functional_fusion_variant:
             allows_mean_proxy = self.functional_fusion_variant in FunctionalFusionModel.MEAN_PROXY_VARIANTS
             if residual_aux_weight != 0.0:
@@ -752,7 +750,7 @@ class LocusCLSJointTrainer:
         with self._autocast():
             out = self.train_model(rna_x, emb, **position_kwargs, **functional_kwargs)
             loss_cfg = loss_config_for_source(self.recipe.loss, pool.name, self.recipe.structured_loss_sources)
-            if self.mas_concat_mode:
+            if self.paper_candidate_mode:
                 total, pieces = self._mas_concat_loss(out, beta, cpg_ids, loss_cfg)
                 pieces = {**pieces, "total_loss": total.detach()}
                 return total, pieces, h2d_start, h2d_end, compute_start

@@ -9,10 +9,6 @@ from methylation_predictor.modeling import (
     IterativeRetrievalPredictor,
     SingleRetrievalPredictor,
 )
-from methylation_predictor.models import (
-    FunctionalConcatIterativeRNAModel,
-    FunctionalConcatMASModel,
-)
 from methylation_predictor.rna_training.config import load_rna_recipe
 
 
@@ -48,18 +44,7 @@ def _has_grad(module: torch.nn.Module) -> bool:
     )
 
 
-def _live_legacy_state(state_dict):
-    dead = (
-        "rna_encoder.query.",
-        "rna_encoder.key.",
-        "rna_encoder.value.",
-        "rna_encoder.out.",
-        "rna_encoder.mean_query.",
-    )
-    return {k: v for k, v in state_dict.items() if not k.startswith(dead)}
-
-
-def test_phase2c_program_token_encoder_matches_legacy_token_generation_exactly():
+def test_program_token_encoder_matches_legacy_token_generation_exactly():
     from methylation_predictor.models import LocusConditionedRNAEncoder
     from methylation_predictor.modeling.rna import ProgramTokenEncoder
 
@@ -84,15 +69,18 @@ def test_phase2c_program_token_encoder_matches_legacy_token_generation_exactly()
         layer_norm=True,
     ).eval()
 
-    live_old = _live_legacy_state(
-        {"rna_encoder." + k: v for k, v in legacy.state_dict().items()}
-    )
-    live_new = {
-        "rna_encoder." + k: v for k, v in token_encoder.state_dict().items()
+    dead = ("query.", "key.", "value.", "out.", "mean_query.")
+    old_live = {
+        k: v for k, v in legacy.state_dict().items()
+        if not k.startswith(dead)
     }
-    assert live_old.keys() == live_new.keys()
-    for key in live_old:
-        torch.testing.assert_close(live_old[key], live_new[key], rtol=0, atol=0)
+    new_state = token_encoder.state_dict()
+
+    assert old_live.keys() == new_state.keys()
+    for key in old_live:
+        torch.testing.assert_close(
+            old_live[key], new_state[key], rtol=0, atol=0
+        )
 
     x = torch.randn(3, 48)
     with torch.no_grad():
@@ -101,87 +89,39 @@ def test_phase2c_program_token_encoder_matches_legacy_token_generation_exactly()
     torch.testing.assert_close(old_tokens, new_tokens, rtol=0, atol=0)
 
 
-def test_phase2c_single_retrieval_preserves_live_initialization_and_forward():
-    cfg = _config()
-
-    torch.manual_seed(123)
-    legacy = FunctionalConcatMASModel(
+def test_candidate_checkpoint_loader_filters_only_known_dead_rna_attention_keys():
+    model = SingleRetrievalPredictor(
         48,
-        cfg,
-        separate_concat_norm=True,
+        _config(),
         final_regressor_dropout=0.15,
-    ).eval()
+    )
+    legacy_like = model.state_dict()
 
-    torch.manual_seed(123)
-    refactored = SingleRetrievalPredictor(
-        48,
-        cfg,
-        final_regressor_dropout=0.15,
-    ).eval()
+    for name in ("query", "key", "value", "out"):
+        legacy_like[f"rna_encoder.{name}.weight"] = torch.randn(256, 256)
+        legacy_like[f"rna_encoder.{name}.bias"] = torch.randn(256)
 
-    old_live = _live_legacy_state(legacy.state_dict())
-    new_state = refactored.state_dict()
-    assert old_live.keys() == new_state.keys()
-    for key in old_live:
-        torch.testing.assert_close(old_live[key], new_state[key], rtol=0, atol=0)
+    result = model.load_state_dict(legacy_like, strict=True)
+    assert result.missing_keys == []
+    assert result.unexpected_keys == []
 
-    load_result = refactored.load_state_dict(legacy.state_dict(), strict=True)
-    assert load_result.missing_keys == []
-    assert load_result.unexpected_keys == []
-
-    inputs = _functional_inputs()
-    rna = torch.randn(3, 48)
-    with torch.no_grad():
-        old_out = legacy(rna, None, **inputs)
-        new_out = refactored(rna, None, **inputs)
-
-    for key in ("beta", "mu_hat", "prediction_logit", "h_cpg"):
-        torch.testing.assert_close(old_out[key], new_out[key], rtol=0, atol=0)
-
-    old_params = sum(p.numel() for p in legacy.parameters())
-    new_params = sum(p.numel() for p in refactored.parameters())
-    assert old_params - new_params == 4 * (256 * 256 + 256)
+    state_keys = tuple(model.state_dict())
+    for name in ("query", "key", "value", "out"):
+        assert not any(
+            key.startswith(f"rna_encoder.{name}.")
+            for key in state_keys
+        )
 
 
-def test_phase2c_iterative_preserves_live_initialization_and_forward():
-    cfg = _config()
+def test_historical_candidate_classes_are_no_longer_part_of_models_module():
+    import methylation_predictor.models as legacy_models
 
-    torch.manual_seed(321)
-    legacy = FunctionalConcatIterativeRNAModel(
-        48,
-        cfg,
-        final_regressor_dropout=0.15,
-    ).eval()
-
-    torch.manual_seed(321)
-    refactored = IterativeRetrievalPredictor(
-        48,
-        cfg,
-        final_regressor_dropout=0.15,
-    ).eval()
-
-    old_live = _live_legacy_state(legacy.state_dict())
-    new_state = refactored.state_dict()
-    assert old_live.keys() == new_state.keys()
-    for key in old_live:
-        torch.testing.assert_close(old_live[key], new_state[key], rtol=0, atol=0)
-
-    load_result = refactored.load_state_dict(legacy.state_dict(), strict=True)
-    assert load_result.missing_keys == []
-    assert load_result.unexpected_keys == []
-
-    inputs = _functional_inputs()
-    rna = torch.randn(3, 48)
-    with torch.no_grad():
-        old_out = legacy(rna, None, **inputs)
-        new_out = refactored(rna, None, **inputs)
-
-    for key in ("beta", "mu_hat", "prediction_logit", "h_cpg"):
-        torch.testing.assert_close(old_out[key], new_out[key], rtol=0, atol=0)
-
-    old_params = sum(p.numel() for p in legacy.parameters())
-    new_params = sum(p.numel() for p in refactored.parameters())
-    assert old_params - new_params == 4 * (256 * 256 + 256)
+    assert not hasattr(legacy_models, "FunctionalConcatMASModel")
+    assert not hasattr(
+        legacy_models, "FunctionalConcatIterativeRNAModel"
+    )
+    assert not hasattr(legacy_models, "SimpleCrossAttention")
+    assert not hasattr(legacy_models, "BatchedCrossAttention")
 
 
 def test_j0_recipe_contract_is_frozen_for_the_refactor():
