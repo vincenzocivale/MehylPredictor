@@ -44,7 +44,6 @@ from ..config import TrainingConfig
 from ..models import (
     FeatureFusionArchitectureVariantModel,
     FeatureFusionLocusCLSModel,
-    FunctionalFusionModel,
     feature_fusion_variant_label,
     is_architecture_variant,
 )
@@ -352,23 +351,11 @@ class LocusCLSJointTrainer:
                 final_regressor_dropout=final_regressor_dropout,
             ).to(self.device)
         elif self.functional_fusion_variant:
-            allows_mean_proxy = self.functional_fusion_variant in FunctionalFusionModel.MEAN_PROXY_VARIANTS
-            if residual_aux_weight != 0.0:
-                raise ValueError("functional fusion ladder requires the residual auxiliary loss disabled "
-                                  "(no residual_head exists on FunctionalFusionModel)")
-            if not allows_mean_proxy and (use_mean_branch or self.aux_weight != 0.0):
-                raise ValueError("functional fusion ladder requires mean/residual auxiliary heads and losses "
-                                  f"disabled (variant {self.functional_fusion_variant!r} has no mean_head; only "
-                                  f"{sorted(FunctionalFusionModel.MEAN_PROXY_VARIANTS)} support use_mean_branch/aux_weight)")
-            if allows_mean_proxy and not (use_mean_branch and self.aux_weight != 0.0):
-                raise ValueError(f"variant {self.functional_fusion_variant!r} is the mean-proxy ablation and "
-                                  "must be run with use_mean_branch=true and a nonzero aux_weight, or it is "
-                                  "indistinguishable from g2_regulatory_head")
-            self.architecture_label = f"functional_fusion_{self.functional_fusion_variant}"
-            self.model = FunctionalFusionModel(
-                self.rna.values.shape[1], self.recipe.model,
-                dense_dim=self.functional.DENSE_DIM if self.functional is not None else 23,
-            ).to(self.device)
+            raise ValueError(
+                "unsupported functional_fusion_variant "
+                f"{self.functional_fusion_variant!r}; paper-facing variants are "
+                "'mas_concat_v3_purecontext' and 'mas_concat_v4_iterative'"
+            )
         else:
             self.model = model_cls(
             # Derived from whichever RNA cache was actually opened, not hardcoded --
@@ -400,16 +387,6 @@ class LocusCLSJointTrainer:
         self.pools = self._build_pools()
         if track and not self.functional_only:
             self.features.validate_training_split(self.pools[0].cpg_idx)
-        if self.functional_fusion_variant == "f7_standardized" and track and not resume:
-            # Fit only on the actual Array training pool AFTER the inner
-            # genomic split. Buffers are saved in model_state and restored
-            # verbatim by checkpoint loading; validation never updates them.
-            self.model.track_embedding.fit(self.functional, self.pools[0].cpg_idx)
-            init_path = self.recipe.model.functional_projection_init
-            if init_path:
-                from ..regulatory_embedding import load_projection_initializer
-                load_projection_initializer(self.model.track_embedding, init_path,
-                                            self.pools[0].cpg_idx, self.functional.functional_atlas_root)
         self.store = RunStore.create(
             output_root, model="locus_cls_joint", train_scope=scope, seed=self.seed,
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,

@@ -187,3 +187,25 @@ explicitly.
 
 Historical architecture-search results remain available through Git history and
 the original research branch rather than through executable paper-facing code.
+
+## Phase 2e status
+
+The retired F/G regulatory-fusion architecture-search stack has been removed
+from executable code.  No surviving paper-facing recipe could select those
+models after phase 1, so keeping their implementation only increased the
+surface area of `models.py` and the trainer.
+
+Removed architecture-search components include:
+
+- the F0-F8 functional-fusion ladder;
+- the G0-G4 grouped/regulatory-head ladder;
+- standardized-track and covariance-initialized regulatory projections;
+- PCA-compressed 1536D regulatory pseudo-embeddings;
+- their dedicated preparation scripts and tests.
+
+The functional atlas itself is **not** removed.  `FunctionalLocusCache` remains
+the canonical sparse input path for J0/J1 and is tested directly against the
+paper-facing model.
+
+Historical implementations and results remain available through Git history
+and the pre-refactor research branch.

@@ -63,15 +63,12 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         trunk=TrunkConfig(**model_raw.get("trunk", {})),
         axial=AxialConfig(**model_raw.get("axial", {})),
         functional_fusion_variant=str(model_raw.get("functional_fusion_variant", "")),
-        functional_projection_init=str(model_raw.get("functional_projection_init", "")),
         beta_likelihood_head=bool(model_raw.get("beta_likelihood_head", False)),
         zero_init_residual=bool(model_raw.get("zero_init_residual", True)),
         variance_normalized_residual=bool(model_raw.get("variance_normalized_residual", True)),
     )
     if not model.variance_normalized_residual:
         raise ValueError("refactored RNA workflow requires variance_normalized_residual=true")
-    if model.functional_projection_init and model.functional_fusion_variant != "f7_standardized":
-        raise ValueError("functional_projection_init requires the standardized regulatory projection")
     training = TrainingConfig(**raw.get("training", {}))
     batching = raw.get("batching", {})
     defaults = {

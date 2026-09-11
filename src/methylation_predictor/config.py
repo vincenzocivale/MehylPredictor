@@ -147,13 +147,10 @@ class ModelConfig:
     # ``models.FeatureFusionLocusCLSModel``.
     trunk: TrunkConfig = field(default_factory=TrunkConfig)
     axial: AxialConfig = field(default_factory=AxialConfig)
-    # Opt-in functional-only ladder. Empty preserves every historical model and
-    # checkpoint; non-empty selects FunctionalFusionModel (f0_single ...
-    # f6_router_head_gated) in the shared trainer.
+    # Compatibility selector used by the current functional-locus candidates.
+    # Paper-facing values are mas_concat_v3_purecontext (J0) and
+    # mas_concat_v4_iterative (J1). Historical F/G ladder values are retired.
     functional_fusion_variant: str = ""
-    # Optional training-only covariance initializer for the standardized
-    # regulatory projection. Inference restores all weights from checkpoint.
-    functional_projection_init: str = ""
     # Emit a per-pair Beta concentration alongside the anchored mean, so
     # LossConfig.beta_nll_weight has something to score. Kept separate from the
     # loss weight so a misconfigured recipe fails loudly instead of silently
