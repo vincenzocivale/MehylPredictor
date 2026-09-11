@@ -44,12 +44,12 @@ from ..config import TrainingConfig
 from ..models import (
     FeatureFusionArchitectureVariantModel,
     FeatureFusionLocusCLSModel,
-    FunctionalConcatIterativeRNAModel,
     FunctionalConcatMASModel,
     FunctionalFusionModel,
     feature_fusion_variant_label,
     is_architecture_variant,
 )
+from ..modeling import IterativeRetrievalPredictor, SingleRetrievalPredictor
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
@@ -337,12 +337,12 @@ class LocusCLSJointTrainer:
             # recipe-driven like the rest of the mas_concat_* dispatch above.
             final_regressor_dropout = float(self.recipe.raw.get("locus_cls", {}).get("final_regressor_dropout", 0.0))
             if self.functional_fusion_variant == "mas_concat_v4_iterative":
-                # 2026-09-11 iterative-retrieval-depth candidate: everything
-                # but the retrieval stack itself is byte-for-byte v3_purecontext
-                # (own class, FunctionalConcatIterativeRNAModel, not a
-                # FunctionalConcatMASModel constructor flag -- the two extra
-                # retrieval blocks aren't expressible as one).
-                self.model = FunctionalConcatIterativeRNAModel(
+                self.model = IterativeRetrievalPredictor(
+                    self.rna.values.shape[1], self.recipe.model,
+                    final_regressor_dropout=final_regressor_dropout,
+                ).to(self.device)
+            elif self.functional_fusion_variant == "mas_concat_v3_purecontext":
+                self.model = SingleRetrievalPredictor(
                     self.rna.values.shape[1], self.recipe.model,
                     final_regressor_dropout=final_regressor_dropout,
                 ).to(self.device)
@@ -350,7 +350,7 @@ class LocusCLSJointTrainer:
                 self.model = FunctionalConcatMASModel(
                     self.rna.values.shape[1], self.recipe.model,
                     detach_h_c_main_path=self.functional_fusion_variant == "mas_concat_v2_detached",
-                    separate_concat_norm=self.functional_fusion_variant == "mas_concat_v3_purecontext",
+                    separate_concat_norm=False,
                     final_regressor_dropout=final_regressor_dropout,
                 ).to(self.device)
         elif self.functional_fusion_variant:

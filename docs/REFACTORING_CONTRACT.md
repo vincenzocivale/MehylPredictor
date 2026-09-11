@@ -109,3 +109,20 @@ methylation_predictor.modeling.IterativeRetrievalPredictor
 while keeping historical imports as temporary compatibility shims.  Only after
 old and new implementations are shown equivalent will obsolete classes and
 dispatch branches be deleted from `models.py` and `locus_cls_trainer.py`.
+
+## Phase 2b status
+
+J0 and J1 production dispatch now uses the paper-facing implementations in
+`methylation_predictor.modeling`.
+
+The historical classes remain temporarily in `models.py` so exact equivalence
+and old-import compatibility can still be tested.
+
+`tests/test_refactor_candidate_contract.py` verifies exact equality of the
+initialized state dictionaries and deterministic forward outputs between the
+historical and extracted J0/J1 implementations.
+
+No RNA-token cleanup is included yet. The extracted candidates deliberately
+still use the historical `build_rna_encoder`, preserving checkpoint keys and
+numerical behavior. Removing the unused internal attention projections from
+that encoder is phase 2c.

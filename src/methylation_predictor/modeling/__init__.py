@@ -1,10 +1,4 @@
-"""Paper-facing model namespace.
-
-During the repo-v2 migration the implementations still live in the historical
-``methylation_predictor.models`` module.  The stable names exported here are the
-API that the refactor will preserve while implementations are moved into
-smaller modules.
-"""
+"""Paper-facing model API."""
 
 from .reference import IterativeRetrievalPredictor, SingleRetrievalPredictor
 

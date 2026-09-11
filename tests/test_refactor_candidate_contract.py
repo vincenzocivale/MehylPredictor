@@ -48,10 +48,73 @@ def _has_grad(module: torch.nn.Module) -> bool:
     )
 
 
-def test_paper_facing_names_are_exact_compatibility_aliases_in_phase2a():
-    # Phase 2a creates an import boundary only: zero production behavior change.
-    assert SingleRetrievalPredictor is FunctionalConcatMASModel
-    assert IterativeRetrievalPredictor is FunctionalConcatIterativeRNAModel
+def test_phase2b_single_retrieval_is_exactly_equivalent_to_legacy_j0():
+    cfg = _config()
+
+    torch.manual_seed(123)
+    legacy = FunctionalConcatMASModel(
+        48,
+        cfg,
+        separate_concat_norm=True,
+        final_regressor_dropout=0.15,
+    ).eval()
+
+    torch.manual_seed(123)
+    refactored = SingleRetrievalPredictor(
+        48,
+        cfg,
+        final_regressor_dropout=0.15,
+    ).eval()
+
+    legacy_state = legacy.state_dict()
+    new_state = refactored.state_dict()
+    assert legacy_state.keys() == new_state.keys()
+    for key in legacy_state:
+        torch.testing.assert_close(legacy_state[key], new_state[key], rtol=0, atol=0)
+
+    torch.manual_seed(999)
+    inputs = _functional_inputs()
+    rna = torch.randn(3, 48)
+    with torch.no_grad():
+        old_out = legacy(rna, None, **inputs)
+        new_out = refactored(rna, None, **inputs)
+
+    for key in ("beta", "mu_hat", "prediction_logit", "h_cpg"):
+        torch.testing.assert_close(old_out[key], new_out[key], rtol=0, atol=0)
+
+
+def test_phase2b_iterative_is_exactly_equivalent_to_legacy_j1():
+    cfg = _config()
+
+    torch.manual_seed(321)
+    legacy = FunctionalConcatIterativeRNAModel(
+        48,
+        cfg,
+        final_regressor_dropout=0.15,
+    ).eval()
+
+    torch.manual_seed(321)
+    refactored = IterativeRetrievalPredictor(
+        48,
+        cfg,
+        final_regressor_dropout=0.15,
+    ).eval()
+
+    legacy_state = legacy.state_dict()
+    new_state = refactored.state_dict()
+    assert legacy_state.keys() == new_state.keys()
+    for key in legacy_state:
+        torch.testing.assert_close(legacy_state[key], new_state[key], rtol=0, atol=0)
+
+    torch.manual_seed(1001)
+    inputs = _functional_inputs()
+    rna = torch.randn(3, 48)
+    with torch.no_grad():
+        old_out = legacy(rna, None, **inputs)
+        new_out = refactored(rna, None, **inputs)
+
+    for key in ("beta", "mu_hat", "prediction_logit", "h_cpg"):
+        torch.testing.assert_close(old_out[key], new_out[key], rtol=0, atol=0)
 
 
 def test_j0_recipe_contract_is_frozen_for_the_refactor():
