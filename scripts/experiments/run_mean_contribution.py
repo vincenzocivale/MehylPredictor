@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train/evaluate/diagnose mean_contribution_2026_09 arms on official chr1."""
+"""Train/evaluate/diagnose the functional J0 mean-proxy ablation on official chr1."""
 from __future__ import annotations
 
 import argparse
@@ -60,6 +60,9 @@ def _train_cmd(arm: Arm, seed: int, scope: str, engine: str, paths: dict[str, st
         "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
         "--feature-cache", paths["feature_cache"], "--rna-cache", paths["rna_cache"],
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
+        "--functional-atlas", paths["functional_atlas"],
+        "--annotation-cache", paths["annotation_cache"],
+        "--functional-only",
         "--output-root", paths["output_root"],
     ]
     if resume:
@@ -76,6 +79,9 @@ def _eval_cmd(arm: Arm, run_dir: Path, scope: str, engine: str, paths: dict[str,
         "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
         "--feature-cache", paths["feature_cache"], "--rna-cache", paths["rna_cache"],
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
+        "--functional-atlas", paths["functional_atlas"],
+        "--annotation-cache", paths["annotation_cache"],
+        "--functional-only",
         "--output", str(_eval_file(run_dir, scope)),
     ]
 
@@ -88,6 +94,8 @@ def _diag_cmd(arm: Arm, run_dir: Path, scope: str, paths: dict[str, str]) -> lis
         "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
         "--feature-cache", paths["feature_cache"], "--rna-cache", paths["rna_cache"],
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
+        "--functional-atlas", paths["functional_atlas"],
+        "--annotation-cache", paths["annotation_cache"],
         "--output", str(_diag_file(run_dir, scope)),
     ]
 
@@ -99,8 +107,8 @@ def _parse_seeds(raw: str | None, scope: str) -> tuple[int, ...]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--arms", help="comma-separated arm names; default all")
-    ap.add_argument("--seeds", help="comma-separated seeds; default per-scope (chr1: 17,29,43; chr123: 17)")
-    ap.add_argument("--scope", default="chr1", choices=["chr1", "chr123"])
+    ap.add_argument("--seeds", help="comma-separated seeds; default: 17,29,43")
+    ap.add_argument("--scope", default="chr1", choices=["chr1"])
     ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--data-root")
     ap.add_argument("--min-free-gb", type=float, default=20.0)

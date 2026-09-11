@@ -40,6 +40,7 @@ class SingleRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
         config: ModelConfig,
         *,
         final_regressor_dropout: float = 0.15,
+        use_mean_proxy: bool = True,
     ):
         super().__init__()
         enc = config.encoder
@@ -73,12 +74,15 @@ class SingleRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
         self.cross_attention = LocusToRNAAttention(
             self.WIDTH, enc.n_heads, enc.dropout
         )
-        self.mean_head = nn.Sequential(
+        # Build the proxy head unconditionally so disabling the branch
+        # does not shift the RNG stream for any later shared parameter.
+        mean_head = nn.Sequential(
             nn.LayerNorm(self.WIDTH),
             nn.Linear(self.WIDTH, 128),
             nn.GELU(),
             nn.Linear(128, 1),
         )
+        self.mean_head = mean_head if use_mean_proxy else None
         self.h_c_concat_norm = nn.LayerNorm(self.WIDTH)
         self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
         self.final_regressor_dropout = float(final_regressor_dropout)
@@ -114,7 +118,11 @@ class SingleRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
         )
         dense = self.dense_encoder(functional_dense)
         h_c = self.locus_norm(peak + dense)
-        mu_hat = torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+        mu_hat = (
+            None
+            if self.mean_head is None
+            else torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+        )
 
         r_pc = self.cross_attention(h_c, tokens)
         h_for_concat = self.h_c_concat_norm(h_c)
@@ -155,6 +163,7 @@ class IterativeRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
         config: ModelConfig,
         *,
         final_regressor_dropout: float = 0.15,
+        use_mean_proxy: bool = True,
     ):
         super().__init__()
         enc = config.encoder
@@ -185,12 +194,13 @@ class IterativeRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
             nn.GELU(),
         )
         self.locus_norm = nn.LayerNorm(self.WIDTH)
-        self.mean_head = nn.Sequential(
+        mean_head = nn.Sequential(
             nn.LayerNorm(self.WIDTH),
             nn.Linear(self.WIDTH, 128),
             nn.GELU(),
             nn.Linear(128, 1),
         )
+        self.mean_head = mean_head if use_mean_proxy else None
         self.retrieval_attn = nn.ModuleList(
             [
                 BatchedLocusToRNAAttention(
@@ -262,7 +272,11 @@ class IterativeRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
         )
         dense = self.dense_encoder(functional_dense)
         h_c = self.locus_norm(peak + dense)
-        mu_hat = torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+        mu_hat = (
+            None
+            if self.mean_head is None
+            else torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+        )
 
         n_loci = h_c.shape[0]
         if n_loci <= self.LOCUS_CHUNK:

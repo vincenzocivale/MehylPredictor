@@ -325,10 +325,12 @@ class LocusCLSJointTrainer:
                     f"{self.functional_fusion_variant} requires residual_aux_weight=0 "
                     "(the paper candidates have no residual auxiliary head)"
                 )
-            if not (use_mean_branch and self.aux_weight != 0.0):
+            if self.aux_weight < 0.0:
+                raise ValueError("aux_weight must be non-negative")
+            if self.aux_weight != 0.0 and not use_mean_branch:
                 raise ValueError(
-                    f"{self.functional_fusion_variant} requires the training-only "
-                    "mean proxy and a nonzero aux_weight"
+                    f"{self.functional_fusion_variant} cannot use a nonzero "
+                    "aux_weight when use_mean_branch=false"
                 )
 
             # Preserve the historical architecture label in saved metadata so
@@ -349,6 +351,7 @@ class LocusCLSJointTrainer:
                 self.rna.values.shape[1],
                 self.recipe.model,
                 final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
             ).to(self.device)
         elif self.functional_fusion_variant:
             raise ValueError(
@@ -643,7 +646,16 @@ class LocusCLSJointTrainer:
         prediction = out["beta"]
         safe_target = torch.where(mask, target_beta, torch.zeros_like(target_beta))
         beta_mse = masked_mean((prediction - safe_target) ** 2, mask)
-        mean_aux_loss = self._mean_aux_loss_raw_beta(cpg_ids, out["mu_hat"])
+        if self.aux_weight != 0.0:
+            if out["mu_hat"] is None:
+                raise RuntimeError(
+                    "mean-proxy supervision requested but model has no mean head"
+                )
+            mean_aux_loss = self._mean_aux_loss_raw_beta(
+                cpg_ids, out["mu_hat"]
+            )
+        else:
+            mean_aux_loss = prediction.sum() * 0.0
         sample_pcc_loss, mean_rho_p, n_valid_samples = sample_correlation_loss(prediction, safe_target, mask, loss_cfg)
         centered_mse, n_valid_loci = within_locus_centered_mse_loss(prediction, safe_target, mask, loss_cfg)
         locus_pcc_loss, n_valid_pcc_loci = locus_correlation_loss(prediction, safe_target, mask, loss_cfg)

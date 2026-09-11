@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect mean_contribution_2026_09 into version-controlled paper results."""
+"""Collect the functional J0 mean-proxy ablation into paper results."""
 from __future__ import annotations
 
 import argparse
@@ -371,7 +371,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
         for record in records:
             if record["arm"] != arm_name:
                 continue
-            probe_row = record["diagnostics"].get("h_mean_linear_probe_train_cpg_to_val_cpg") or {}
+            probe_row = record["diagnostics"].get("functional_locus_linear_probe_train_cpg_to_val_cpg") or {}
             metrics = probe_row.get("metrics") or {}
             if metrics.get("pearson") is not None:
                 pearsons.append(float(metrics["pearson"]))
@@ -388,7 +388,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
             "split": "verified MethylProphet Table-5 official split" if scope == "chr1"
                      else "chr123 split (CpG axis verified exact; sample axis reuses chr1's split -- see docs/BENCHMARK_METHYLPROPHET.md)",
             "seeds": list(seeds),
-            "reference_recipe": "configs/models/rna_methylation_locus_attention.yaml",
+            "reference_recipe": "configs/models/main.yaml",
             "design": {
                 "full_reference": "mean branch ON, aux_weight=0.15",
                 "no_mean_supervision": "mean branch ON, aux_weight=0.0",
@@ -403,7 +403,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
         "mse_decomposition_bias_squared_vs_residual_variance": mse_decomposition,
         "unseen_cpg_locus_bias_reduction": bias_effects,
         "variance_decile_effects": variance_decile_effects,
-        "h_mean_linear_probe": probe,
+        "functional_locus_linear_probe": probe,
         "dataset_variance": dataset_diag,
     }
     (ledger / "summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False))
@@ -453,9 +453,9 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
         "",
         "## Experimental isolation",
         "",
-        "- **Full**: locus-attention K=64, mean branch present, `aux_weight=0.15`.",
+        "- **Full**: functional-locus J0, mean-proxy head present, `aux_weight=0.15`.",
         "- **No mean supervision**: identical architecture, `aux_weight=0`.",
-        "- **No mean branch**: same RNA encoder/training recipe, CpG-only mean branch removed.",
+        "- **No mean branch**: identical J0 core with only the training-only mean-proxy head removed.",
         f"- Scope: {scope}. Seed(s): {seeds_text}"
         + (" (single-seed follow-up, not paired across seeds)." if len(seeds) < 2 else " (paired)."),
         "",
@@ -561,7 +561,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
     for arm_name in ("full_reference", "no_mean_supervision"):
         pearson = probe[arm_name]["pearson"]["mean"]
         ptext = "—" if pearson is None else f"{pearson:.4f}"
-        lines.append(f"- `{arm_name}` h_mean linear-probe Pearson on official val CpGs: {ptext}.")
+        lines.append(f"- `{arm_name}` functional h_c linear-probe Pearson on official val CpGs: {ptext}.")
 
     if dataset_diag:
         d = dataset_diag["train_cpg_x_train_sample"]
@@ -589,7 +589,7 @@ def write_outputs(records: list[dict], dataset_diag: dict | None, *, scope: str,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--scope", default="chr1", choices=["chr1", "chr123"])
+    ap.add_argument("--scope", default="chr1", choices=["chr1"])
     ap.add_argument("--output-root", action="append", dest="output_roots")
     ap.add_argument("--data-root")
     ap.add_argument(

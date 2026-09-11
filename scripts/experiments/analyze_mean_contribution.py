@@ -52,25 +52,55 @@ def _target_mu(trainer: LocusCLSJointTrainer, cpg_ids: np.ndarray) -> np.ndarray
     return out
 
 
+def _functional_inputs(
+    trainer: LocusCLSJointTrainer,
+    cpg_ids: np.ndarray,
+) -> dict[str, torch.Tensor]:
+    if trainer.functional is None:
+        raise RuntimeError("functional diagnostics require FunctionalLocusCache")
+    batch = trainer.functional.get(cpg_ids)
+    return {
+        "functional_track_indices": torch.from_numpy(
+            batch["track_indices"]
+        ).to(trainer.device),
+        "functional_offsets": torch.from_numpy(
+            batch["offsets"]
+        ).to(trainer.device),
+        "functional_dense": torch.from_numpy(
+            batch["dense"]
+        ).to(trainer.device).float(),
+    }
+
+
 @torch.no_grad()
-def _extract_h_mean(
+def _extract_functional_locus(
     trainer: LocusCLSJointTrainer,
     cpg_ids: np.ndarray,
     chunk: int,
 ) -> tuple[np.ndarray, np.ndarray] | None:
-    if not trainer.use_mean_branch:
+    if not trainer.use_mean_branch or trainer.model.mean_head is None:
         return None
+
     reps, head_pred = [], []
     trainer.model.eval()
     for c0 in range(0, len(cpg_ids), chunk):
         local = cpg_ids[c0:c0 + chunk]
-        emb_np, _, _ = trainer.features.get(local, embedding_dtype=np.float32)
-        emb = torch.from_numpy(emb_np).to(trainer.device)
+        kwargs = _functional_inputs(trainer, local)
         with trainer._autocast():
-            h = trainer.model.trunk_cpg(emb)
-            mu = torch.sigmoid(trainer.model.mean_head(h).squeeze(-1))
-        reps.append(h.float().cpu().numpy())
+            peak = trainer.model.track_embedding(
+                kwargs["functional_track_indices"],
+                kwargs["functional_offsets"],
+            )
+            dense = trainer.model.dense_encoder(
+                kwargs["functional_dense"]
+            )
+            h_c = trainer.model.locus_norm(peak + dense)
+            mu = torch.sigmoid(
+                trainer.model.mean_head(h_c).squeeze(-1)
+            )
+        reps.append(h_c.float().cpu().numpy())
         head_pred.append(mu.float().cpu().numpy())
+
     return np.concatenate(reps), np.concatenate(head_pred)
 
 
@@ -128,14 +158,19 @@ def _view_diagnostics(
     for c0 in range(0, len(cpg_ids), cpg_chunk):
         c1 = min(c0 + cpg_chunk, len(cpg_ids))
         local_c = cpg_ids[c0:c1]
-        emb_np, _, _ = trainer.features.get(local_c, embedding_dtype=np.float32)
-        emb = torch.from_numpy(emb_np).to(trainer.device)
+        functional_kwargs = _functional_inputs(trainer, local_c)
         for s0 in range(0, len(sample_ids), sample_chunk):
             s1 = min(s0 + sample_chunk, len(sample_ids))
             local_s = sample_ids[s0:s1]
-            rna_x = torch.from_numpy(trainer.rna.rows(local_s)).to(trainer.device)
+            rna_x = torch.from_numpy(
+                trainer.rna.rows(local_s)
+            ).to(trainer.device)
             with trainer._autocast():
-                pred = trainer.model(rna_x, emb, **trainer._position_kwargs(local_c))["beta"]
+                pred = trainer.model(
+                    rna_x,
+                    None,
+                    **functional_kwargs,
+                )["beta"]
             p = pred.float().cpu().numpy().astype(np.float64)
             t = source.block(rows[s0:s1], local_c).astype(np.float64)
             valid = np.isfinite(t) & np.isfinite(p)
@@ -220,6 +255,9 @@ def checkpoint_mode(args) -> int:
         aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0),
         raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
+        functional_atlas=args.functional_atlas,
+        annotation_cache=args.annotation_cache,
+        functional_only=True,
         track=False,
     )
     try:
@@ -231,8 +269,12 @@ def checkpoint_mode(args) -> int:
 
         direct_mean = None
         probe = None
-        train_repr = _extract_h_mean(trainer, train_c, args.representation_chunk)
-        val_repr = _extract_h_mean(trainer, val_c, args.representation_chunk)
+        train_repr = _extract_functional_locus(
+            trainer, train_c, args.representation_chunk
+        )
+        val_repr = _extract_functional_locus(
+            trainer, val_c, args.representation_chunk
+        )
         if train_repr is not None and val_repr is not None:
             train_h, _ = train_repr
             val_h, val_head = val_repr
@@ -260,11 +302,11 @@ def checkpoint_mode(args) -> int:
             "checkpoint_epoch": ckpt.get("epoch"),
             "locus_cls": lc,
             "mean_head_on_unseen_cpg": direct_mean,
-            "h_mean_linear_probe_train_cpg_to_val_cpg": probe,
+            "functional_locus_linear_probe_train_cpg_to_val_cpg": probe,
             "views": view_results,
             "interpretation_contract": {
                 "mean_head": "Direct auxiliary-head accuracy on official val CpGs; null if mean branch is absent.",
-                "linear_probe": "OLS probe fit on h_mean using train CpGs only and evaluated on official val CpGs.",
+                "linear_probe": "OLS probe fit on functional h_c using train CpGs only and evaluated on official val CpGs.",
                 "locus_bias": "Final beta averaged across samples per CpG; lower absolute bias is better.",
                 "variance_deciles": "CpGs ranked by true across-sample variance; decile 1 is lowest variance.",
             },
@@ -373,6 +415,8 @@ def main() -> int:
     ck.add_argument("--rna-cache", required=True)
     ck.add_argument("--registry", required=True)
     ck.add_argument("--cpg-targets-dir", required=True)
+    ck.add_argument("--functional-atlas", required=True)
+    ck.add_argument("--annotation-cache", required=True)
     ck.add_argument("--output", required=True)
     ck.add_argument("--sample-chunk", type=int, default=128)
     ck.add_argument("--cpg-chunk", type=int, default=2048)

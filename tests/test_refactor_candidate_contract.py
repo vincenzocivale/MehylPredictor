@@ -210,6 +210,27 @@ def test_single_retrieval_candidate_semantic_contract():
     assert model.requires_cpg_positions is False
 
 
+def test_single_retrieval_can_disable_training_only_mean_proxy():
+    torch.manual_seed(17)
+    model = SingleRetrievalPredictor(
+        48,
+        _config(),
+        final_regressor_dropout=0.15,
+        use_mean_proxy=False,
+    ).eval()
+
+    with torch.no_grad():
+        out = model(
+            torch.randn(3, 48),
+            None,
+            **_functional_inputs(),
+        )
+
+    assert model.mean_head is None
+    assert out["mu_hat"] is None
+    assert out["beta"].shape == (3, 4)
+
+
 def test_single_retrieval_mean_proxy_gradient_isolation_contract():
     torch.manual_seed(17)
     model = SingleRetrievalPredictor(

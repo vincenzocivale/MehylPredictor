@@ -59,3 +59,27 @@ RNA-encoder comparators still depend on them. They are no longer exported as
 the public model API. Phase 3b will migrate the comparators that remain
 scientifically justified onto the functional-locus core before deleting the
 legacy family.
+
+
+## Phase 3b1: functional mean-proxy ablation
+
+The mean-contribution experiment now runs directly on the paper-facing
+`SingleRetrievalPredictor`, not on the historical shared-backbone model.
+
+The three chr1 arms are:
+
+```text
+full_reference       : mean head ON,  aux_weight=0.15
+no_mean_supervision  : mean head ON,  aux_weight=0
+no_mean_branch       : mean head OFF, aux_weight=0
+```
+
+Every other resolved recipe field is identical after removing tracking
+metadata. When the mean head is removed, its initialization draws are still
+consumed before the module is discarded, so every surviving shared parameter
+has bit-identical same-seed initialization relative to the full model.
+
+The migrated experiment uses a new study name and new run IDs; historical
+shared-backbone results therefore cannot be silently mistaken for functional
+J0 results. The migrated harness is intentionally chr1-only until equivalent
+functional-atlas coverage is frozen for broader scopes.
