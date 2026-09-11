@@ -1,17 +1,13 @@
 # Script map
 
-The public workflow has five entrypoints:
+The public workflow has four entrypoints:
 
 - `prepare.py` — build data for either model (`--model cpg_statistics`:
   multi-technology `mu`/`sigma` labels; `--model rna_methylation`: the
-  `cpg_idx + NTv3 embeddings + prior + sigma` cache exported from a trained
-  `cpg_statistics` checkpoint);
-- `train.py` — train either `cpg_statistics` or `rna_methylation` (the latter
-  always via the shared-backbone engine, see below);
+  required prepared caches);
+- `train.py` — train either `cpg_statistics` or `rna_methylation`;
 - `tune.py` — leakage-safe LR/scheduler/epoch search on inner development data;
-- `evaluate.py` — evaluate either model on `chr1`, `chr123` or `genomewide`;
-- `explain.py` — Integrated-Gradients gene attribution for a trained
-  `rna_methylation` checkpoint (see `../docs/EXPLAINABILITY.md`).
+- `evaluate.py` — evaluate either model on `chr1`, `chr123` or `genomewide`.
 
 RNA-methylation training/evaluation/tuning use `--engine
 matched_chr1_shared_backbone` for the exact MethylProphet-matched chr1

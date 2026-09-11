@@ -79,14 +79,6 @@ python scripts/tune.py --model rna_methylation --scope chr123 --cpg-targets-dir 
 python scripts/evaluate.py --model rna_methylation --checkpoint /path/to/best.pt --eval-scope genomewide --cpg-targets-dir ... ...
 ```
 
-A fifth, read-only diagnostic entrypoint explains a trained `rna_methylation` checkpoint's
-predictions rather than training/evaluating one -- see `docs/EXPLAINABILITY.md`:
-
-```bash
-python scripts/explain.py --checkpoint /path/to/best.pt --canonical-root ... --feature-cache ... \
-  --rna-cache ... --sample-idx 1234 --cpg-idx-file candidate_cpg_ids.npy --auto-top-loci 20
-```
-
 Reference shared-backbone architecture, chr1 matched MethylProphet (primary architecture, see
 `docs/RNA_METHYLATION.md`):
 
@@ -194,13 +186,10 @@ The earlier two-stage frozen-prior + residual architecture generation
 Checkpoints from that generation cannot be loaded by current code. Its frozen paper-comparison
 numbers remain under `results/reference/methylprophet_comparison/` and
 `results/reference/rna_methylation/chr1.yaml`'s `legacy_two_stage` field as historical provenance.
-Three things that depended on it were ported to the current architecture rather than removed:
-the three simplified baselines other than CpG Prior (Global RNA Shift/Bilinear RNA-CpG/MLP
-RNA-CpG, now expressed via `FeatureFusionArchitectureVariantModel`'s `use_mean_branch`/
-`include_raw_rna`/`include_raw_cpg`/`use_raw_product` constructor kwargs — see
-`docs/PAPER_EXPERIMENTS.md`), explainability (`scripts/explain.py`, now attributing
-`residual_logit` instead of the old `raw_delta` — see `docs/EXPLAINABILITY.md`), and
-hyperparameter tuning (`scripts/tune.py`, now built on `LocusCLSJointTrainer`).
+Two things that depended on it were ported to the current architecture rather than removed:
+the simplified baseline comparisons retained by the paper workflow, and hyperparameter tuning
+(`scripts/tune.py`, now built on `LocusCLSJointTrainer`). Explainability was intentionally removed
+from the paper-facing repository rather than migrated again.
 
 ### No legacy fallback path
 
@@ -208,6 +197,6 @@ There is no older training entrypoint left in this repo (the pre-refactor `data.
 `cli.py` Cartesian-batch path, and the ad-hoc `full_suite/` cache/probe helpers it depended on,
 were removed; more recently, the entire two-stage frozen-prior + residual architecture generation
 and its `--engine generic`/`matched_chr1` CLI paths were removed too — see "Model compatibility
-note" above). `scripts/{prepare,train,tune,evaluate,explain}.py` are the only entrypoints; treat
+note" above). `scripts/{prepare,train,tune,evaluate}.py` are the only public entrypoints; treat
 any future one-off/experiment-specific script or config as something to delete once the
 experiment concludes, not something to keep around as a second workflow.

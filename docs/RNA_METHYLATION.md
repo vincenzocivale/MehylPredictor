@@ -5,8 +5,7 @@
 `encoder.kind=linear` reference of 2026-09-03 -- see "2026-09-05 update" below for the
 ablation evidence. See [`CPG_STATISTICS.md`](CPG_STATISTICS.md) for the companion
 `CpGStatisticsPredictor` (mu, sigma) model whose `target_mu` output feeds this model's
-mean-branch proxy task, and [`EXPLAINABILITY.md`](EXPLAINABILITY.md) for attributing a
-trained checkpoint's predictions back to RNA genes (`scripts/explain.py`).
+mean-branch proxy task.
 
 ## Primary architecture: shared-backbone late fusion
 
@@ -276,14 +275,10 @@ number the shared-backbone architecture above was originally selected against) r
 `results/reference/ablations.yaml` for the same reason. The code itself is only recoverable from
 git history before this removal.
 
-Three things that depended on this generation were **ported** to the current architecture rather
+Two things that depended on this generation were **ported** to the then-current architecture rather
 than retired with it:
 
-- **Explainability** (`scripts/explain.py`) now attributes `FeatureFusionLocusCLSModel`/
-  `FeatureFusionArchitectureVariantModel`'s `residual_logit` auxiliary probe instead of the old
-  `raw_delta` -- see `docs/EXPLAINABILITY.md`.
-- **Hyperparameter tuning** (`scripts/tune.py`) now runs `LocusCLSJointTrainer` instead of the
-  retired `ScopedRNATrainer`.
+- **Hyperparameter tuning** (`scripts/tune.py`) moved to `LocusCLSJointTrainer`.
 - **Three of the four paper-required simplified baselines** (Global RNA Shift, Bilinear RNA-CpG,
   MLP RNA-CpG -- the fourth, CpG Prior, has no model) are now expressed as
   `FeatureFusionArchitectureVariantModel` configurations instead of `InteractionConfig.kind`

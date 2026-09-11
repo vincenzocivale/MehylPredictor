@@ -644,8 +644,7 @@ class LocusConditionedRNAEncoder(nn.Module):
     failure is the motivation for this arm, not a precedent against it.
 
     Side benefit: ``attention`` is returned per forward, so locus -> gene-program
-    weights are directly plottable, complementing the Expected-Gradients
-    attribution in scripts/explain.py.
+    weights are directly plottable for diagnostic analysis.
     """
 
     def __init__(

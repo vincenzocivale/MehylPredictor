@@ -155,3 +155,16 @@ historical shared-backbone metrics with the new functional comparison.
 
 Historical result ledgers and historical recipes remain untouched for
 provenance; their old executable runner logic has been retired.
+
+## Phase 4a: explainability removed
+
+Checkpoint explainability is intentionally out of scope for the paper-facing
+reproducibility repository. The previous Expected/Integrated-Gradients
+implementation targeted the retired shared-backbone `residual_logit` and was
+not part of the paper's central claims.
+
+The implementation, CLI, tests, and dedicated documentation were removed
+rather than migrated. The public workflow is therefore limited to data
+preparation, training, hyperparameter selection where retained, and
+evaluation. Historical explainability code remains available through Git
+history.
