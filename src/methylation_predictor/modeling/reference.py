@@ -7,15 +7,27 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from ..config import ModelConfig
-from ..models import build_rna_encoder
 from .retrieval import (
     BatchedLocusToRNAAttention,
     FeedForwardResidual,
     LocusToRNAAttention,
 )
+from .rna import (
+    ProgramTokenEncoder,
+    consume_legacy_attention_initialization,
+    migrate_legacy_candidate_state_dict,
+)
 
 
-class SingleRetrievalPredictor(nn.Module):
+class _LegacyCandidateCheckpointMixin:
+    """Strict loader with one explicit pre-phase-2c migration."""
+
+    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
+        migrated = migrate_legacy_candidate_state_dict(state_dict)
+        return super().load_state_dict(migrated, strict=strict, assign=assign)
+
+
+class SingleRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
     """J0: functional locus + pure single-step RNA retrieval."""
 
     N_TRACKS = 4165
@@ -37,9 +49,15 @@ class SingleRetrievalPredictor(nn.Module):
                 "with program_dim=256"
             )
 
-        self.rna_encoder = build_rna_encoder(
-            enc, input_dim=input_dim, locus_dim=self.WIDTH
+        self.rna_encoder = ProgramTokenEncoder(
+            input_dim=input_dim,
+            n_programs=enc.n_programs,
+            program_dim=enc.program_dim,
+            bottleneck_dim=enc.latent_dim,
+            layer_norm=enc.layer_norm,
         )
+        consume_legacy_attention_initialization(self.WIDTH)
+
         self.track_embedding = nn.EmbeddingBag(
             self.N_TRACKS,
             self.WIDTH,
@@ -89,10 +107,7 @@ class SingleRetrievalPredictor(nn.Module):
         functional_dense: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         del cpg_embedding, cpg_positions
-        representation = self.rna_encoder(rna)
-        if representation.program_tokens is None:
-            raise RuntimeError("RNA encoder did not produce program tokens")
-        tokens = representation.program_tokens
+        tokens = self.rna_encoder(rna)
 
         peak = self.track_embedding(
             functional_track_indices, functional_offsets
@@ -125,7 +140,7 @@ class SingleRetrievalPredictor(nn.Module):
         }
 
 
-class IterativeRetrievalPredictor(nn.Module):
+class IterativeRetrievalPredictor(_LegacyCandidateCheckpointMixin, nn.Module):
     """J1: four residual RNA-retrieval/refinement blocks."""
 
     N_TRACKS = 4165
@@ -149,9 +164,15 @@ class IterativeRetrievalPredictor(nn.Module):
                 "tokens with program_dim=256"
             )
 
-        self.rna_encoder = build_rna_encoder(
-            enc, input_dim=input_dim, locus_dim=self.WIDTH
+        self.rna_encoder = ProgramTokenEncoder(
+            input_dim=input_dim,
+            n_programs=enc.n_programs,
+            program_dim=enc.program_dim,
+            bottleneck_dim=enc.latent_dim,
+            layer_norm=enc.layer_norm,
         )
+        consume_legacy_attention_initialization(self.WIDTH)
+
         self.track_embedding = nn.EmbeddingBag(
             self.N_TRACKS,
             self.WIDTH,
@@ -234,10 +255,7 @@ class IterativeRetrievalPredictor(nn.Module):
         functional_dense: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         del cpg_embedding, cpg_positions
-        representation = self.rna_encoder(rna)
-        if representation.program_tokens is None:
-            raise RuntimeError("RNA encoder did not produce program tokens")
-        tokens = representation.program_tokens
+        tokens = self.rna_encoder(rna)
 
         peak = self.track_embedding(
             functional_track_indices, functional_offsets

@@ -126,3 +126,36 @@ No RNA-token cleanup is included yet. The extracted candidates deliberately
 still use the historical `build_rna_encoder`, preserving checkpoint keys and
 numerical behavior. Removing the unused internal attention projections from
 that encoder is phase 2c.
+
+## Phase 2c status
+
+The paper-facing candidates now use a dedicated `ProgramTokenEncoder`. RNA
+representation and locus-conditioned retrieval are separate modules:
+
+```text
+RNA expression -> ProgramTokenEncoder -> program tokens
+functional locus ---------------------> Retrieval -> beta head
+```
+
+The four `query/key/value/out` projections that lived inside the historical
+`LocusConditionedRNAEncoder` are not used by J0/J1 and have been removed from
+the paper candidates. At width 256 this removes 263,168 trainable parameters
+per candidate without changing the forward function.
+
+To make this refactor auditable:
+
+- the old RNA token generator and the new `ProgramTokenEncoder` are tested for
+  bit-exact token equality;
+- the legacy RNG draws of the four removed Linear layers are deliberately
+  consumed without registering parameters, so all later live parameters retain
+  the same same-seed initialization as before;
+- pre-phase-2c J0/J1 model state dictionaries load strictly after filtering only
+  the known dead RNA-attention prefixes.
+
+### Resume note
+
+Model-weight compatibility is preserved for old J0/J1 checkpoints. Optimizer
+state from a pre-phase-2c in-progress run still contains the old parameter
+group layout, so resuming such a run across this boundary is not guaranteed.
+Evaluation/inference is supported. New paper runs should start from scratch on
+the refactored model.

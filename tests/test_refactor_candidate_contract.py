@@ -48,7 +48,60 @@ def _has_grad(module: torch.nn.Module) -> bool:
     )
 
 
-def test_phase2b_single_retrieval_is_exactly_equivalent_to_legacy_j0():
+def _live_legacy_state(state_dict):
+    dead = (
+        "rna_encoder.query.",
+        "rna_encoder.key.",
+        "rna_encoder.value.",
+        "rna_encoder.out.",
+        "rna_encoder.mean_query.",
+    )
+    return {k: v for k, v in state_dict.items() if not k.startswith(dead)}
+
+
+def test_phase2c_program_token_encoder_matches_legacy_token_generation_exactly():
+    from methylation_predictor.models import LocusConditionedRNAEncoder
+    from methylation_predictor.modeling.rna import ProgramTokenEncoder
+
+    torch.manual_seed(77)
+    legacy = LocusConditionedRNAEncoder(
+        input_dim=48,
+        locus_dim=256,
+        n_programs=6,
+        program_dim=256,
+        n_heads=4,
+        dropout=0.0,
+        layer_norm=True,
+        bottleneck_dim=8,
+    ).eval()
+
+    torch.manual_seed(77)
+    token_encoder = ProgramTokenEncoder(
+        input_dim=48,
+        n_programs=6,
+        program_dim=256,
+        bottleneck_dim=8,
+        layer_norm=True,
+    ).eval()
+
+    live_old = _live_legacy_state(
+        {"rna_encoder." + k: v for k, v in legacy.state_dict().items()}
+    )
+    live_new = {
+        "rna_encoder." + k: v for k, v in token_encoder.state_dict().items()
+    }
+    assert live_old.keys() == live_new.keys()
+    for key in live_old:
+        torch.testing.assert_close(live_old[key], live_new[key], rtol=0, atol=0)
+
+    x = torch.randn(3, 48)
+    with torch.no_grad():
+        old_tokens = legacy(x).program_tokens
+        new_tokens = token_encoder(x)
+    torch.testing.assert_close(old_tokens, new_tokens, rtol=0, atol=0)
+
+
+def test_phase2c_single_retrieval_preserves_live_initialization_and_forward():
     cfg = _config()
 
     torch.manual_seed(123)
@@ -66,13 +119,16 @@ def test_phase2b_single_retrieval_is_exactly_equivalent_to_legacy_j0():
         final_regressor_dropout=0.15,
     ).eval()
 
-    legacy_state = legacy.state_dict()
+    old_live = _live_legacy_state(legacy.state_dict())
     new_state = refactored.state_dict()
-    assert legacy_state.keys() == new_state.keys()
-    for key in legacy_state:
-        torch.testing.assert_close(legacy_state[key], new_state[key], rtol=0, atol=0)
+    assert old_live.keys() == new_state.keys()
+    for key in old_live:
+        torch.testing.assert_close(old_live[key], new_state[key], rtol=0, atol=0)
 
-    torch.manual_seed(999)
+    load_result = refactored.load_state_dict(legacy.state_dict(), strict=True)
+    assert load_result.missing_keys == []
+    assert load_result.unexpected_keys == []
+
     inputs = _functional_inputs()
     rna = torch.randn(3, 48)
     with torch.no_grad():
@@ -82,8 +138,12 @@ def test_phase2b_single_retrieval_is_exactly_equivalent_to_legacy_j0():
     for key in ("beta", "mu_hat", "prediction_logit", "h_cpg"):
         torch.testing.assert_close(old_out[key], new_out[key], rtol=0, atol=0)
 
+    old_params = sum(p.numel() for p in legacy.parameters())
+    new_params = sum(p.numel() for p in refactored.parameters())
+    assert old_params - new_params == 4 * (256 * 256 + 256)
 
-def test_phase2b_iterative_is_exactly_equivalent_to_legacy_j1():
+
+def test_phase2c_iterative_preserves_live_initialization_and_forward():
     cfg = _config()
 
     torch.manual_seed(321)
@@ -100,13 +160,16 @@ def test_phase2b_iterative_is_exactly_equivalent_to_legacy_j1():
         final_regressor_dropout=0.15,
     ).eval()
 
-    legacy_state = legacy.state_dict()
+    old_live = _live_legacy_state(legacy.state_dict())
     new_state = refactored.state_dict()
-    assert legacy_state.keys() == new_state.keys()
-    for key in legacy_state:
-        torch.testing.assert_close(legacy_state[key], new_state[key], rtol=0, atol=0)
+    assert old_live.keys() == new_state.keys()
+    for key in old_live:
+        torch.testing.assert_close(old_live[key], new_state[key], rtol=0, atol=0)
 
-    torch.manual_seed(1001)
+    load_result = refactored.load_state_dict(legacy.state_dict(), strict=True)
+    assert load_result.missing_keys == []
+    assert load_result.unexpected_keys == []
+
     inputs = _functional_inputs()
     rna = torch.randn(3, 48)
     with torch.no_grad():
@@ -115,6 +178,10 @@ def test_phase2b_iterative_is_exactly_equivalent_to_legacy_j1():
 
     for key in ("beta", "mu_hat", "prediction_logit", "h_cpg"):
         torch.testing.assert_close(old_out[key], new_out[key], rtol=0, atol=0)
+
+    old_params = sum(p.numel() for p in legacy.parameters())
+    new_params = sum(p.numel() for p in refactored.parameters())
+    assert old_params - new_params == 4 * (256 * 256 + 256)
 
 
 def test_j0_recipe_contract_is_frozen_for_the_refactor():
