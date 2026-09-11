@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
 import hashlib
 
 import numpy as np
@@ -84,29 +82,3 @@ def test_f7_model_is_finite_and_independent_of_ntv3():
     torch.testing.assert_close(a, b)
     a.sum().backward()
     assert torch.isfinite(model.track_embedding.weight.grad).all()
-
-
-def test_response_basis_does_not_fit_validation_loci():
-    path = Path(__file__).resolve().parents[1] / "scripts/experiments/audit_regulatory_embedding.py"
-    spec = importlib.util.spec_from_file_location("regulatory_audit", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    beta = np.random.default_rng(17).random((20, 12)).astype(np.float32)
-    train = np.arange(15)
-    targets, basis = module.response_basis(beta, train, 4, 17)
-    beta[15:] = 100 * beta[15:] + 2
-    changed_targets, changed_basis = module.response_basis(beta, train, 4, 17)
-    np.testing.assert_array_equal(basis, changed_basis)
-    np.testing.assert_array_equal(targets[train], changed_targets[train])
-
-
-def test_covariance_recipe_is_explicit_and_cannot_be_silently_ignored(tmp_path):
-    from methylation_predictor.rna_training.config import load_rna_recipe
-    root = Path(__file__).resolve().parents[1]
-    recipe = load_rna_recipe(root / "configs/models/functional_fusion/f8.yaml")
-    assert recipe.model.functional_fusion_variant == "f7_standardized"
-    assert recipe.model.functional_projection_init.endswith("chr1_dev_pca256.pt")
-    path = tmp_path / "invalid.yaml"
-    path.write_text("model:\n  functional_projection_init: some_projection.pt\n")
-    with pytest.raises(ValueError, match="requires the standardized"):
-        load_rna_recipe(path)

@@ -183,7 +183,6 @@ def test_single_retrieval_candidate_semantic_contract():
     model = SingleRetrievalPredictor(
         48,
         _config(),
-        separate_concat_norm=True,
         final_regressor_dropout=0.15,
     ).eval()
 
@@ -209,7 +208,6 @@ def test_single_retrieval_mean_proxy_gradient_isolation_contract():
     model = SingleRetrievalPredictor(
         48,
         _config(),
-        separate_concat_norm=True,
         final_regressor_dropout=0.15,
     ).train()
 
@@ -232,7 +230,6 @@ def test_single_retrieval_beta_path_does_not_touch_mean_head():
     model = SingleRetrievalPredictor(
         48,
         _config(),
-        separate_concat_norm=True,
         final_regressor_dropout=0.15,
     ).train()
 
