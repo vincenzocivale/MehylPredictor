@@ -42,11 +42,10 @@ See [`docs/MODEL.md`](docs/MODEL.md) for the exact equations and architecture.
 ## Repository status
 
 This branch is being reduced from the original research-history repository into
-the paper reproducibility repository.  The current core model and functional
-input path are already paper-facing.  Some legacy shared-backbone code remains
-temporarily because surviving baselines and RNA-encoder comparators still
-depend on it; those comparators will be migrated before the legacy model family
-is removed.
+the paper reproducibility repository. The core model, internal baselines, and
+retained RNA-encoder comparators now all use the paper-facing functional-locus
+path. The retired FeatureFusion/shared-backbone model family has been removed;
+remaining cleanup is limited to transitional trainer/config/data plumbing.
 
 The historical experiment names remain available through Git history and the
 original research branch, not as the primary public interface.
@@ -193,10 +192,9 @@ The refactor contract is documented in
 final repository boundary is documented in
 [`docs/REPOSITORY_SCOPE.md`](docs/REPOSITORY_SCOPE.md).
 
-Current priorities after the public/core cutover are:
+Current priorities after the functional/core cutover are:
 
-1. migrate claim-driven mean-proxy ablations onto the functional model;
-2. migrate paper baselines onto the same functional locus representation;
-3. migrate any retained RNA-encoder comparisons;
-4. remove the remaining shared-backbone architecture-search infrastructure;
-5. consolidate data preparation and paper-table reproduction commands.
+1. prune transitional shared-backbone-era trainer/config fields;
+2. remove the legacy genomic feature-cache requirement from functional runs;
+3. consolidate data preparation and paper-table reproduction commands;
+4. perform the final repository and reproducibility audit.

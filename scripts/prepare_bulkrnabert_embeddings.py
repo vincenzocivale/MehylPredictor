@@ -10,7 +10,7 @@ the result in the same on-disk contract ``RNACache`` already reads
 name is reused only for ``RNACache`` on-disk-format compatibility -- these
 are embeddings, not a z-score) under ``--output``. Point a
 ``frozen_embedding``-kind recipe's ``--rna-cache`` at that directory (see
-``configs/models/arch_shared_backbone/enc_frozen_embedding_bulkrnabert.yaml``)
+``configs/models/rna_encoder_comparison/functional_bulkrnabert.yaml``)
 to train against it -- ``rna_training/locus_cls_trainer.py`` derives
 ``input_dim`` dynamically from whichever cache is actually opened, so no
 other wiring change is needed.

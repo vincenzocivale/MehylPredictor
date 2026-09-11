@@ -44,51 +44,6 @@ def _has_grad(module: torch.nn.Module) -> bool:
     )
 
 
-def test_program_token_encoder_matches_legacy_token_generation_exactly():
-    from methylation_predictor.models import LocusConditionedRNAEncoder
-    from methylation_predictor.modeling.rna import ProgramTokenEncoder
-
-    torch.manual_seed(77)
-    legacy = LocusConditionedRNAEncoder(
-        input_dim=48,
-        locus_dim=256,
-        n_programs=6,
-        program_dim=256,
-        n_heads=4,
-        dropout=0.0,
-        layer_norm=True,
-        bottleneck_dim=8,
-    ).eval()
-
-    torch.manual_seed(77)
-    token_encoder = ProgramTokenEncoder(
-        input_dim=48,
-        n_programs=6,
-        program_dim=256,
-        bottleneck_dim=8,
-        layer_norm=True,
-    ).eval()
-
-    dead = ("query.", "key.", "value.", "out.", "mean_query.")
-    old_live = {
-        k: v for k, v in legacy.state_dict().items()
-        if not k.startswith(dead)
-    }
-    new_state = token_encoder.state_dict()
-
-    assert old_live.keys() == new_state.keys()
-    for key in old_live:
-        torch.testing.assert_close(
-            old_live[key], new_state[key], rtol=0, atol=0
-        )
-
-    x = torch.randn(3, 48)
-    with torch.no_grad():
-        old_tokens = legacy(x).program_tokens
-        new_tokens = token_encoder(x)
-    torch.testing.assert_close(old_tokens, new_tokens, rtol=0, atol=0)
-
-
 def test_candidate_checkpoint_loader_filters_only_known_dead_rna_attention_keys():
     model = SingleRetrievalPredictor(
         48,
@@ -111,17 +66,6 @@ def test_candidate_checkpoint_loader_filters_only_known_dead_rna_attention_keys(
             key.startswith(f"rna_encoder.{name}.")
             for key in state_keys
         )
-
-
-def test_historical_candidate_classes_are_no_longer_part_of_models_module():
-    import methylation_predictor.models as legacy_models
-
-    assert not hasattr(legacy_models, "FunctionalConcatMASModel")
-    assert not hasattr(
-        legacy_models, "FunctionalConcatIterativeRNAModel"
-    )
-    assert not hasattr(legacy_models, "SimpleCrossAttention")
-    assert not hasattr(legacy_models, "BatchedCrossAttention")
 
 
 def test_j0_recipe_contract_is_frozen_for_the_refactor():

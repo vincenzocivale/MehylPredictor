@@ -168,3 +168,27 @@ rather than migrated. The public workflow is therefore limited to data
 preparation, training, hyperparameter selection where retained, and
 evaluation. Historical explainability code remains available through Git
 history.
+
+## Phase 4b1: retired model family removed
+
+The historical `models.py` FeatureFusion/shared-backbone implementation has
+been deleted. All surviving paper-facing trainable RNA models now live under
+`methylation_predictor.modeling`:
+
+```text
+SingleRetrievalPredictor
+IterativeRetrievalPredictor
+FunctionalBaselinePredictor
+RNAEncoderComparisonPredictor
+```
+
+Architecture-search recipes, superseded shared-backbone reference recipes,
+and tests whose only purpose was to exercise the retired model family were
+also removed. Historical metrics remain in the version-controlled result
+ledgers for provenance, and the deleted implementation remains available in
+Git history.
+
+`LocusCLSJointTrainer` now dispatches only to the functional paper-facing
+models and uses only the functional objective path. Some obsolete constructor,
+checkpoint-metadata, and config fields are intentionally left for phase 4b2
+so this large model-family deletion can be regression-tested independently.

@@ -39,14 +39,8 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from ..losses import beta_nll_term, locus_correlation_loss, masked_mean, sample_correlation_loss, within_locus_centered_mse_loss
+from ..losses import locus_correlation_loss, masked_mean, sample_correlation_loss, within_locus_centered_mse_loss
 from ..config import TrainingConfig
-from ..models import (
-    FeatureFusionArchitectureVariantModel,
-    FeatureFusionLocusCLSModel,
-    feature_fusion_variant_label,
-    is_architecture_variant,
-)
 from ..modeling import (
     DepthResidualAblationPredictor,
     FunctionalBaselinePredictor,
@@ -95,41 +89,6 @@ def ordered_bounded_prefetch(executor, function, items, depth):
         else:
             pending.append(executor.submit(function, item))
         yield result, wait_seconds
-
-
-def _direct_beta_loss(outputs: dict, target_beta: torch.Tensor, loss_cfg) -> tuple[torch.Tensor, dict]:
-    """No-prior beta loss -- FeatureFusionLocusCLSModel predicts beta directly
-    (no mu/sigma anchor to derive residual_loss's other terms from), so this
-    is just the beta_mse/locus_pearson/beta_nll subset of that objective (same
-    subset DirectPredictionModel effectively reduces to). beta_nll_term is a
-    no-op whenever loss_cfg.beta_nll_weight is zero or the model produced no
-    concentration head, so it is always safe to add unconditionally --
-    architecture_novelty_2026_09's beta_likelihood_head arm is the only one
-    that ever makes it nonzero."""
-    mask = torch.isfinite(target_beta)
-    prediction = outputs["beta"]
-    safe_target = torch.where(mask, target_beta, torch.zeros_like(target_beta))
-    beta_mse = masked_mean((prediction - safe_target) ** 2, mask)
-    if loss_cfg.locus_pearson_weight != 0.0:
-        pearson_loss, valid_loci = locus_correlation_loss(prediction, safe_target, mask, loss_cfg)
-    else:
-        pearson_loss = prediction.sum() * 0.0
-        valid_loci = 0
-    beta_nll = beta_nll_term(outputs, safe_target, mask, loss_cfg)
-    total = (
-        loss_cfg.beta_mse_weight * beta_mse
-        + loss_cfg.locus_pearson_weight * pearson_loss
-        + loss_cfg.beta_nll_weight * beta_nll
-    )
-    # Keep diagnostic scalars on-device. Converting every value to a Python
-    # scalar here serialized the CUDA stream several times per optimizer step.
-    return total, {
-        "beta_mse": beta_mse.detach(),
-        "locus_pearson_loss": pearson_loss.detach(),
-        "beta_nll": beta_nll.detach(),
-        "valid_correlation_loci": valid_loci,
-        "observed": mask.sum().detach(),
-    }
 
 
 class LocusCLSJointTrainer:
@@ -289,160 +248,97 @@ class LocusCLSJointTrainer:
 
         self.use_mean_branch = bool(use_mean_branch)
         self._fusion_init_std = float(fusion_init_std)
-        # An architecture-novelty recipe (a non-default encoder kind, trunk or
-        # axial block, or a beta-likelihood head) routes to
-        # FeatureFusionArchitectureVariantModel instead of the reference class --
-        # see architecture_novelty_2026_09 / docs/RNA_METHYLATION.md. So does a
-        # non-default raw-branch composition (use_raw_product/product_mlp/
-        # include_raw_rna/include_raw_cpg): these are the paper-required
-        # simplified-baseline axis (docs/PAPER_EXPERIMENTS.md), which needs
-        # FeatureFusionArchitectureVariantModel even with encoder.kind=linear --
-        # FeatureFusionLocusCLSModel (the reference, non-variant class) has no
-        # such parameters. At every default this class is numerically identical
-        # to FeatureFusionLocusCLSModel (tests/test_architecture_variants.py),
-        # so this dispatch changes nothing for the reference recipe itself.
-        self.architecture_variant = (
-            is_architecture_variant(self.recipe.model)
-            or not use_raw_product or product_mlp
-            or not include_raw_rna or not include_raw_cpg
-            or self.functional is not None
-        )
-        model_cls = FeatureFusionArchitectureVariantModel if self.architecture_variant else FeatureFusionLocusCLSModel
-        self.architecture_label = (
-            "feature_fusion_locus_cls_arch_" + feature_fusion_variant_label(self.recipe.model)
-            if self.architecture_variant
-            else "feature_fusion_locus_cls"
-        )
-        if self.query_source != "ntv3":
-            self.architecture_label += f"_query-{self.query_source}"
-        if self.functional is not None:
-            self.architecture_label += "_functional-locus"
-        if self.functional_only:
-            self.architecture_label += "-only"
-        # Paper-facing functional-locus candidates. Historical H-ladder variants
-        # (mas_concat_v1 / mas_concat_v2_detached) were removed with the
-        # research-history surface and are intentionally no longer dispatchable.
-        # ablation_depth1_residual / ablation_depth4_noresidual: the
-        # depth-vs-residual ablation (docs/RNA_METHYLATION.md) disentangling
-        # J0/J1's two confounded architectural axes -- see
-        # modeling/ablation.py's module docstring.
-        self.ablation_variants = {
-            "ablation_depth1_residual": {"n_blocks": 1, "attn_residual": True},
-            "ablation_depth4_noresidual": {"n_blocks": 4, "attn_residual": False},
+        # Paper-facing functional-locus models only. The historical
+        # FeatureFusion shared-backbone family has been removed from the repo.
+        allowed_variants = {
+            "mas_concat_v3_purecontext",
+            "mas_concat_v4_iterative",
+            "functional_rna_encoder_comparison",
+            *BASELINE_VARIANTS,
         }
-        self.paper_candidate_mode = (
-            self.functional_fusion_variant in {
-                "mas_concat_v3_purecontext",
-                "mas_concat_v4_iterative",
-            }
-            or self.functional_fusion_variant in BASELINE_VARIANTS
-            or self.functional_fusion_variant
-            == "functional_rna_encoder_comparison"
-            or self.functional_fusion_variant in self.ablation_variants
-        )
-        if self.paper_candidate_mode:
-            if residual_aux_weight != 0.0:
-                raise ValueError(
-                    f"{self.functional_fusion_variant} requires residual_aux_weight=0 "
-                    "(the paper candidates have no residual auxiliary head)"
-                )
-            if self.aux_weight < 0.0:
-                raise ValueError("aux_weight must be non-negative")
-            if self.aux_weight != 0.0 and not use_mean_branch:
-                raise ValueError(
-                    f"{self.functional_fusion_variant} cannot use a nonzero "
-                    "aux_weight when use_mean_branch=false"
-                )
-
-            # Preserve the historical architecture label in saved metadata so
-            # existing candidate checkpoints remain identifiable.
-            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
-            final_regressor_dropout = float(
-                self.recipe.raw.get("locus_cls", {}).get(
-                    "final_regressor_dropout", 0.0
-                )
-            )
-
-            if self.functional_fusion_variant in BASELINE_VARIANTS:
-                self.architecture_label = self.functional_fusion_variant
-                self.model = FunctionalBaselinePredictor(
-                    self.rna.values.shape[1],
-                    self.recipe.model,
-                    variant=self.functional_fusion_variant,
-                    final_regressor_dropout=final_regressor_dropout,
-                    use_mean_proxy=use_mean_branch,
-                ).to(self.device)
-            elif (
-                self.functional_fusion_variant
-                == "functional_rna_encoder_comparison"
-            ):
-                source = self.recipe.model.encoder.frozen_embedding_source
-                suffix = (
-                    f"-{source}"
-                    if source
-                    else f"-{self.recipe.model.encoder.kind}"
-                )
-                self.architecture_label = (
-                    "functional_rna_encoder_comparison" + suffix
-                )
-                self.model = RNAEncoderComparisonPredictor(
-                    self.rna.values.shape[1],
-                    self.recipe.model,
-                    final_regressor_dropout=final_regressor_dropout,
-                    use_mean_proxy=use_mean_branch,
-                ).to(self.device)
-            elif self.functional_fusion_variant in self.ablation_variants:
-                self.model = DepthResidualAblationPredictor(
-                    self.rna.values.shape[1],
-                    self.recipe.model,
-                    final_regressor_dropout=final_regressor_dropout,
-                    use_mean_proxy=use_mean_branch,
-                    **self.ablation_variants[self.functional_fusion_variant],
-                ).to(self.device)
-            else:
-                candidate_cls = (
-                    IterativeRetrievalPredictor
-                    if self.functional_fusion_variant
-                    == "mas_concat_v4_iterative"
-                    else SingleRetrievalPredictor
-                )
-                self.model = candidate_cls(
-                    self.rna.values.shape[1],
-                    self.recipe.model,
-                    final_regressor_dropout=final_regressor_dropout,
-                    use_mean_proxy=use_mean_branch,
-                ).to(self.device)
-        elif self.functional_fusion_variant:
+        if not self.functional_only or self.functional is None:
             raise ValueError(
-                "unsupported functional_fusion_variant "
-                f"{self.functional_fusion_variant!r}; paper-facing variants are "
-                "'mas_concat_v3_purecontext', 'mas_concat_v4_iterative', "
-                "'functional_rna_encoder_comparison', the "
-                "functional_baseline_* comparison variants, and "
-                f"{sorted(self.ablation_variants)}"
+                "paper-facing RNA training requires --functional-only plus "
+                "--functional-atlas and --annotation-cache"
             )
+        if self.functional_fusion_variant not in allowed_variants:
+            raise ValueError(
+                "unsupported paper-facing functional_fusion_variant "
+                f"{self.functional_fusion_variant!r}; expected one of "
+                f"{sorted(allowed_variants)}"
+            )
+        if residual_aux_weight != 0.0:
+            raise ValueError(
+                f"{self.functional_fusion_variant} requires "
+                "residual_aux_weight=0"
+            )
+        if self.aux_weight < 0.0:
+            raise ValueError("aux_weight must be non-negative")
+        if self.aux_weight != 0.0 and not use_mean_branch:
+            raise ValueError(
+                f"{self.functional_fusion_variant} cannot use a nonzero "
+                "aux_weight when use_mean_branch=false"
+            )
+        if self.query_source != "ntv3":
+            raise ValueError(
+                "legacy query_source variants were removed with the "
+                "shared-backbone model family"
+            )
+        if self.raw_lr_multiplier != 1.0:
+            raise ValueError(
+                "raw_lr_multiplier was a shared-backbone ablation and is "
+                "not supported by paper-facing functional models"
+            )
+
+        final_regressor_dropout = float(
+            self.recipe.raw.get("locus_cls", {}).get(
+                "final_regressor_dropout", 0.0
+            )
+        )
+
+        if self.functional_fusion_variant in BASELINE_VARIANTS:
+            self.architecture_label = self.functional_fusion_variant
+            self.model = FunctionalBaselinePredictor(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                variant=self.functional_fusion_variant,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
+            ).to(self.device)
+        elif (
+            self.functional_fusion_variant
+            == "functional_rna_encoder_comparison"
+        ):
+            source = self.recipe.model.encoder.frozen_embedding_source
+            suffix = (
+                f"-{source}"
+                if source
+                else f"-{self.recipe.model.encoder.kind}"
+            )
+            self.architecture_label = (
+                "functional_rna_encoder_comparison" + suffix
+            )
+            self.model = RNAEncoderComparisonPredictor(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
+            ).to(self.device)
         else:
-            self.model = model_cls(
-            # Derived from whichever RNA cache was actually opened, not hardcoded --
-            # a "frozen_embedding" arm (encoder.kind=frozen_embedding) points
-            # --rna-cache at a precomputed-embedding directory (e.g. BulkRNABert,
-            # 256-d) instead of the canonical 25017-gene z-scored cache; see
-            # scripts/prepare_bulkrnabert_embeddings.py and
-            # models.py::FrozenEmbeddingEncoder.
-            self.rna.values.shape[1], 1536, self.recipe.model,
-            trunk_hidden_dim=trunk_hidden_dim, bottleneck_dim=bottleneck_dim, trunk_dropout=trunk_dropout,
-            use_mean_branch=use_mean_branch, use_fusion_product=use_fusion_product, fusion_init_std=fusion_init_std,
-            # use_raw_product/include_raw_rna/include_raw_cpg/product_mlp are
-            # ablation-only knobs on FeatureFusionArchitectureVariantModel;
-            # FeatureFusionLocusCLSModel (the reference, non-variant class) has
-            # no such parameters.
-            **({
-                "use_raw_product": use_raw_product, "product_mlp": product_mlp,
-                "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
-                "query_source": self.query_source,
-                "functional_conditioning": self.functional is not None,
-                "functional_only": self.functional_only,
-            } if self.architecture_variant else {}),
+            candidate_cls = (
+                IterativeRetrievalPredictor
+                if self.functional_fusion_variant
+                == "mas_concat_v4_iterative"
+                else SingleRetrievalPredictor
+            )
+            self.architecture_label = (
+                f"functional_concat_{self.functional_fusion_variant}"
+            )
+            self.model = candidate_cls(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
             ).to(self.device)
         self.train_model = (
             torch.compile(self.model, mode=cfg.compile_mode) if cfg.compile else self.model
@@ -743,85 +639,67 @@ class LocusCLSJointTrainer:
         }
         return total, pieces
 
-    def _mean_aux_loss(self, cpg_ids: np.ndarray, mu_logit: torch.Tensor) -> torch.Tensor:
-        present = self.cpg_target_index.contains(cpg_ids)
-        if not present.any():
-            return mu_logit.sum() * 0.0
-        rows = self.cpg_target_index.positions_of(cpg_ids[present])
-        eps = 1e-4
-        target_mu_logit = torch.logit(
-            torch.from_numpy(self.cpg_target_mu[rows].astype(np.float32)).to(mu_logit.device).clamp(eps, 1 - eps)
-        )
-        present_t = torch.from_numpy(present).to(mu_logit.device)
-        return F.mse_loss(mu_logit[present_t], target_mu_logit)
-
-    def _residual_aux_loss(self, cpg_ids: np.ndarray, beta: torch.Tensor, residual_logit: torch.Tensor) -> torch.Tensor:
-        """Direct sample-locus supervision for h_raw (via residual_head),
-        symmetric to _mean_aux_loss's supervision of h_mean -- target is
-        logit(target_beta) - logit(target_mu), reusing the same per-locus
-        target_mu already loaded for the mean probe (no new data)."""
-        present = self.cpg_target_index.contains(cpg_ids)
-        if not present.any():
-            return residual_logit.sum() * 0.0
-        eps = 1e-4
-        target_mu_np = np.full(len(cpg_ids), np.nan, dtype=np.float32)
-        rows = self.cpg_target_index.positions_of(cpg_ids[present])
-        target_mu_np[present] = self.cpg_target_mu[rows].astype(np.float32)
-        target_mu = torch.from_numpy(target_mu_np).to(beta.device)
-        valid_locus = torch.isfinite(target_mu)
-        mask = torch.isfinite(beta) & valid_locus.unsqueeze(0)
-        if not bool(mask.any()):
-            return residual_logit.sum() * 0.0
-        safe_beta = torch.where(mask, beta, torch.full_like(beta, 0.5)).clamp(eps, 1 - eps)
-        safe_mu = torch.where(valid_locus, target_mu, torch.full_like(target_mu, 0.5)).clamp(eps, 1 - eps)
-        target_residual = torch.logit(safe_beta) - torch.logit(safe_mu).unsqueeze(0)
-        # Huber, not MSE: WGBS's per-patient beta is often near 0/1, where
-        # logit(beta)-logit(mu) can be huge -- a plain MSE on this target lets
-        # rare extreme cells dominate the whole loss (measured: ~20 vs ~0.9 on
-        # comparable Array blocks). Matches the canonical model's own
-        # residual_huber choice for exactly this reason (losses.py).
-        return masked_mean(
-            F.huber_loss(residual_logit, target_residual, reduction="none", delta=1.0), mask,
-        )
-
-    def _step(self, pool: TrainingPool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, functional_cpu, finite_count):
+    def _step(
+        self,
+        pool: TrainingPool,
+        sample_ids,
+        cpg_ids,
+        rna_cpu,
+        emb_cpu,
+        beta_cpu,
+        functional_cpu,
+        finite_count,
+    ):
         if finite_count == 0:
             return None
+
         h2d_start = torch.cuda.Event(enable_timing=True)
         h2d_end = torch.cuda.Event(enable_timing=True)
         compute_start = torch.cuda.Event(enable_timing=True)
+
         h2d_start.record()
-        rna_x = rna_cpu.to(self.device, non_blocking=True).float()
-        emb = emb_cpu.to(self.device, non_blocking=True).float()
-        beta = beta_cpu.to(self.device, non_blocking=True)
-        position_kwargs = self._position_kwargs(cpg_ids)
+        rna_x = rna_cpu.to(
+            self.device, non_blocking=True
+        ).float()
+        emb = emb_cpu.to(
+            self.device, non_blocking=True
+        ).float()
+        beta = beta_cpu.to(
+            self.device, non_blocking=True
+        )
         functional_kwargs = self._functional_kwargs(functional_cpu)
         h2d_end.record()
         compute_start.record()
+
         with self._autocast():
-            out = self.train_model(rna_x, emb, **position_kwargs, **functional_kwargs)
-            loss_cfg = loss_config_for_source(self.recipe.loss, pool.name, self.recipe.structured_loss_sources)
-            if self.paper_candidate_mode:
-                total, pieces = self._mas_concat_loss(out, beta, cpg_ids, loss_cfg)
-                pieces = {**pieces, "total_loss": total.detach()}
-                return total, pieces, h2d_start, h2d_end, compute_start
-            main_loss, pieces = _direct_beta_loss(out, beta, loss_cfg)
-            main_loss = main_loss * (float(finite_count) / max(float(beta.numel()), 1.0))
-            total = main_loss
-            aux_loss = None
-            if self.use_mean_branch and self.aux_weight != 0.0:
-                aux_loss = self._mean_aux_loss(cpg_ids, out["mu_logit"])
-                total = total + self.aux_weight * aux_loss
-            residual_aux_loss = None
-            if self.residual_aux_weight != 0.0:
-                residual_aux_loss = self._residual_aux_loss(cpg_ids, beta, out["residual_logit"])
-                total = total + self.residual_aux_weight * residual_aux_loss
-        pieces = {**pieces, "main_loss": main_loss.detach(), "total_loss": total.detach(), "observed": finite_count}
-        if aux_loss is not None:
-            pieces["aux_loss"] = aux_loss.detach()
-        if residual_aux_loss is not None:
-            pieces["residual_aux_loss"] = residual_aux_loss.detach()
-        return total, pieces, h2d_start, h2d_end, compute_start
+            out = self.train_model(
+                rna_x,
+                emb,
+                **functional_kwargs,
+            )
+            loss_cfg = loss_config_for_source(
+                self.recipe.loss,
+                pool.name,
+                self.recipe.structured_loss_sources,
+            )
+            total, pieces = self._mas_concat_loss(
+                out,
+                beta,
+                cpg_ids,
+                loss_cfg,
+            )
+
+        pieces = {
+            **pieces,
+            "total_loss": total.detach(),
+        }
+        return (
+            total,
+            pieces,
+            h2d_start,
+            h2d_end,
+            compute_start,
+        )
 
     def _functional_kwargs(self, functional_cpu) -> dict[str, torch.Tensor]:
         if functional_cpu is None:
@@ -937,21 +815,8 @@ class LocusCLSJointTrainer:
         opt_kwargs = {"weight_decay": cfg.weight_decay}
         if cfg.fused_adamw:
             opt_kwargs["fused"] = True
-        if self.raw_lr_multiplier != 1.0:
-            raw_params = [
-                *self.model.raw_branch.parameters(), *self.model.fusion.parameters(),
-                *self.model.rna_product.parameters(), *self.model.locus_product.parameters(),
-                *self.model.residual_head.parameters(),
-            ]
-            raw_param_ids = {id(p) for p in raw_params}
-            other_params = [p for p in self.model.parameters() if id(p) not in raw_param_ids]
-            groups = [
-                {"params": other_params, "lr": cfg.learning_rate},
-                {"params": raw_params, "lr": cfg.learning_rate * self.raw_lr_multiplier},
-            ]
-        else:
-            groups = list(self.model.parameters())
-            opt_kwargs["lr"] = cfg.learning_rate
+        groups = list(self.model.parameters())
+        opt_kwargs["lr"] = cfg.learning_rate
         try:
             optimizer = torch.optim.AdamW(groups, **opt_kwargs)
         except (TypeError, RuntimeError):

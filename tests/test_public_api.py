@@ -23,15 +23,11 @@ def test_public_api_exports_only_paper_facing_candidate_classes():
     assert mp.IterativeRetrievalPredictor is IterativeRetrievalPredictor
 
 
-def test_historical_root_models_remain_lazy_compatibility_only():
+def test_historical_root_models_are_removed():
     assert "FeatureFusionLocusCLSModel" not in mp.__all__
     assert "FeatureFusionArchitectureVariantModel" not in mp.__all__
-
-    assert mp.FeatureFusionLocusCLSModel.__name__ == "FeatureFusionLocusCLSModel"
-    assert (
-        mp.FeatureFusionArchitectureVariantModel.__name__
-        == "FeatureFusionArchitectureVariantModel"
-    )
+    assert not hasattr(mp, "FeatureFusionLocusCLSModel")
+    assert not hasattr(mp, "FeatureFusionArchitectureVariantModel")
 
 
 def test_main_recipe_is_exactly_the_resolved_j0_reference():
