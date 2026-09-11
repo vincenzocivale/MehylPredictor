@@ -30,3 +30,32 @@ and benchmark code are also retained until the paper experiment set is frozen.
 
 No core Python model/trainer code is removed in phase 1. Code pruning starts
 only after behavior-preserving regression tests are in place.
+
+## Phase 3a: paper-facing public cutover
+
+The public/core interface now points to:
+
+```python
+methylation_predictor.SingleRetrievalPredictor
+methylation_predictor.IterativeRetrievalPredictor
+```
+
+and the standalone reference recipe is:
+
+```text
+configs/models/main.yaml
+```
+
+`main.yaml` is regression-tested to resolve exactly to the historical
+`functional_fusion/j0_final.yaml` recipe during this migration.
+
+The README and CLI documentation now describe the functional-atlas + RNA
+retrieval method rather than the superseded NTv3/shared-backbone reference.
+
+The old `FeatureFusionLocusCLSModel` and
+`FeatureFusionArchitectureVariantModel` remain lazily reachable only as
+temporary compatibility infrastructure because surviving paper baselines and
+RNA-encoder comparators still depend on them. They are no longer exported as
+the public model API. Phase 3b will migrate the comparators that remain
+scientifically justified onto the functional-locus core before deleting the
+legacy family.

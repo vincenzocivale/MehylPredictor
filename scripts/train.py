@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Single training entrypoint for CpGStatisticsPredictor and the reference
-RNA-methylation model.
+"""Training entrypoint for methylation models.
 
-RNA-methylation training always uses the single-stage shared-backbone engine
-(FeatureFusionLocusCLSModel/FeatureFusionArchitectureVariantModel -- see
-docs/RNA_METHYLATION.md). ``--engine matched_chr1_shared_backbone`` additionally
-consumes the exact MethylProphet-matched chr1 preparation (``--prepared-root``);
-``--engine shared_backbone`` is the scope-agnostic form used for chr123/genomewide.
+The paper-facing RNA model is selected by ``configs/models/main.yaml`` and uses
+a functional CpG representation plus locus-conditioned retrieval from learned
+RNA program tokens. Historical ``--engine`` names are retained temporarily for
+CLI/checkpoint compatibility while trainer internals are refactored.
 """
 from __future__ import annotations
 import argparse, json
@@ -19,7 +17,7 @@ def _rna(args):
     if args.scope == "chr1" and not args.prepared_root:
         raise ValueError("matched_chr1_shared_backbone requires --prepared-root (matched_chr1 data root)")
     if not args.cpg_targets_dir:
-        raise ValueError("shared-backbone training requires --cpg-targets-dir (cpg_statistics targets, for the mean-branch proxy task)")
+        raise ValueError("RNA training requires --cpg-targets-dir (targets for the training-only mean-proxy task)")
     from methylation_predictor.rna_training.config import load_rna_recipe
     recipe_raw = load_rna_recipe(args.recipe).raw
     lc = recipe_raw.get("locus_cls", {})
@@ -68,7 +66,7 @@ def _stats(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--functional-atlas"); p.add_argument("--annotation-cache"); p.add_argument("--bigwig-cache",help="optional complete BigWig PCA context cache"); p.add_argument("--functional-only",action="store_true"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--query-source",choices=["ntv3","mean_only","hybrid_detached","hybrid_joint"],default=None,help="locus-attention query representation; experimental, default preserves recipe/reference"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); p.add_argument("--training-sources",default=None,help="comma-separated subset of array,epic,wgbs to restrict training to (paper section B.6 source ablation); array is always included; default is all three, unchanged from before this flag existed"); args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--functional-atlas"); p.add_argument("--annotation-cache"); p.add_argument("--bigwig-cache",help="optional complete BigWig PCA context cache"); p.add_argument("--functional-only",action="store_true"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--query-source",choices=["ntv3","mean_only","hybrid_detached","hybrid_joint"],default=None,help="legacy shared-backbone compatibility option; not used by paper-facing J0/J1 retrieval"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); p.add_argument("--training-sources",default=None,help="comma-separated subset of array,epic,wgbs to restrict training to (paper section B.6 source ablation); array is always included; default is all three, unchanged from before this flag existed"); args=p.parse_args()
     if args.model=="rna_methylation":
         for name in ("canonical_root","feature_cache","rna_cache"):
             if getattr(args,name) is None: p.error(f"--{name.replace('_','-')} is required for RNA training")

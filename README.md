@@ -1,51 +1,55 @@
 # MethylPredictor
 
-Research framework for reconstructing DNA methylation from bulk RNA with frozen
-NTv3 locus representations.
+MethylPredictor predicts patient-specific DNA methylation from bulk RNA using
+**reference functional information at each CpG locus**.
 
-The repository has **two canonical trainable models** and one shared genomic
-scope axis:
-
-- `CpGStatisticsPredictor`: NTv3 CpG embedding -> locus mean `mu` and logit-scale `sigma`;
-- `FeatureFusionLocusCLSModel`/`FeatureFusionArchitectureVariantModel`: RNA + CpG
-  embedding -> sample-specific methylation `beta_hat` directly (single-stage
-  shared backbone, no explicit prior/residual composition);
-- scopes: `chr1`, `chr123` (`chr1 ∪ chr2 ∪ chr3`) and `genomewide`.
-
-The primary/reference architecture as of 2026-09-05 is the single-stage
-shared-backbone model with a locus-conditioned RNA-attention encoder:
+The paper-facing model does not require a genomic foundation-model embedding as
+its locus representation.  Instead, each CpG is represented from a sparse
+regulatory atlas and static genomic annotations, and that locus representation
+retrieves patient-specific information from learned RNA program tokens.
 
 ```text
-CpG reference context -> frozen NTv3 1536-D embedding e_l -> CpGTrunk -> h_mean_l
-patient RNA x_s -> 64 learned RNA tokens -> cross-attention over e_l -> r_s,l
-[r_s,l, e_l] -> raw interaction branch h_raw_s,l
-[h_mean_l, h_raw_s,l] -> fusion -> beta_hat_s,l
+reference functional atlas
+        |
+        v
+  functional locus encoder -----> training-only mean proxy
+        |
+        | query
+        v
+RNA --> program tokens --> locus-conditioned retrieval
+                              |
+                              v
+                    [locus ; RNA context]
+                              |
+                              v
+                         beta prediction
 ```
 
-See `docs/RNA_METHYLATION.md` for the full architecture history (including the
-earlier two-stage frozen-prior + residual generation, retired) and the ongoing
-RNA-encoder comparison harness.
+The public model API is:
 
-## Frozen reference results
+```python
+from methylation_predictor import (
+    SingleRetrievalPredictor,
+    IterativeRetrievalPredictor,
+)
+```
 
-The current shared-backbone chr1 reference (Array + EPIC + WGBS; LR `5e-5`,
-constant scheduler, seed 17) reaches, on the official MethylProphet chr1 split
--- a **lower bound**, stopped at epoch 47/80:
+`SingleRetrievalPredictor` is the current reference configuration.
+`IterativeRetrievalPredictor` is the matched deeper-retrieval candidate.
 
-- train-CpG × val-sample: **0.6431 / 0.01351**
-- val-CpG × train-sample: **0.6081 / 0.01613**
-- val-CpG × val-sample: **0.5627 / 0.01702**
+See [`docs/MODEL.md`](docs/MODEL.md) for the exact equations and architecture.
 
-The chr123/genome-wide numbers in `results/reference/rna_methylation/` predate
-this architecture (produced by the retired two-stage engine) and are pending a
-shared-backbone rerun -- see `docs/PAPER_EXPERIMENTS.md` for current status.
+## Repository status
 
-Machine-readable references live in `results/reference/`. `chr1` is the
-MethylProphet-comparison scope (official split independently verified against
-the released MethylProphet evaluation artifact — see
-`docs/BENCHMARK_METHYLPROPHET.md`); `genomewide` is the general benchmark.
-`chr123` is a usable general scope but not currently a verified MethylProphet
-comparison.
+This branch is being reduced from the original research-history repository into
+the paper reproducibility repository.  The current core model and functional
+input path are already paper-facing.  Some legacy shared-backbone code remains
+temporarily because surviving baselines and RNA-encoder comparators still
+depend on it; those comparators will be migrated before the legacy model family
+is removed.
+
+The historical experiment names remain available through Git history and the
+original research branch, not as the primary public interface.
 
 ## Installation
 
@@ -56,83 +60,143 @@ python -m pip install -r requirements-genomics.txt
 python -m pip install -e .
 ```
 
-## Unified workflows
+## Reference configuration
 
-Prepare technology-aware static CpG targets, then the RNA model's input cache:
-
-```bash
-python scripts/prepare.py --model cpg_statistics \
-  --canonical-root "$TCGA_CANONICAL_ROOT" \
-  --registry "$TCGA_CANONICAL_ROOT/registries/array_cpg_map.parquet" \
-  --scope genomewide \
-  --output /path/to/derived/cpg_statistics/genomewide
-
-python scripts/prepare.py --model rna_methylation \
-  --checkpoint /path/to/cpg_statistics/best.pt \
-  --targets /path/to/derived/cpg_statistics/genomewide \
-  --embeddings /path/to/ntv3_cpg_atlas_v1.h5 \
-  --output /path/to/derived/rna_cache/genomewide
-```
-
-Train either model. RNA-methylation always uses the shared-backbone engine
-(`--engine matched_chr1_shared_backbone` for the exact chr1 MethylProphet
-preparation, `--engine shared_backbone` for chr123/genome-wide):
-
-```bash
-python scripts/train.py --model cpg_statistics --scope genomewide \
-  --recipe configs/models/cpg_statistics.yaml ...
-
-python scripts/train.py --model rna_methylation --scope chr123 \
-  --engine shared_backbone \
-  --recipe configs/models/rna_methylation_locus_attention.yaml \
-  --cpg-targets-dir /path/to/derived/cpg_statistics/chr123 ...
-```
-
-Tune LR/scheduler/epoch budget without opening official benchmark validation
-cells:
-
-```bash
-python scripts/tune.py --model rna_methylation --scope chr123 \
-  --cpg-targets-dir /path/to/derived/cpg_statistics/chr123 \
-  --lrs 2e-5,5e-5,8e-5 --schedulers constant,cosine_warmup \
-  --max-epochs 80 ...
-```
-
-Evaluate any RNA checkpoint on any genomic scope:
-
-```bash
-python scripts/evaluate.py --model rna_methylation \
-  --checkpoint /path/to/best.pt --eval-scope genomewide \
-  --cpg-targets-dir /path/to/derived/cpg_statistics/genomewide ...
-```
-
-The full 3×3 train/evaluation scope matrix is supported. Same-scope chr1 and
-chr123 cells are matched MethylProphet benchmarks; cross-scope cells quantify
-generalization.
-
-## Output layout
-
-Generated runs and searches are outside version control:
+The standalone paper-facing recipe is:
 
 ```text
-runs/<model>/<train-scope>/<run-id>/
-  config.resolved.yaml
-  metadata.json
-  checkpoints/
-  training/
-  evaluation/<eval-scope>/
-  logs/
-
-searches/<model>/<scope>/<search-id>/
-  search_config.yaml
-  candidates.csv
-  selected.json
-  runs/
+configs/models/main.yaml
 ```
 
-See `docs/WORKFLOWS.md` for protocol details, `docs/RNA_METHYLATION.md` and
-`docs/CPG_STATISTICS.md` for the two model architectures, `docs/BENCHMARKS.md`
-for the full reference-result tables, and `docs/BENCHMARK_METHYLPROPHET.md`
-for the chr1 MethylProphet-matched data preparation/split verification. Legacy
-Table-5/cache names may remain inside prepared-data provenance paths, but they
-are not public experiment identities.
+It is regression-tested to resolve exactly to the current J0 reference recipe
+during the migration.
+
+The reference architecture uses:
+
+- 4,165 sparse regulatory tracks;
+- 23 dense locus annotations;
+- 256-dimensional functional locus representations;
+- 64 learned RNA program tokens of width 256;
+- 4-head locus-to-RNA cross-attention;
+- a training-only mean-proxy head;
+- a 512 -> 256 -> 128 -> 1 beta regressor with dropout 0.15.
+
+The reference objective is:
+
+```text
+beta MSE + 0.15 * locus-PCC loss + 0.15 * mean-proxy loss
+```
+
+## Data inputs
+
+RNA training currently consumes the canonical TCGA data preparation together
+with:
+
+```text
+--functional-atlas   sparse ENCODE regulatory-track atlas
+--annotation-cache   static/breadth CpG annotation cache
+--rna-cache          normalized RNA cache
+--cpg-targets-dir    training-locus mean targets for the auxiliary mean proxy
+```
+
+The current trainer still accepts some legacy cache arguments for compatibility
+with benchmark/evaluation infrastructure.  Those legacy arguments are not part
+of the J0/J1 locus representation and will be removed as the data/trainer
+refactor proceeds.
+
+The sparse functional input is provided by:
+
+```python
+methylation_predictor.storage.FunctionalLocusCache
+```
+
+which preserves CSR-style track lookup and does not densify the full
+locus-by-track matrix.
+
+## Train
+
+Example for the exact matched chr1 protocol:
+
+```bash
+python scripts/train.py \
+  --model rna_methylation \
+  --scope chr1 \
+  --recipe configs/models/main.yaml \
+  --mode final \
+  --canonical-root "$TCGA_CANONICAL_ROOT" \
+  --registry "$REGISTRY" \
+  --rna-cache "$RNA_CACHE" \
+  --feature-cache "$LEGACY_FEATURE_CACHE" \
+  --cpg-targets-dir "$CPG_TARGETS" \
+  --functional-atlas "$FUNCTIONAL_ATLAS" \
+  --annotation-cache "$ANNOTATION_CACHE" \
+  --prepared-root "$MATCHED_CHR1_ROOT" \
+  --output-root "$RUN_ROOT" \
+  --run-id functional-reference-seed17
+```
+
+`--feature-cache` is still required by transitional trainer/evaluation plumbing;
+the paper-facing J0/J1 forward pass ignores genomic/FM embeddings.
+
+## Evaluate
+
+```bash
+python scripts/evaluate.py \
+  --model rna_methylation \
+  --checkpoint "$CHECKPOINT" \
+  --recipe configs/models/main.yaml \
+  --eval-scope chr1 \
+  --canonical-root "$TCGA_CANONICAL_ROOT" \
+  --registry "$REGISTRY" \
+  --rna-cache "$RNA_CACHE" \
+  --feature-cache "$LEGACY_FEATURE_CACHE" \
+  --cpg-targets-dir "$CPG_TARGETS" \
+  --functional-atlas "$FUNCTIONAL_ATLAS" \
+  --annotation-cache "$ANNOTATION_CACHE" \
+  --prepared-root "$MATCHED_CHR1_ROOT" \
+  --output "$OUTPUT_JSON"
+```
+
+RNA evaluation reports the official sample/CpG generalization views, including
+the double-OOD validation-CpG x validation-sample setting.
+
+## Paper-facing layout
+
+```text
+src/methylation_predictor/
+    modeling/
+        reference.py
+        retrieval.py
+        rna.py
+    storage.py
+    rna_training/
+
+configs/models/
+    main.yaml
+    functional_fusion/
+        j0_final.yaml
+        j1_iterative.yaml
+
+docs/
+    MODEL.md
+    REPOSITORY_SCOPE.md
+    REFACTORING_CONTRACT.md
+```
+
+Benchmark-specific code is kept isolated under
+`methylation_predictor/benchmark/` and `scripts/benchmark_*`.
+
+## Reproducibility refactor
+
+The refactor contract is documented in
+[`docs/REFACTORING_CONTRACT.md`](docs/REFACTORING_CONTRACT.md).  The intended
+final repository boundary is documented in
+[`docs/REPOSITORY_SCOPE.md`](docs/REPOSITORY_SCOPE.md).
+
+Current priorities after the public/core cutover are:
+
+1. migrate claim-driven mean-proxy ablations onto the functional model;
+2. migrate paper baselines onto the same functional locus representation;
+3. migrate any retained RNA-encoder comparisons;
+4. remove the remaining shared-backbone architecture-search infrastructure;
+5. consolidate data preparation and paper-table reproduction commands.
