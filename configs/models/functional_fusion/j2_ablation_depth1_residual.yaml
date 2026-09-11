@@ -1,0 +1,48 @@
+extends: base.yaml
+# Depth-vs-residual ablation, cell A (2026-09-11): n_blocks=1, attn_residual=true.
+# Same depth as J0 (j0_final.yaml) but with J1's per-block residual added.
+# Isolates whether the RESIDUAL alone (no extra retrieval depth) already
+# produces most of J1's training-loss gain over J0 -- see
+# src/methylation_predictor/modeling/ablation.py's module docstring for the
+# full 2x2 (depth x residual) design and rationale. Otherwise byte-for-byte
+# identical to j0_final.yaml/j1_iterative.yaml: functional encoder, mean
+# head, RNA encoder, final MLP, loss, optimizer, LR, batching, data pools,
+# seed, epochs, TRUE chr1 mode=final protocol.
+model: {functional_fusion_variant: ablation_depth1_residual}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, depth1-residual, chr1-final]

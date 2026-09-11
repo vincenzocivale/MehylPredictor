@@ -48,6 +48,7 @@ from ..models import (
     is_architecture_variant,
 )
 from ..modeling import (
+    DepthResidualAblationPredictor,
     FunctionalBaselinePredictor,
     IterativeRetrievalPredictor,
     RNAEncoderComparisonPredictor,
@@ -321,6 +322,14 @@ class LocusCLSJointTrainer:
         # Paper-facing functional-locus candidates. Historical H-ladder variants
         # (mas_concat_v1 / mas_concat_v2_detached) were removed with the
         # research-history surface and are intentionally no longer dispatchable.
+        # ablation_depth1_residual / ablation_depth4_noresidual: the
+        # depth-vs-residual ablation (docs/RNA_METHYLATION.md) disentangling
+        # J0/J1's two confounded architectural axes -- see
+        # modeling/ablation.py's module docstring.
+        self.ablation_variants = {
+            "ablation_depth1_residual": {"n_blocks": 1, "attn_residual": True},
+            "ablation_depth4_noresidual": {"n_blocks": 4, "attn_residual": False},
+        }
         self.paper_candidate_mode = (
             self.functional_fusion_variant in {
                 "mas_concat_v3_purecontext",
@@ -329,6 +338,7 @@ class LocusCLSJointTrainer:
             or self.functional_fusion_variant in BASELINE_VARIANTS
             or self.functional_fusion_variant
             == "functional_rna_encoder_comparison"
+            or self.functional_fusion_variant in self.ablation_variants
         )
         if self.paper_candidate_mode:
             if residual_aux_weight != 0.0:
@@ -381,6 +391,14 @@ class LocusCLSJointTrainer:
                     final_regressor_dropout=final_regressor_dropout,
                     use_mean_proxy=use_mean_branch,
                 ).to(self.device)
+            elif self.functional_fusion_variant in self.ablation_variants:
+                self.model = DepthResidualAblationPredictor(
+                    self.rna.values.shape[1],
+                    self.recipe.model,
+                    final_regressor_dropout=final_regressor_dropout,
+                    use_mean_proxy=use_mean_branch,
+                    **self.ablation_variants[self.functional_fusion_variant],
+                ).to(self.device)
             else:
                 candidate_cls = (
                     IterativeRetrievalPredictor
@@ -399,8 +417,9 @@ class LocusCLSJointTrainer:
                 "unsupported functional_fusion_variant "
                 f"{self.functional_fusion_variant!r}; paper-facing variants are "
                 "'mas_concat_v3_purecontext', 'mas_concat_v4_iterative', "
-                "'functional_rna_encoder_comparison', and the "
-                "functional_baseline_* comparison variants"
+                "'functional_rna_encoder_comparison', the "
+                "functional_baseline_* comparison variants, and "
+                f"{sorted(self.ablation_variants)}"
             )
         else:
             self.model = model_cls(
