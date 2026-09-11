@@ -134,3 +134,24 @@ comparison arms.
 Historical shared-backbone RNA-encoder configs and recorded result ledgers are
 retained unchanged for provenance. Fresh functional-matched results must use
 the new `functional_*` recipes and fresh run IDs.
+
+## Phase 3b3b: functional RNA-encoder execution harness
+
+The executable RNA-encoder runner and collector now target only the
+functional-matched comparison introduced in phase 3b3a.
+
+The migrated runner:
+
+- is chr1-only;
+- passes the frozen functional atlas and annotation cache explicitly;
+- always uses `--functional-only`;
+- selects canonical RNA, BulkFormer, or BulkRNABert sample caches explicitly;
+- uses fresh `functional-rnaenc-*` run IDs;
+- supports `--print-commands` for command-level audit before GPU execution.
+
+The collector writes to a new
+`functional_rna_encoder_comparison_2026_09` result directory and never mixes
+historical shared-backbone metrics with the new functional comparison.
+
+Historical result ledgers and historical recipes remain untouched for
+provenance; their old executable runner logic has been retired.
