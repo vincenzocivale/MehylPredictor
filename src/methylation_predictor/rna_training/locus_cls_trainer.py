@@ -45,6 +45,7 @@ from ..modeling import (
     DepthResidualAblationPredictor,
     EfficientSingleAttentionPredictor,
     FunctionalBaselinePredictor,
+    GatedResidualPredictor,
     IterativeRetrievalPredictor,
     RNAEncoderComparisonPredictor,
     SingleRetrievalPredictor,
@@ -275,6 +276,13 @@ class LocusCLSJointTrainer:
         self.efficient_variants = {
             "efficient_single_attn_residual_ffn": {"n_ffn_blocks": 4},
         }
+        # ablation_depth1_gated_residual: J6, Flamingo-style learned scalar
+        # gate on J1's per-block residual add instead of an unconditional
+        # one (n_blocks=1, matching ablation_depth1_residual's depth). See
+        # modeling/ablation.py's module docstring (GatedResidualPredictor).
+        self.gated_variants = {
+            "ablation_depth1_gated_residual": {"n_blocks": 1},
+        }
         allowed_variants = {
             "mas_concat_v3_purecontext",
             "mas_concat_v4_iterative",
@@ -282,6 +290,7 @@ class LocusCLSJointTrainer:
             *BASELINE_VARIANTS,
             *self.ablation_variants,
             *self.efficient_variants,
+            *self.gated_variants,
         }
         if not self.functional_only or self.functional is None:
             raise ValueError(
@@ -368,6 +377,15 @@ class LocusCLSJointTrainer:
                 final_regressor_dropout=final_regressor_dropout,
                 use_mean_proxy=use_mean_branch,
                 **self.efficient_variants[self.functional_fusion_variant],
+            ).to(self.device)
+        elif self.functional_fusion_variant in self.gated_variants:
+            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
+            self.model = GatedResidualPredictor(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
+                **self.gated_variants[self.functional_fusion_variant],
             ).to(self.device)
         else:
             candidate_cls = (
