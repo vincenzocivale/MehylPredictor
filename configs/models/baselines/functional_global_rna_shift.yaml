@@ -1,0 +1,12 @@
+# Functional-matched paper baseline.
+# Same functional encoder, ProgramTokenEncoder, mean-proxy task, loss and
+# training protocol as main.yaml. RNA contributes only one patient-global
+# logit shift, so there is no patient-by-locus RNA interaction.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_baseline_global_shift
+
+tracking:
+  group: functional_baselines_2026_09
+  tags: [functional-only, baseline, global-rna-shift]

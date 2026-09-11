@@ -1,0 +1,11 @@
+# Functional-matched paper baseline.
+# The same RNA program tokens are globally pooled once per patient and
+# concatenated with functional h_c in a generic MLP.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_baseline_mlp
+
+tracking:
+  group: functional_baselines_2026_09
+  tags: [functional-only, baseline, global-rna-mlp]

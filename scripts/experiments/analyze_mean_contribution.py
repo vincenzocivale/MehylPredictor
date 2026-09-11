@@ -296,7 +296,7 @@ def checkpoint_mode(args) -> int:
             for name, (sample_ids, cpg_ids) in views.items()
         }
         result = {
-            "study": "mean_contribution_2026_09",
+            "study": "mean_contribution_functional_2026_09",
             "scope": args.scope,
             "checkpoint": str(args.checkpoint),
             "checkpoint_epoch": ckpt.get("epoch"),
@@ -373,7 +373,7 @@ def dataset_mode(args) -> int:
     try:
         source = sources["array"]
         result = {
-            "study": "mean_contribution_2026_09",
+            "study": "mean_contribution_functional_2026_09",
             "definition": "Exact missing-aware law-of-total-variance decomposition across CpGs, weighted by observed cells.",
             "train_cpg_x_train_sample": _variance_decomposition(
                 source,

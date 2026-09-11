@@ -83,3 +83,28 @@ The migrated experiment uses a new study name and new run IDs; historical
 shared-backbone results therefore cannot be silently mistaken for functional
 J0 results. The migrated harness is intentionally chr1-only until equivalent
 functional-atlas coverage is frozen for broader scopes.
+
+
+## Phase 3b2: functional-matched internal baselines
+
+Three new internal baselines now share the paper-facing functional locus
+encoder, RNA `ProgramTokenEncoder`, mean-proxy task, loss, optimizer, batching,
+and chr1 protocol with `main.yaml`.
+
+```text
+functional_global_rna_shift
+    locus logit + one patient-global RNA logit shift
+
+functional_mlp_rna_cpg
+    [functional h_c ; globally pooled RNA tokens] -> MLP
+
+functional_bilinear_rna_cpg
+    [functional h_c ; U(h_c) * V(global RNA)] -> MLP
+```
+
+These isolate the value of locus-conditioned RNA retrieval instead of
+confounding the comparison with a different CpG representation.
+
+The older shared-backbone baseline recipes and their recorded result ledger are
+retained unchanged for provenance until the new baselines are run. Fresh run
+IDs are registered in `scripts/experiments/functional_baseline_suite.py`.

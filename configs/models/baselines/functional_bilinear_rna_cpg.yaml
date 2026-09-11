@@ -1,0 +1,10 @@
+# Functional-matched paper baseline.
+# Pooled RNA and h_c interact through U(h_c) * V(g_p), with no token retrieval.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_baseline_bilinear
+
+tracking:
+  group: functional_baselines_2026_09
+  tags: [functional-only, baseline, bilinear-rna-cpg]

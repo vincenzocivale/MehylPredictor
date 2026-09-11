@@ -47,7 +47,12 @@ from ..models import (
     feature_fusion_variant_label,
     is_architecture_variant,
 )
-from ..modeling import IterativeRetrievalPredictor, SingleRetrievalPredictor
+from ..modeling import (
+    FunctionalBaselinePredictor,
+    IterativeRetrievalPredictor,
+    SingleRetrievalPredictor,
+)
+from ..modeling.baselines import BASELINE_VARIANTS
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
@@ -315,9 +320,12 @@ class LocusCLSJointTrainer:
         # Paper-facing functional-locus candidates. Historical H-ladder variants
         # (mas_concat_v1 / mas_concat_v2_detached) were removed with the
         # research-history surface and are intentionally no longer dispatchable.
-        self.paper_candidate_mode = self.functional_fusion_variant in (
-            "mas_concat_v3_purecontext",
-            "mas_concat_v4_iterative",
+        self.paper_candidate_mode = (
+            self.functional_fusion_variant in {
+                "mas_concat_v3_purecontext",
+                "mas_concat_v4_iterative",
+            }
+            or self.functional_fusion_variant in BASELINE_VARIANTS
         )
         if self.paper_candidate_mode:
             if residual_aux_weight != 0.0:
@@ -342,22 +350,34 @@ class LocusCLSJointTrainer:
                 )
             )
 
-            candidate_cls = (
-                IterativeRetrievalPredictor
-                if self.functional_fusion_variant == "mas_concat_v4_iterative"
-                else SingleRetrievalPredictor
-            )
-            self.model = candidate_cls(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-            ).to(self.device)
+            if self.functional_fusion_variant in BASELINE_VARIANTS:
+                self.architecture_label = self.functional_fusion_variant
+                self.model = FunctionalBaselinePredictor(
+                    self.rna.values.shape[1],
+                    self.recipe.model,
+                    variant=self.functional_fusion_variant,
+                    final_regressor_dropout=final_regressor_dropout,
+                    use_mean_proxy=use_mean_branch,
+                ).to(self.device)
+            else:
+                candidate_cls = (
+                    IterativeRetrievalPredictor
+                    if self.functional_fusion_variant
+                    == "mas_concat_v4_iterative"
+                    else SingleRetrievalPredictor
+                )
+                self.model = candidate_cls(
+                    self.rna.values.shape[1],
+                    self.recipe.model,
+                    final_regressor_dropout=final_regressor_dropout,
+                    use_mean_proxy=use_mean_branch,
+                ).to(self.device)
         elif self.functional_fusion_variant:
             raise ValueError(
                 "unsupported functional_fusion_variant "
                 f"{self.functional_fusion_variant!r}; paper-facing variants are "
-                "'mas_concat_v3_purecontext' and 'mas_concat_v4_iterative'"
+                "'mas_concat_v3_purecontext', 'mas_concat_v4_iterative', "
+                "and the functional_baseline_* comparison variants"
             )
         else:
             self.model = model_cls(
