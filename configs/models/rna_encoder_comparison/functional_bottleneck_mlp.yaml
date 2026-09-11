@@ -1,0 +1,18 @@
+# Functional-matched RNA encoder comparison: MethylProphet-style B_6-Wi_1024.
+# The global 256-D output is lifted to the same 64x256 token contract before
+# the unchanged J0 locus-conditioned retrieval.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_rna_encoder_comparison
+  encoder:
+    kind: bottleneck_mlp
+    hidden_dim: 1024
+    n_blocks: 6
+    mlp_ratio: 4
+    dropout: 0.1
+    layer_norm: true
+
+tracking:
+  group: functional_rna_encoder_comparison_2026_09
+  tags: [functional-only, rna-encoder, methylprophet-bottleneck-mlp]

@@ -108,3 +108,29 @@ confounding the comparison with a different CpG representation.
 The older shared-backbone baseline recipes and their recorded result ledger are
 retained unchanged for provenance until the new baselines are run. Fresh run
 IDs are registered in `scripts/experiments/functional_baseline_suite.py`.
+
+## Phase 3b3a: functional-matched RNA encoder comparison
+
+RNA encoder comparisons now have a paper-facing implementation that keeps the
+functional locus representation and J0 retrieval stack fixed.
+
+Every arm emits the same `[patient, 64, 256]` program-token contract before
+the unchanged locus-conditioned retrieval:
+
+```text
+ours             canonical RNA -> ProgramTokenEncoder -> 64x256 tokens
+BottleneckMLP    canonical RNA -> MP-style global encoder -> token lift
+GenePathway      canonical RNA -> sparse pathway encoder -> token lift
+BulkFormer       frozen sample embedding -> thin adapter -> token lift
+BulkRNABert      frozen sample embedding -> thin adapter -> token lift
+```
+
+`RNAEncoderComparisonPredictor` constructs the production J0 downstream stack
+with the canonical 25,017-gene reference input before replacing only the RNA
+encoder. Therefore the functional CpG encoder, retrieval attention, mean-proxy
+head and final regressor retain bit-identical same-seed initialization across
+comparison arms.
+
+Historical shared-backbone RNA-encoder configs and recorded result ledgers are
+retained unchanged for provenance. Fresh functional-matched results must use
+the new `functional_*` recipes and fresh run IDs.

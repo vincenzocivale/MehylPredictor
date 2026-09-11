@@ -1,0 +1,16 @@
+# Functional-matched RNA encoder comparison: SurvPath-style gene->pathway.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_rna_encoder_comparison
+  encoder:
+    kind: gene_pathway
+    dropout: 0.1
+    layer_norm: false
+    pathway_membership_path: resources/pathways/survpath_combine_tcga.npz
+    pathway_dim1: 8
+    pathway_dim2: 16
+
+tracking:
+  group: functional_rna_encoder_comparison_2026_09
+  tags: [functional-only, rna-encoder, gene-pathway]

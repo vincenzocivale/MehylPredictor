@@ -1,0 +1,9 @@
+# Functional-matched RNA encoder comparison: production J0 RNA token encoder.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_rna_encoder_comparison
+
+tracking:
+  group: functional_rna_encoder_comparison_2026_09
+  tags: [functional-only, rna-encoder, ours-program-tokens]

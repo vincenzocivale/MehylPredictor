@@ -50,6 +50,7 @@ from ..models import (
 from ..modeling import (
     FunctionalBaselinePredictor,
     IterativeRetrievalPredictor,
+    RNAEncoderComparisonPredictor,
     SingleRetrievalPredictor,
 )
 from ..modeling.baselines import BASELINE_VARIANTS
@@ -326,6 +327,8 @@ class LocusCLSJointTrainer:
                 "mas_concat_v4_iterative",
             }
             or self.functional_fusion_variant in BASELINE_VARIANTS
+            or self.functional_fusion_variant
+            == "functional_rna_encoder_comparison"
         )
         if self.paper_candidate_mode:
             if residual_aux_weight != 0.0:
@@ -359,6 +362,25 @@ class LocusCLSJointTrainer:
                     final_regressor_dropout=final_regressor_dropout,
                     use_mean_proxy=use_mean_branch,
                 ).to(self.device)
+            elif (
+                self.functional_fusion_variant
+                == "functional_rna_encoder_comparison"
+            ):
+                source = self.recipe.model.encoder.frozen_embedding_source
+                suffix = (
+                    f"-{source}"
+                    if source
+                    else f"-{self.recipe.model.encoder.kind}"
+                )
+                self.architecture_label = (
+                    "functional_rna_encoder_comparison" + suffix
+                )
+                self.model = RNAEncoderComparisonPredictor(
+                    self.rna.values.shape[1],
+                    self.recipe.model,
+                    final_regressor_dropout=final_regressor_dropout,
+                    use_mean_proxy=use_mean_branch,
+                ).to(self.device)
             else:
                 candidate_cls = (
                     IterativeRetrievalPredictor
@@ -377,7 +399,8 @@ class LocusCLSJointTrainer:
                 "unsupported functional_fusion_variant "
                 f"{self.functional_fusion_variant!r}; paper-facing variants are "
                 "'mas_concat_v3_purecontext', 'mas_concat_v4_iterative', "
-                "and the functional_baseline_* comparison variants"
+                "'functional_rna_encoder_comparison', and the "
+                "functional_baseline_* comparison variants"
             )
         else:
             self.model = model_cls(

@@ -1,0 +1,14 @@
+# Functional-matched RNA encoder comparison: frozen BulkFormer-147M embedding.
+# Use an RNACache prepared by scripts/prepare_bulkformer_embeddings.py.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: functional_rna_encoder_comparison
+  encoder:
+    kind: frozen_embedding
+    layer_norm: true
+    frozen_embedding_source: bulkformer_147m
+
+tracking:
+  group: functional_rna_encoder_comparison_2026_09
+  tags: [functional-only, rna-encoder, frozen, bulkformer-147m]
