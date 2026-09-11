@@ -43,6 +43,7 @@ from ..losses import locus_correlation_loss, masked_mean, sample_correlation_los
 from ..config import TrainingConfig
 from ..modeling import (
     DepthResidualAblationPredictor,
+    EfficientSingleAttentionPredictor,
     FunctionalBaselinePredictor,
     IterativeRetrievalPredictor,
     RNAEncoderComparisonPredictor,
@@ -250,11 +251,37 @@ class LocusCLSJointTrainer:
         self._fusion_init_std = float(fusion_init_std)
         # Paper-facing functional-locus models only. The historical
         # FeatureFusion shared-backbone family has been removed from the repo.
+        # ablation_depth1_residual / ablation_depth4_noresidual: the
+        # depth-vs-residual ablation (docs/RNA_METHYLATION.md) disentangling
+        # J0/J1's two confounded architectural axes -- see
+        # modeling/ablation.py's module docstring.
+        self.ablation_variants = {
+            "ablation_depth1_residual": {"n_blocks": 1, "attn_residual": True},
+            "ablation_depth4_noresidual": {"n_blocks": 4, "attn_residual": False},
+            # 2026-09-11: how far the classic (attn_residual=True) J1-style
+            # depth ladder can go on one RTX PRO 5000 -- see the VRAM-scaling
+            # note this same date in modeling/ablation.py's module docstring.
+            # Not run yet; smoke-test each before the full 80-epoch launch.
+            "ablation_depth8_residual": {"n_blocks": 8, "attn_residual": True},
+            "ablation_depth10_residual": {"n_blocks": 10, "attn_residual": True},
+            "ablation_depth12_residual": {"n_blocks": 12, "attn_residual": True},
+        }
+        # efficient_single_attn_residual_ffn: J4, a follow-up candidate (not
+        # a diagnostic cell) once ablation_depth1_residual supports "the
+        # residual matters, not the repeated attention" -- single
+        # cross-attention + residual, then n_ffn_blocks FFN-only residual
+        # blocks (default 4, matching J1's total FFN depth). See
+        # modeling/ablation.py's module docstring.
+        self.efficient_variants = {
+            "efficient_single_attn_residual_ffn": {"n_ffn_blocks": 4},
+        }
         allowed_variants = {
             "mas_concat_v3_purecontext",
             "mas_concat_v4_iterative",
             "functional_rna_encoder_comparison",
             *BASELINE_VARIANTS,
+            *self.ablation_variants,
+            *self.efficient_variants,
         }
         if not self.functional_only or self.functional is None:
             raise ValueError(
@@ -323,6 +350,24 @@ class LocusCLSJointTrainer:
                 self.recipe.model,
                 final_regressor_dropout=final_regressor_dropout,
                 use_mean_proxy=use_mean_branch,
+            ).to(self.device)
+        elif self.functional_fusion_variant in self.ablation_variants:
+            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
+            self.model = DepthResidualAblationPredictor(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
+                **self.ablation_variants[self.functional_fusion_variant],
+            ).to(self.device)
+        elif self.functional_fusion_variant in self.efficient_variants:
+            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
+            self.model = EfficientSingleAttentionPredictor(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
+                **self.efficient_variants[self.functional_fusion_variant],
             ).to(self.device)
         else:
             candidate_cls = (

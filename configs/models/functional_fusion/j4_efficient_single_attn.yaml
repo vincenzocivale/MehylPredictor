@@ -1,0 +1,55 @@
+extends: base.yaml
+# Efficient single-attention candidate (2026-09-11, J4): single locus<-RNA
+# cross-attention + J1's residual add, followed by 4 FFN-only residual
+# blocks (n_ffn_blocks=4, matching J1's total FFN depth). Follow-up to the
+# depth-vs-residual ablation (j2_ablation_depth1_residual.yaml,
+# j3_ablation_depth4_noresidual.yaml): tests whether J1's gain survives
+# paying the expensive cross-attention op only ONCE instead of 4x -- see
+# src/methylation_predictor/modeling/ablation.py's module docstring.
+# Otherwise byte-for-byte identical to j0_final.yaml/j1_iterative.yaml:
+# functional encoder, mean head, RNA encoder, final MLP, loss, optimizer,
+# LR, batching, data pools, seed, epochs, TRUE chr1 mode=final protocol.
+model: {functional_fusion_variant: efficient_single_attn_residual_ffn}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  # Tried doubling sample_size on this machine's Blackwell GPU (VRAM
+  # headroom is real: 16.5GB -> 32.7GB peak), but a same-epoch smoke test
+  # showed IDENTICAL wall-clock (177.8s vs 179.0s) -- epoch time here is
+  # bottlenecked by HDF5 data loading, not GPU compute, so a bigger batch
+  # buys nothing and only costs VRAM headroom and protocol-matching with
+  # J0-J3. Reverted to the exact J0-J3 batching.
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, efficient-single-attn, chr1-final]

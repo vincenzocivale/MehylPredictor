@@ -22,6 +22,28 @@ its own -- this module isolates the two axes cleanly:
 Everything else (functional encoder, mean head, final regressor, loss,
 training protocol) is identical to J0/J1 -- see their docstrings in
 ``reference.py``.
+
+``EfficientSingleAttentionPredictor`` (2026-09-11, J4) is a follow-up
+candidate, not a diagnostic cell: once the ``ablation_depth1_residual``
+result above supports "the residual matters, repeating cross-attention
+doesn't", it tests whether J1's gain survives paying the expensive
+cross-attention op only ONCE instead of 4x. It runs a single
+locus<-RNA cross-attention with J1's residual add, then refines that
+state through ``n_ffn_blocks`` (default 4, matching J1's total FFN depth)
+residual FFN blocks with no further attention -- same residual-block
+depth as J1, 4x fewer cross-attention evaluations (the dominant cost at
+genome-wide CpG counts).
+
+VRAM scaling with ``n_blocks`` (2026-09-11, one RTX PRO 5000, isolated
+process, the real array-pool batch 640x640 which is the binding case --
+it is never gradient-checkpointed, unlike epic/wgbs whose cpg_size exceeds
+``LOCUS_CHUNK``): peak memory is ~linear, roughly 3.0 + 4.3*n_blocks GB
+(measured n_blocks=4 -> 20.17GB, n_blocks=6 -> 28.77GB; n_blocks=8 OOM'd
+when an unrelated ~17GB was already in use by another process on the same
+GPU). Re-verify empirically before trusting this extrapolated past
+n_blocks=6 -- see ``ablation_depth8_residual``/``_depth10_residual``/
+``_depth12_residual`` in ``LocusCLSJointTrainer.ablation_variants``, meant
+to be smoke-tested in increasing order once the GPU is free.
 """
 from __future__ import annotations
 
@@ -109,6 +131,146 @@ class DepthResidualAblationPredictor(nn.Module):
         for attn, ffn in zip(self.retrieval_attn, self.retrieval_ffn):
             a = attn(state, tokens)
             state = state + a if self.attn_residual else a
+            state = ffn(state)  # FeedForwardResidual: always has its own internal residual
+
+        h_for_concat = self.h_c_concat_norm(h_c_chunk)
+        r_for_concat = self.r_pc_concat_norm(state)
+        z_pc = torch.cat(
+            [h_for_concat[None, :, :].expand(batch, -1, -1), r_for_concat], dim=-1,
+        )
+        return self.final_regressor(z_pc).squeeze(-1)
+
+    def forward(
+        self,
+        rna: torch.Tensor,
+        cpg_embedding: torch.Tensor | None = None,
+        cpg_positions: torch.Tensor | None = None,
+        *,
+        functional_track_indices: torch.Tensor,
+        functional_offsets: torch.Tensor,
+        functional_dense: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        del cpg_embedding, cpg_positions
+        tokens = self.rna_encoder(rna)
+
+        peak = self.track_embedding(functional_track_indices, functional_offsets)
+        dense = self.dense_encoder(functional_dense)
+        h_c = self.locus_norm(peak + dense)
+        mu_hat = (
+            None if self.mean_head is None
+            else torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+        )
+
+        n_loci = h_c.shape[0]
+        if n_loci <= self.LOCUS_CHUNK:
+            logit = self._retrieve_and_predict(h_c, tokens)
+        else:
+            chunks = []
+            for start in range(0, n_loci, self.LOCUS_CHUNK):
+                chunk = h_c[start:start + self.LOCUS_CHUNK]
+                if self.training and torch.is_grad_enabled():
+                    chunks.append(
+                        checkpoint(self._retrieve_and_predict, chunk, tokens, use_reentrant=False)
+                    )
+                else:
+                    chunks.append(self._retrieve_and_predict(chunk, tokens))
+            logit = torch.cat(chunks, dim=1)
+
+        beta = torch.sigmoid(logit)
+        return {
+            "beta": beta,
+            "delta_logit": logit,
+            "raw_delta": logit,
+            "prediction_logit": logit,
+            "mu_logit": None,
+            "mu_hat": mu_hat,
+            "residual_logit": logit,
+            "h_cpg": h_c,
+        }
+
+
+class EfficientSingleAttentionPredictor(nn.Module):
+    """J4: single cross-attention + residual, then several FFN-only residual blocks.
+
+    Candidate answer to "is the repeated cross-attention itself necessary,
+    or just the residual-block depth it happens to come with" -- see the
+    module docstring. Structurally identical to
+    ``DepthResidualAblationPredictor(n_blocks=1, attn_residual=True)`` up to
+    and including the residual add, then keeps refining `state` through
+    ``n_ffn_blocks`` independent ``FeedForwardResidual`` blocks with no
+    further attention, instead of stopping after one.
+    """
+
+    N_TRACKS = 4165
+    DENSE_DIM = 23
+    WIDTH = 256
+    LOCUS_CHUNK = 1024
+
+    def __init__(
+        self,
+        input_dim: int,
+        config: ModelConfig,
+        *,
+        n_ffn_blocks: int = 4,
+        final_regressor_dropout: float = 0.15,
+        use_mean_proxy: bool = True,
+    ):
+        super().__init__()
+        if n_ffn_blocks < 1:
+            raise ValueError("n_ffn_blocks must be >= 1")
+        self.n_ffn_blocks = int(n_ffn_blocks)
+        enc = config.encoder
+        if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
+            raise ValueError(
+                "EfficientSingleAttentionPredictor requires locus_attention "
+                "RNA tokens with program_dim=256"
+            )
+
+        self.rna_encoder = ProgramTokenEncoder(
+            input_dim=input_dim,
+            n_programs=enc.n_programs,
+            program_dim=enc.program_dim,
+            bottleneck_dim=enc.latent_dim,
+            layer_norm=enc.layer_norm,
+        )
+        consume_legacy_attention_initialization(self.WIDTH)
+
+        self.track_embedding = nn.EmbeddingBag(
+            self.N_TRACKS, self.WIDTH, mode="mean", include_last_offset=True,
+        )
+        self.dense_encoder = nn.Sequential(
+            nn.LayerNorm(self.DENSE_DIM), nn.Linear(self.DENSE_DIM, self.WIDTH), nn.GELU(),
+        )
+        self.locus_norm = nn.LayerNorm(self.WIDTH)
+        mean_head = nn.Sequential(
+            nn.LayerNorm(self.WIDTH), nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Linear(128, 1),
+        )
+        self.mean_head = mean_head if use_mean_proxy else None
+        # Cross-attention runs exactly once -- this is the expensive op the
+        # depth-4 candidates pay for 4x; everything after it is cheap FFN.
+        self.retrieval_attn = BatchedLocusToRNAAttention(self.WIDTH, enc.n_heads, enc.dropout)
+        self.retrieval_ffn = nn.ModuleList([
+            FeedForwardResidual(self.WIDTH, enc.dropout) for _ in range(self.n_ffn_blocks)
+        ])
+        self.h_c_concat_norm = nn.LayerNorm(self.WIDTH)
+        self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
+        self.final_regressor_dropout = float(final_regressor_dropout)
+        self.final_regressor = nn.Sequential(
+            nn.Linear(2 * self.WIDTH, self.WIDTH), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(128, 1),
+        )
+
+    @property
+    def requires_cpg_positions(self) -> bool:
+        return False
+
+    def _retrieve_and_predict(self, h_c_chunk: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+        batch = tokens.shape[0]
+        state = h_c_chunk[None, :, :].expand(batch, -1, -1)
+        a = self.retrieval_attn(state, tokens)
+        state = state + a
+        for ffn in self.retrieval_ffn:
             state = ffn(state)  # FeedForwardResidual: always has its own internal residual
 
         h_for_concat = self.h_c_concat_norm(h_c_chunk)
