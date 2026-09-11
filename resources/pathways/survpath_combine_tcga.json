@@ -1,0 +1,22 @@
+{
+  "source": "https://raw.githubusercontent.com/mahmoodlab/SurvPath/3f73ddd6705ec67d643020c5bb04fb13f9f382cc/datasets_csv/metadata/combine_signatures.csv",
+  "source_commit": "3f73ddd6705ec67d643020c5bb04fb13f9f382cc",
+  "source_path": "datasets_csv/metadata/combine_signatures.csv",
+  "source_sha256": "e326b41ae574ec0ea6f3a4f380ce54090e5b6041111f7cc325392d32616074b4",
+  "canonical_root": "/dune/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1",
+  "n_canonical_genes": 25017,
+  "n_source_pathways": 331,
+  "n_pathways": 327,
+  "dropped_pathways": [
+    "Aromatic_amines_can_be_N-hydroxylated_or_N-dealkylated_by_CYP1A2",
+    "Formation_of_ATP_by_chemiosmotic_coupling",
+    "Response_to_elevated_platelet_cytosolic_Ca2+",
+    "Synthesis_of_cytosolic_5-phospho-alpha-D-ribose_1-diphosphate_(PRPP)_from_D-ribose_5-phosphate"
+  ],
+  "source_memberships": 9745,
+  "matched_memberships": 8987,
+  "membership_coverage": 0.9222165212929707,
+  "min_matched_genes_per_pathway": 1,
+  "median_matched_genes_per_pathway": 6.0,
+  "max_matched_genes_per_pathway": 195
+}

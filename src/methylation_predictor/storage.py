@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 
 import numpy as np
 
@@ -75,6 +77,19 @@ class LocusFeatureCache:
     def __init__(self, root: str | Path):
         root = Path(root)
         self.root = root
+        self.regulatory_manifest = None
+        self.regulatory_provenance = None
+        manifest_path = root / "manifest.json"
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text())
+            if manifest.get("feature_type") == "regulatory_pca":
+                if manifest.get("status") != "complete":
+                    raise ValueError("regulatory feature cache is incomplete")
+                self.regulatory_manifest = manifest
+                self.regulatory_provenance = {
+                    "path": str(root.resolve()),
+                    "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+                }
         self.ids = np.load(root / "cpg_idx.npy", mmap_mode="r")
         self.embeddings = np.load(root / "embeddings.f16.npy", mmap_mode="r")
         self.prior = np.load(root / "prior.npy", mmap_mode="r")
@@ -89,6 +104,13 @@ class LocusFeatureCache:
             raise ValueError("feature cache requires prior in (0,1) and sigma > 0")
         self.index = SortedIndex(self.ids, "locus feature cache")
 
+    def validate_training_split(self, training_cpg_ids):
+        if self.regulatory_manifest is None:
+            return
+        fingerprint = hashlib.sha256(np.sort(training_cpg_ids).astype(np.int64).tobytes()).hexdigest()
+        if fingerprint != self.regulatory_manifest.get("train_cpg_sha256"):
+            raise ValueError("regulatory feature cache was fitted on a different training CpG split")
+
     def get(
         self,
         cpg_idx: np.ndarray,
@@ -101,3 +123,71 @@ class LocusFeatureCache:
             np.asarray(self.prior[rows], dtype=np.float32),
             np.asarray(self.sigma[rows], dtype=np.float32),
         )
+
+
+class FunctionalLocusCache:
+    """Mmap-backed sparse functional atlas aligned to global CpG IDs."""
+
+    N_TRACKS = 4165
+    DENSE_DIM = 23
+
+    def __init__(self, functional_atlas_root: str | Path, annotation_cache_root: str | Path,
+                 bigwig_cache_root: str | Path | None = None):
+        self.functional_atlas_root = Path(functional_atlas_root)
+        self.annotation_cache_root = Path(annotation_cache_root)
+        self.bigwig_cache_root = Path(bigwig_cache_root) if bigwig_cache_root is not None else None
+        self.ids = np.load(self.functional_atlas_root / "cpg_idx.npy", mmap_mode="r")
+        annotation_ids = np.load(self.annotation_cache_root / "cpg_idx.npy", mmap_mode="r")
+        if not np.array_equal(self.ids, annotation_ids):
+            raise ValueError("functional atlas and annotation cache cpg_idx axes do not match exactly")
+
+        self.annotation = np.load(self.annotation_cache_root / "annotation_core.f32.npy", mmap_mode="r")
+        self.breadth = np.load(self.functional_atlas_root / "breadth_features.f32.npy", mmap_mode="r")
+        self.bigwig = None
+        if self.bigwig_cache_root is not None:
+            manifest = json.loads((self.bigwig_cache_root / "manifest.json").read_text())
+            if manifest.get("status") != "complete" or manifest.get("dimensions") != 45:
+                raise ValueError("BigWig cache is incomplete or has unexpected dimensions")
+            self.bigwig = np.load(self.bigwig_cache_root / "pca23.f32.npy", mmap_mode="r")
+        csr_root = self.functional_atlas_root / "all_primary_overlap_csr"
+        self.indices = np.load(csr_root / "indices.npy", mmap_mode="r")
+        self.indptr = np.load(csr_root / "indptr.npy", mmap_mode="r")
+        shape_payload = json.loads((csr_root / "shape.json").read_text())
+        shape = tuple(shape_payload.get("shape", ())) if isinstance(shape_payload, dict) else tuple(shape_payload)
+        expected_shape = (len(self.ids), self.N_TRACKS)
+        if shape != expected_shape:
+            raise ValueError(f"unexpected functional CSR shape {shape}; expected {expected_shape}")
+        if self.annotation.shape != (len(self.ids), 18):
+            raise ValueError(f"unexpected annotation_core shape {self.annotation.shape}")
+        if self.breadth.shape != (len(self.ids), 5):
+            raise ValueError(f"unexpected breadth_features shape {self.breadth.shape}")
+        if self.indptr.shape != (len(self.ids) + 1,):
+            raise ValueError("functional CSR indptr does not align with cpg_idx")
+        if self.bigwig is not None and self.bigwig.shape != (len(self.ids), 23):
+            raise ValueError("BigWig PCA cache does not align with cpg_idx")
+        self.DENSE_DIM = 46 if self.bigwig is not None else self.DENSE_DIM
+        if int(self.indptr[-1]) != len(self.indices):
+            raise ValueError("functional CSR indices/indptr are inconsistent")
+        if len(self.indices) and (np.min(self.indices) < 0 or np.max(self.indices) >= self.N_TRACKS):
+            raise ValueError("functional CSR contains out-of-range track indices")
+        self.index = SortedIndex(self.ids, "functional locus cache")
+
+    def get(self, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
+        """Retrieve arbitrary/repeated loci without densifying the track matrix."""
+        rows = self.index.positions_of(np.asarray(cpg_ids, dtype=np.int64))
+        starts = np.asarray(self.indptr[rows], dtype=np.int64)
+        counts = np.asarray(self.indptr[rows + 1], dtype=np.int64) - starts
+        offsets = np.empty(len(rows) + 1, dtype=np.int64)
+        offsets[0] = 0
+        np.cumsum(counts, out=offsets[1:])
+        if offsets[-1]:
+            repeated_starts = np.repeat(starts, counts)
+            within_rows = np.arange(int(offsets[-1]), dtype=np.int64) - np.repeat(offsets[:-1], counts)
+            track_indices = np.asarray(self.indices[repeated_starts + within_rows], dtype=np.int64)
+        else:
+            track_indices = np.empty(0, dtype=np.int64)
+        dense_parts = [np.asarray(self.annotation[rows], dtype=np.float32), np.asarray(self.breadth[rows], dtype=np.float32)]
+        if self.bigwig is not None:
+            dense_parts.append(np.asarray(self.bigwig[rows], dtype=np.float32))
+        dense = np.concatenate(dense_parts, axis=1)
+        return {"track_indices": track_indices, "offsets": offsets, "dense": dense}

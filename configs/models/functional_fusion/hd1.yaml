@@ -1,0 +1,20 @@
+extends: base.yaml
+# Follow-up to the H0/H1/H2 sweep: H0 showed locus-identity overfitting
+# (train_cpg/mean_rho_p improving while val_cpg_x_val_sample MAS-PCC
+# plateaus and MSE climbs). This variant tests cutting L_beta/L_sample_PCC's
+# gradient into the functional encoder entirely (detach_h_c_main_path=true
+# on FunctionalConcatMASModel) -- only L_mean still shapes it. Otherwise
+# identical to h1 (lambda_mas=0.05), so this is a controlled one-factor
+# follow-up, not a fresh sweep.
+model: {functional_fusion_variant: mas_concat_v2_detached}
+loss:
+  locus_pearson_weight: 0.0
+  sample_pearson_weight: 0.05
+  sample_pearson_min_observed_cpgs: 8
+  sample_pearson_epsilon: 1.0e-8
+training: {epochs: 40, scheduler_horizon_epochs: 40}
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15
+  residual_aux_weight: 0.0
+tracking: {backend: wandb, project: MethylPredictor, mode: online, group: mas_concat_sweep, job_type: train, tags: [functional-only, mas-concat-sweep, detached-hc]}

@@ -147,6 +147,13 @@ class ModelConfig:
     # ``models.FeatureFusionLocusCLSModel``.
     trunk: TrunkConfig = field(default_factory=TrunkConfig)
     axial: AxialConfig = field(default_factory=AxialConfig)
+    # Opt-in functional-only ladder. Empty preserves every historical model and
+    # checkpoint; non-empty selects FunctionalFusionModel (f0_single ...
+    # f6_router_head_gated) in the shared trainer.
+    functional_fusion_variant: str = ""
+    # Optional training-only covariance initializer for the standardized
+    # regulatory projection. Inference restores all weights from checkpoint.
+    functional_projection_init: str = ""
     # Emit a per-pair Beta concentration alongside the anchored mean, so
     # LossConfig.beta_nll_weight has something to score. Kept separate from the
     # loss weight so a misconfigured recipe fails loudly instead of silently
@@ -193,6 +200,21 @@ class LossConfig:
     locus_pearson_epsilon: float = 1e-8
     # Optional target-std eligibility floor for the Pearson objective.
     locus_pearson_min_target_std: float = 0.0
+    # Sample-wise (MAC-direction: per-patient, across-CpG) Pearson objective --
+    # the H0/H1/H2 sample-wise-Pearson experiment's L_sample_PCC term
+    # (FunctionalConcatMASModel, losses.sample_correlation_loss). Disabled by
+    # default (zero weight); distinct from locus_pearson_weight above, which
+    # correlates in the opposite (per-CpG, across-sample/MAS) direction.
+    sample_pearson_weight: float = 0.0
+    sample_pearson_min_observed_cpgs: int = 8
+    sample_pearson_epsilon: float = 1e-8
+    # Within-locus (across-sample-centred) MSE -- forces the loss to reward
+    # patient-specific (RNA-driven) deviation from the locus mean rather than
+    # mostly the locus-level constant, which plain beta_mse under-weights
+    # (diagnosed: target's between-locus variance is ~6x its within-locus
+    # variance on chr1 Array). losses.within_locus_centered_mse_loss. Reuses
+    # locus_min_observed_samples as its own per-locus observation floor.
+    locus_centered_mse_weight: float = 0.0
     # Beta log-likelihood head (architecture-novelty ablation, opt-in). Methylation
     # beta values are bounded in [0, 1] and heteroscedastic -- their variance
     # collapses towards both boundaries -- which a plain MSE ignores. With a

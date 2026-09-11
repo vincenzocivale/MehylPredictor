@@ -32,8 +32,25 @@ class RNARecipe:
     exclude_official_val_from_auxiliary: bool
 
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in override.items():
+        result[key] = _deep_merge(result[key], value) if isinstance(value, dict) and isinstance(result.get(key), dict) else value
+    return result
+
+
 def load_rna_recipe(path: str | Path) -> RNARecipe:
-    raw = yaml.safe_load(Path(path).read_text()) or {}
+    path = Path(path)
+    raw = yaml.safe_load(path.read_text()) or {}
+    parent = raw.pop("extends", None)
+    if parent:
+        parent_path = Path(parent)
+        if not parent_path.is_absolute():
+            parent_path = (path.parent / parent_path).resolve()
+        parent_raw = yaml.safe_load(parent_path.read_text()) or {}
+        if parent_raw.get("extends"):
+            raise ValueError("nested recipe extends is not supported")
+        raw = _deep_merge(parent_raw, raw)
     model_raw = dict(raw.get("model", {}))
     interaction_raw = dict(model_raw.get("interaction", {}))
     # The architecture-novelty blocks (trunk/axial/beta_likelihood_head) are
@@ -45,12 +62,16 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         interaction=InteractionConfig(**interaction_raw),
         trunk=TrunkConfig(**model_raw.get("trunk", {})),
         axial=AxialConfig(**model_raw.get("axial", {})),
+        functional_fusion_variant=str(model_raw.get("functional_fusion_variant", "")),
+        functional_projection_init=str(model_raw.get("functional_projection_init", "")),
         beta_likelihood_head=bool(model_raw.get("beta_likelihood_head", False)),
         zero_init_residual=bool(model_raw.get("zero_init_residual", True)),
         variance_normalized_residual=bool(model_raw.get("variance_normalized_residual", True)),
     )
     if not model.variance_normalized_residual:
         raise ValueError("refactored RNA workflow requires variance_normalized_residual=true")
+    if model.functional_projection_init and model.functional_fusion_variant != "f7_standardized":
+        raise ValueError("functional_projection_init requires the standardized regulatory projection")
     training = TrainingConfig(**raw.get("training", {}))
     batching = raw.get("batching", {})
     defaults = {

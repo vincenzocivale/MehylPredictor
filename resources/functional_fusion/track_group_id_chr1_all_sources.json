@@ -1,0 +1,15 @@
+{
+  "n_tracks": 4165,
+  "group_names": [
+    "accessibility",
+    "histone",
+    "binding"
+  ],
+  "group_sizes": [
+    533,
+    1959,
+    1673
+  ],
+  "source_atlas": "/dune/DATASETS/MethylPredictionData/derived/ntv3_functional_peak_atlas_chr1_all_sources",
+  "note": "group_id[i] is the regulatory group of all_primary rank index i (0=accessibility,1=histone,2=binding=ctcf+tf_binding). Built from accessibility/histone/ctcf/tf_binding_columns.tsv track_index columns intersected with all_primary_columns.tsv sorted rank order."
+}

@@ -1,0 +1,50 @@
+extends: base.yaml
+# Iterative-RNA-retrieval-depth candidate (2026-09-11, corrected after a
+# first attempt used a special-cased non-residual first block that didn't
+# match the intended design), queued to run after j0_final.yaml on the SAME
+# TRUE chr1 mode=final protocol. Byte-for-byte identical to j0_final.yaml
+# (functional encoder, mean head, RNA encoder, final MLP, loss, optimizer,
+# LR, batching, data pools, seed, epochs) except the retrieval stack is now
+# N_BLOCKS=4 IDENTICAL pre-norm cross-attention+FFN blocks, each with a
+# residual (state = state + CrossAttn(state); state = state + FFN(state)),
+# instead of one bare cross-attention (FunctionalConcatIterativeRNAModel) --
+# see that class's docstring for the exact composition. Isolates retrieval
+# DEPTH as the sole architectural variable against j0_final.yaml.
+model: {functional_fusion_variant: mas_concat_v4_iterative}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, iterative-retrieval, chr1-final]

@@ -1,0 +1,109 @@
+{
+  "protocol": "inner_unseen_cpg_seen_sample_response_probe",
+  "not_official_or_double_ood": true,
+  "training_cpg_sha256": "1ed9d9ca0d0d46ee1f6b28806b82b0f2868acac9d3c3cfd23aa132338d674639",
+  "validation_cpg_sha256": "964ec8fd125ae3b648e36cb6a9655e3c377f37fef3978bb1309858788d9e3851",
+  "sample_sha256": "aceebc90335a5a1d51a20c1daeeeb34dc5428740ec811a6c79db5c80d7138a99",
+  "n_samples": 512,
+  "rank": 32,
+  "response_basis_fit": "inner_train_cpgs_and_inner_train_samples_only",
+  "oracle_projection": {
+    "response_median_pcc": 0.7632263255920935,
+    "valid_correlation_loci": 3972,
+    "mean_r2": 0.9999677049713562,
+    "mse": 0.008796155452728271
+  },
+  "results": [
+    {
+      "arm": "ntv3_post",
+      "alpha": 100.0,
+      "dimensions": 1536,
+      "response_median_pcc": 0.5168511022451678,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.9045317753566282,
+      "mse": 0.027496203780174255
+    },
+    {
+      "arm": "ntv3_post",
+      "alpha": 1000.0,
+      "dimensions": 1536,
+      "response_median_pcc": 0.5264594056911049,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.9034658431305563,
+      "mse": 0.02743745967745781
+    },
+    {
+      "arm": "raw_binary",
+      "alpha": 100.0,
+      "dimensions": 4188,
+      "response_median_pcc": 0.46591236711103756,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.8399596215611276,
+      "mse": 0.03696932643651962
+    },
+    {
+      "arm": "raw_binary",
+      "alpha": 1000.0,
+      "dimensions": 4188,
+      "response_median_pcc": 0.47452451421813147,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.8470296957945068,
+      "mse": 0.03573385253548622
+    },
+    {
+      "arm": "mean_normalized",
+      "alpha": 100.0,
+      "dimensions": 4188,
+      "response_median_pcc": 0.41923906467480093,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.7921031971350956,
+      "mse": 0.04497962072491646
+    },
+    {
+      "arm": "mean_normalized",
+      "alpha": 1000.0,
+      "dimensions": 4188,
+      "response_median_pcc": 0.42722717459627174,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.8012374352292463,
+      "mse": 0.04333725944161415
+    },
+    {
+      "arm": "expanded_annotations",
+      "alpha": 100.0,
+      "dimensions": 4217,
+      "response_median_pcc": 0.46721590543170616,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.8401781786094795,
+      "mse": 0.03693660721182823
+    },
+    {
+      "arm": "expanded_annotations",
+      "alpha": 1000.0,
+      "dimensions": 4217,
+      "response_median_pcc": 0.47588485874066655,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.847151390155822,
+      "mse": 0.035712599754333496
+    },
+    {
+      "arm": "learned_f0",
+      "alpha": 100.0,
+      "dimensions": 256,
+      "response_median_pcc": 0.44262570820678193,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.8357879755815829,
+      "mse": 0.03729831799864769
+    },
+    {
+      "arm": "learned_f0",
+      "alpha": 1000.0,
+      "dimensions": 256,
+      "response_median_pcc": 0.4443710680704859,
+      "valid_correlation_loci": 3972,
+      "mean_r2": 0.8367178478521125,
+      "mse": 0.0371609590947628
+    }
+  ],
+  "learned_f0_checkpoint": "/dune/DATASETS/MethylPredictionData/experiments/runs/locus_cls_joint/chr1/functional-fusion-f0-screen-seed17-e30/checkpoints/best.pt"
+}

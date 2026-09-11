@@ -1,0 +1,10 @@
+extends: base.yaml
+# Regulatory-fusion ladder (G0-G4): 20 fixed epochs (reduced from the
+# protocol's 40 after G0's partial run showed val MAS-PCC peaking ~epoch 12
+# and val MSE rising past epoch ~8, matching the F0-F6 predecessor's own
+# best-epoch/stop-epoch pattern), no early stopping --
+# see docs/RNA_METHYLATION.md's regulatory-fusion ladder section and
+# FUNCTIONAL_FUSION_LADDER_REPORT.md (the F0-F6 predecessor this extends).
+model: {functional_fusion_variant: g0_control}
+training: {epochs: 20, scheduler_horizon_epochs: 20}
+tracking: {backend: wandb, project: MethylPredictor, mode: online, group: regulatory_fusion_ladder, job_type: train, tags: [functional-only, regulatory-fusion-ladder]}

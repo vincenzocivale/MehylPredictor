@@ -30,6 +30,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 import json
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -38,18 +39,21 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from ..losses import beta_nll_term, locus_correlation_loss, masked_mean
+from ..losses import beta_nll_term, locus_correlation_loss, masked_mean, sample_correlation_loss, within_locus_centered_mse_loss
 from ..config import TrainingConfig
 from ..models import (
     FeatureFusionArchitectureVariantModel,
     FeatureFusionLocusCLSModel,
+    FunctionalConcatIterativeRNAModel,
+    FunctionalConcatMASModel,
+    FunctionalFusionModel,
     feature_fusion_variant_label,
     is_architecture_variant,
 )
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
-from ..storage import LocusFeatureCache, RNACache, SortedIndex
+from ..storage import FunctionalLocusCache, LocusFeatureCache, RNACache, SortedIndex
 from ..tcga_canonical import TCGACanonicalBundle
 from .config import load_rna_recipe
 from .matched_chr1_data import load_compact_scope_sources, load_matched_chr1_protocol_and_sources
@@ -162,6 +166,10 @@ class LocusCLSJointTrainer:
         track: bool = True,
         resume: bool = False,
         training_sources: tuple[str, ...] | None = None,
+        functional_atlas: str | Path | None = None,
+        annotation_cache: str | Path | None = None,
+        bigwig_cache: str | Path | None = None,
+        functional_only: bool = False,
     ):
         # >1.0 gives the raw/RNA branch (raw_branch, fusion, residual_head --
         # everything that only ever gets gradient through the fusion layer,
@@ -234,9 +242,41 @@ class LocusCLSJointTrainer:
             *self.protocol.auxiliary_cpg_idx.values(),
         ]))
         self.features.index.positions_of(required)
+        if (functional_atlas is None) != (annotation_cache is None):
+            raise ValueError("--functional-atlas and --annotation-cache must be provided together")
+        self.functional = (
+            FunctionalLocusCache(functional_atlas, annotation_cache, bigwig_cache)
+            if functional_atlas is not None else None
+        )
+        self.functional_only = bool(functional_only)
+        if self.functional_only and self.functional is None:
+            raise ValueError("--functional-only requires both functional caches")
+        self.functional_fusion_variant = self.recipe.model.functional_fusion_variant
+        if self.functional_fusion_variant and not self.functional_only:
+            raise ValueError("model.functional_fusion_variant requires --functional-only")
+        if self.functional is not None:
+            required_axes = {
+                "array_train": self.protocol.array_train_cpg_idx,
+                "array_val": self.protocol.array_val_cpg_idx,
+                "epic_train": self.protocol.auxiliary_cpg_idx.get("epic", np.empty(0, np.int64)),
+                "wgbs_train": self.protocol.auxiliary_cpg_idx.get("wgbs", np.empty(0, np.int64)),
+            }
+            for axis_name, axis in required_axes.items():
+                try:
+                    self.functional.index.positions_of(axis)
+                except KeyError as exc:
+                    raise ValueError(f"functional cache does not cover {axis_name}") from exc
 
         self.aux_weight = float(aux_weight)
         self.residual_aux_weight = float(residual_aux_weight)
+        # Stashed as attributes (not just forwarded to the model constructor below)
+        # so _save_checkpoint can persist them into the checkpoint's own "locus_cls"
+        # dict -- evaluate_official_split rebuilds the model from that dict alone,
+        # and previously silently fell back to the constructor defaults (256/64)
+        # for any checkpoint trained with a non-default trunk_hidden_dim/
+        # bottleneck_dim, causing a state_dict shape-mismatch load failure.
+        self.trunk_hidden_dim = int(trunk_hidden_dim)
+        self.bottleneck_dim = int(bottleneck_dim)
         cpg_targets_dir = Path(cpg_targets_dir)
         self.cpg_target_ids = np.load(cpg_targets_dir / "cpg_idx.npy")
         self.cpg_target_mu = np.load(cpg_targets_dir / "target_mu.npy")
@@ -260,6 +300,7 @@ class LocusCLSJointTrainer:
             is_architecture_variant(self.recipe.model)
             or not use_raw_product or product_mlp
             or not include_raw_rna or not include_raw_cpg
+            or self.functional is not None
         )
         model_cls = FeatureFusionArchitectureVariantModel if self.architecture_variant else FeatureFusionLocusCLSModel
         self.architecture_label = (
@@ -269,7 +310,69 @@ class LocusCLSJointTrainer:
         )
         if self.query_source != "ntv3":
             self.architecture_label += f"_query-{self.query_source}"
-        self.model = model_cls(
+        if self.functional is not None:
+            self.architecture_label += "_functional-locus"
+        if self.functional_only:
+            self.architecture_label += "-only"
+        # Off-ladder focused experiment (H0/H1/H2, docs/RNA_METHYLATION.md's
+        # sample-wise-Pearson section): a distinct model class + loss, reusing
+        # the same functional_fusion_variant recipe field as a selector so no
+        # new CLI surface is needed. Checked before the FunctionalFusionModel
+        # dispatch below since its own MEAN_PROXY_VARIANTS validation doesn't
+        # apply here.
+        self.mas_concat_mode = self.functional_fusion_variant in (
+            "mas_concat_v1", "mas_concat_v2_detached", "mas_concat_v3_purecontext", "mas_concat_v4_iterative",
+        )
+        if self.mas_concat_mode:
+            if residual_aux_weight != 0.0:
+                raise ValueError(f"{self.functional_fusion_variant} requires the residual auxiliary loss disabled "
+                                  "(no residual_head exists on FunctionalConcatMASModel)")
+            if not (use_mean_branch and self.aux_weight != 0.0):
+                raise ValueError(f"{self.functional_fusion_variant} requires use_mean_branch=true and a nonzero "
+                                  "aux_weight (lambda_mean, the L_mean term's weight -- it's the ONLY gradient "
+                                  "path into functional_encoder once detach_h_c_main_path is on)")
+            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
+            # Read directly off recipe.raw rather than adding a new
+            # LocusCLSJointTrainer constructor kwarg -- keeps this purely
+            # recipe-driven like the rest of the mas_concat_* dispatch above.
+            final_regressor_dropout = float(self.recipe.raw.get("locus_cls", {}).get("final_regressor_dropout", 0.0))
+            if self.functional_fusion_variant == "mas_concat_v4_iterative":
+                # 2026-09-11 iterative-retrieval-depth candidate: everything
+                # but the retrieval stack itself is byte-for-byte v3_purecontext
+                # (own class, FunctionalConcatIterativeRNAModel, not a
+                # FunctionalConcatMASModel constructor flag -- the two extra
+                # retrieval blocks aren't expressible as one).
+                self.model = FunctionalConcatIterativeRNAModel(
+                    self.rna.values.shape[1], self.recipe.model,
+                    final_regressor_dropout=final_regressor_dropout,
+                ).to(self.device)
+            else:
+                self.model = FunctionalConcatMASModel(
+                    self.rna.values.shape[1], self.recipe.model,
+                    detach_h_c_main_path=self.functional_fusion_variant == "mas_concat_v2_detached",
+                    separate_concat_norm=self.functional_fusion_variant == "mas_concat_v3_purecontext",
+                    final_regressor_dropout=final_regressor_dropout,
+                ).to(self.device)
+        elif self.functional_fusion_variant:
+            allows_mean_proxy = self.functional_fusion_variant in FunctionalFusionModel.MEAN_PROXY_VARIANTS
+            if residual_aux_weight != 0.0:
+                raise ValueError("functional fusion ladder requires the residual auxiliary loss disabled "
+                                  "(no residual_head exists on FunctionalFusionModel)")
+            if not allows_mean_proxy and (use_mean_branch or self.aux_weight != 0.0):
+                raise ValueError("functional fusion ladder requires mean/residual auxiliary heads and losses "
+                                  f"disabled (variant {self.functional_fusion_variant!r} has no mean_head; only "
+                                  f"{sorted(FunctionalFusionModel.MEAN_PROXY_VARIANTS)} support use_mean_branch/aux_weight)")
+            if allows_mean_proxy and not (use_mean_branch and self.aux_weight != 0.0):
+                raise ValueError(f"variant {self.functional_fusion_variant!r} is the mean-proxy ablation and "
+                                  "must be run with use_mean_branch=true and a nonzero aux_weight, or it is "
+                                  "indistinguishable from g2_regulatory_head")
+            self.architecture_label = f"functional_fusion_{self.functional_fusion_variant}"
+            self.model = FunctionalFusionModel(
+                self.rna.values.shape[1], self.recipe.model,
+                dense_dim=self.functional.DENSE_DIM if self.functional is not None else 23,
+            ).to(self.device)
+        else:
+            self.model = model_cls(
             # Derived from whichever RNA cache was actually opened, not hardcoded --
             # a "frozen_embedding" arm (encoder.kind=frozen_embedding) points
             # --rna-cache at a precomputed-embedding directory (e.g. BulkRNABert,
@@ -287,14 +390,28 @@ class LocusCLSJointTrainer:
                 "use_raw_product": use_raw_product, "product_mlp": product_mlp,
                 "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
                 "query_source": self.query_source,
+                "functional_conditioning": self.functional is not None,
+                "functional_only": self.functional_only,
             } if self.architecture_variant else {}),
-        ).to(self.device)
+            ).to(self.device)
         self.train_model = (
             torch.compile(self.model, mode=cfg.compile_mode) if cfg.compile else self.model
         )
 
         self.inner_views = None
         self.pools = self._build_pools()
+        if track and not self.functional_only:
+            self.features.validate_training_split(self.pools[0].cpg_idx)
+        if self.functional_fusion_variant == "f7_standardized" and track and not resume:
+            # Fit only on the actual Array training pool AFTER the inner
+            # genomic split. Buffers are saved in model_state and restored
+            # verbatim by checkpoint loading; validation never updates them.
+            self.model.track_embedding.fit(self.functional, self.pools[0].cpg_idx)
+            init_path = self.recipe.model.functional_projection_init
+            if init_path:
+                from ..regulatory_embedding import load_projection_initializer
+                load_projection_initializer(self.model.track_embedding, init_path,
+                                            self.pools[0].cpg_idx, self.functional.functional_atlas_root)
         self.store = RunStore.create(
             output_root, model="locus_cls_joint", train_scope=scope, seed=self.seed,
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
@@ -313,6 +430,21 @@ class LocusCLSJointTrainer:
         if self.query_source != "ntv3":
             locus_resolved["query_source"] = self.query_source
         resolved_config = {**self.recipe.raw, "training": asdict(cfg), "locus_cls": locus_resolved}
+        if not self.functional_only and self.features.regulatory_provenance is not None:
+            resolved_config["regulatory_feature_cache"] = self.features.regulatory_provenance
+        if self.functional is not None:
+            resolved_config["functional_locus"] = {
+                "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
+                "annotation_cache": str(self.functional.annotation_cache_root.resolve()),
+                "n_tracks": 4165, "dense_dim": 23,
+                "encoder_dim": 256 if self.functional_fusion_variant else 64,
+                **({"fusion_variant": self.functional_fusion_variant} if self.functional_fusion_variant else {}),
+                "residual_policy": (
+                    "random_initialized_functional_projection" if self.functional_only
+                    else "zero_initialized_additive_projection"
+                ),
+                "mode": "functional_only" if self.functional_only else "additive_residual",
+            }
         # Same preserve-compatibility convention as query_source above: only record
         # training_sources when it's a real restriction (paper section B.6's source
         # ablation), so every run saved before this parameter existed still resumes
@@ -373,6 +505,7 @@ class LocusCLSJointTrainer:
                         "development_split_seed": self.development_split_seed,
                     },
                     "scope": scope, "mode": mode, "seed": self.seed, "architecture": self.architecture_label,
+                    **({"functional_locus": resolved_config["functional_locus"]} if self.functional is not None else {}),
                 },
                 "id": resume_wandb_id,
                 "resume": "allow" if resume_wandb_id else None,
@@ -382,6 +515,7 @@ class LocusCLSJointTrainer:
             self.store.save_metadata({
                 "architecture": self.architecture_label, "seed": self.seed,
                 "training": asdict(cfg),
+                **({"functional_locus": resolved_config["functional_locus"]} if self.functional is not None else {}),
                 "wandb": None if self.wandb_run is None else {
                     "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
                 },
@@ -492,12 +626,73 @@ class LocusCLSJointTrainer:
         finite_count = int(np.isfinite(beta_np).sum())
         pair_slots = int(beta_np.size)
         if finite_count == 0:
-            return source_i, sample_ids, cpg_ids, None, None, None, finite_count, pair_slots, time.perf_counter() - started
+            return source_i, sample_ids, cpg_ids, None, None, None, None, finite_count, pair_slots, time.perf_counter() - started
         rna = self._pinned(self.rna.rows(sample_ids, dtype=np.float16))
-        emb_np, _, _ = self.features.get(cpg_ids, embedding_dtype=np.float16)
+        emb_np = (
+            np.empty((len(cpg_ids), 0), dtype=np.float16)
+            if self.functional_only else self.features.get(cpg_ids, embedding_dtype=np.float16)[0]
+        )
         emb = self._pinned(emb_np)
         beta = self._pinned(beta_np)
-        return source_i, sample_ids, cpg_ids, rna, emb, beta, finite_count, pair_slots, time.perf_counter() - started
+        functional = None
+        if self.functional is not None:
+            functional = {key: self._pinned(value) for key, value in self.functional.get(cpg_ids).items()}
+        return source_i, sample_ids, cpg_ids, rna, emb, beta, functional, finite_count, pair_slots, time.perf_counter() - started
+
+    def _mean_aux_loss_raw_beta(self, cpg_ids: np.ndarray, mu_hat: torch.Tensor) -> torch.Tensor:
+        """Raw-probability-space counterpart of ``_mean_aux_loss`` (which is
+        logit-space): ``MSE(mu_hat_c, train_patient_mean_beta_c)`` directly,
+        no logit transform -- the H0/H1/H2 sample-wise-Pearson experiment's
+        ``L_mean`` term (``FunctionalConcatMASModel.mean_head`` is already
+        sigmoid'd, so both sides of this MSE live in [0, 1])."""
+        present = self.cpg_target_index.contains(cpg_ids)
+        if not present.any():
+            return mu_hat.sum() * 0.0
+        rows = self.cpg_target_index.positions_of(cpg_ids[present])
+        target_mu = torch.from_numpy(self.cpg_target_mu[rows].astype(np.float32)).to(mu_hat.device)
+        present_t = torch.from_numpy(present).to(mu_hat.device)
+        return F.mse_loss(mu_hat[present_t], target_mu)
+
+    def _mas_concat_loss(self, out: dict, target_beta: torch.Tensor, cpg_ids: np.ndarray, loss_cfg) -> tuple[torch.Tensor, dict]:
+        """``FunctionalConcatMASModel``'s own loss (H0/H1/H2 sample-wise-
+        Pearson experiment, extended with the within-locus-centered-MSE and
+        locus-wise-PCC follow-ups): ``L = L_beta_MSE + lambda_mean*L_mean +
+        lambda_mas*L_sample_PCC + lambda_centered*L_within_locus_centered_MSE
+        + lambda_MAC*L_locus_PCC``. Every term past beta_mse is weight-gated
+        (each new recipe sets only the ones its experiment actually wants
+        nonzero); ``L_locus_PCC`` reuses the reference architecture's own
+        ``locus_correlation_loss`` (``rho_c = corr_p(beta_hat, beta)`` for
+        fixed CpG c -- a locus-only shortcut has zero across-patient variance
+        for any c, so this term cannot be improved by ignoring RNA)."""
+        mask = torch.isfinite(target_beta)
+        prediction = out["beta"]
+        safe_target = torch.where(mask, target_beta, torch.zeros_like(target_beta))
+        beta_mse = masked_mean((prediction - safe_target) ** 2, mask)
+        mean_aux_loss = self._mean_aux_loss_raw_beta(cpg_ids, out["mu_hat"])
+        sample_pcc_loss, mean_rho_p, n_valid_samples = sample_correlation_loss(prediction, safe_target, mask, loss_cfg)
+        centered_mse, n_valid_loci = within_locus_centered_mse_loss(prediction, safe_target, mask, loss_cfg)
+        locus_pcc_loss, n_valid_pcc_loci = locus_correlation_loss(prediction, safe_target, mask, loss_cfg)
+        total = (
+            loss_cfg.beta_mse_weight * beta_mse
+            + self.aux_weight * mean_aux_loss
+            + loss_cfg.sample_pearson_weight * sample_pcc_loss
+            + loss_cfg.locus_centered_mse_weight * centered_mse
+            + loss_cfg.locus_pearson_weight * locus_pcc_loss
+        )
+        pieces = {
+            "beta_mse": beta_mse.detach(), "beta_mse_weighted": (loss_cfg.beta_mse_weight * beta_mse).detach(),
+            "mean_aux_loss": mean_aux_loss.detach(), "mean_aux_loss_weighted": (self.aux_weight * mean_aux_loss).detach(),
+            "sample_pcc_loss": sample_pcc_loss.detach(),
+            "sample_pcc_loss_weighted": (loss_cfg.sample_pearson_weight * sample_pcc_loss).detach(),
+            "locus_pcc_loss": locus_pcc_loss.detach(),
+            "locus_pcc_loss_weighted": (loss_cfg.locus_pearson_weight * locus_pcc_loss).detach(),
+            "valid_locus_pcc_loci": n_valid_pcc_loci,
+            "centered_mse": centered_mse.detach(),
+            "centered_mse_weighted": (loss_cfg.locus_centered_mse_weight * centered_mse).detach(),
+            "mean_rho_p": mean_rho_p, "valid_correlation_samples": n_valid_samples,
+            "valid_centered_loci": n_valid_loci, "observed": mask.sum().detach(),
+        }
+        return total, pieces
 
     def _mean_aux_loss(self, cpg_ids: np.ndarray, mu_logit: torch.Tensor) -> torch.Tensor:
         present = self.cpg_target_index.contains(cpg_ids)
@@ -540,7 +735,7 @@ class LocusCLSJointTrainer:
             F.huber_loss(residual_logit, target_residual, reduction="none", delta=1.0), mask,
         )
 
-    def _step(self, pool: TrainingPool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count):
+    def _step(self, pool: TrainingPool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, functional_cpu, finite_count):
         if finite_count == 0:
             return None
         h2d_start = torch.cuda.Event(enable_timing=True)
@@ -551,11 +746,16 @@ class LocusCLSJointTrainer:
         emb = emb_cpu.to(self.device, non_blocking=True).float()
         beta = beta_cpu.to(self.device, non_blocking=True)
         position_kwargs = self._position_kwargs(cpg_ids)
+        functional_kwargs = self._functional_kwargs(functional_cpu)
         h2d_end.record()
         compute_start.record()
         with self._autocast():
-            out = self.train_model(rna_x, emb, **position_kwargs)
+            out = self.train_model(rna_x, emb, **position_kwargs, **functional_kwargs)
             loss_cfg = loss_config_for_source(self.recipe.loss, pool.name, self.recipe.structured_loss_sources)
+            if self.mas_concat_mode:
+                total, pieces = self._mas_concat_loss(out, beta, cpg_ids, loss_cfg)
+                pieces = {**pieces, "total_loss": total.detach()}
+                return total, pieces, h2d_start, h2d_end, compute_start
             main_loss, pieces = _direct_beta_loss(out, beta, loss_cfg)
             main_loss = main_loss * (float(finite_count) / max(float(beta.numel()), 1.0))
             total = main_loss
@@ -573,6 +773,15 @@ class LocusCLSJointTrainer:
         if residual_aux_loss is not None:
             pieces["residual_aux_loss"] = residual_aux_loss.detach()
         return total, pieces, h2d_start, h2d_end, compute_start
+
+    def _functional_kwargs(self, functional_cpu) -> dict[str, torch.Tensor]:
+        if functional_cpu is None:
+            return {}
+        return {
+            "functional_track_indices": functional_cpu["track_indices"].to(self.device, non_blocking=True),
+            "functional_offsets": functional_cpu["offsets"].to(self.device, non_blocking=True),
+            "functional_dense": functional_cpu["dense"].to(self.device, non_blocking=True).float(),
+        }
 
     def _position_kwargs(self, cpg_ids: np.ndarray) -> dict[str, torch.Tensor]:
         """CpG ordinals for the axial arm, empty for every other architecture.
@@ -600,10 +809,24 @@ class LocusCLSJointTrainer:
             for c0 in range(0, len(cpg_ids), cpg_chunk):
                 c1 = min(c0 + cpg_chunk, len(cpg_ids))
                 local_c = cpg_ids[c0:c1]
-                emb_np, prior_np, _ = self.features.get(local_c)
+                if self.functional_only:
+                    feature_rows = self.features.index.positions_of(local_c)
+                    emb_np = np.empty((len(local_c), 0), dtype=np.float32)
+                    prior_np = np.asarray(self.features.prior[feature_rows], dtype=np.float32)
+                else:
+                    emb_np, prior_np, _ = self.features.get(local_c)
                 emb = torch.from_numpy(emb_np).to(self.device)
+                functional_cpu = None
+                if self.functional is not None:
+                    functional_cpu = {
+                        key: torch.from_numpy(np.ascontiguousarray(value))
+                        for key, value in self.functional.get(local_c).items()
+                    }
                 with self._autocast():
-                    pred = self.model(rna_x, emb, **self._position_kwargs(local_c))["beta"]
+                    pred = self.model(
+                        rna_x, emb, **self._position_kwargs(local_c),
+                        **self._functional_kwargs(functional_cpu),
+                    )["beta"]
                 target = source.block(rows[s0:s1], local_c)
                 metrics.add(s0, c0, target, pred.float().cpu().numpy(), prior_np)
         self.model.train()
@@ -623,7 +846,7 @@ class LocusCLSJointTrainer:
             "model_config": asdict(self.recipe.model),
             "loss_config": asdict(self.recipe.loss), "training": asdict(self.recipe.training), "history": history,
             "locus_cls": {
-                "use_mean_branch": self.use_mean_branch, "use_fusion_product": self.model.use_fusion_product,
+                "use_mean_branch": self.use_mean_branch, "use_fusion_product": getattr(self.model, "use_fusion_product", False),
                 "use_raw_product": getattr(self.model, "use_raw_product", True),
                 "product_mlp": getattr(self.model, "product_mlp", False),
                 "include_raw_rna": getattr(self.model, "include_raw_rna", True),
@@ -631,6 +854,20 @@ class LocusCLSJointTrainer:
                 "query_source": self.query_source,
                 "fusion_init_std": self._fusion_init_std, "aux_weight": self.aux_weight,
                 "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
+                "trunk_hidden_dim": self.trunk_hidden_dim, "bottleneck_dim": self.bottleneck_dim,
+                **({"functional_locus": {
+                    "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
+                    "annotation_cache": str(self.functional.annotation_cache_root.resolve()),
+                    **({"bigwig_cache": str(self.functional.bigwig_cache_root.resolve())} if self.functional.bigwig_cache_root is not None else {}),
+                    "n_tracks": 4165, "dense_dim": self.functional.DENSE_DIM,
+                    "encoder_dim": 256 if self.functional_fusion_variant else 64,
+                    **({"fusion_variant": self.functional_fusion_variant} if self.functional_fusion_variant else {}),
+                    "residual_policy": (
+                        "random_initialized_functional_projection" if self.functional_only
+                        else "zero_initialized_additive_projection"
+                    ),
+                    "mode": "functional_only" if self.functional_only else "additive_residual",
+                }} if self.functional is not None else {}),
             },
             "wandb": None if self.wandb_run is None else {
                 "project": self.wandb_run.project, "entity": self.wandb_run.entity, "run_id": self.wandb_run.id,
@@ -640,6 +877,8 @@ class LocusCLSJointTrainer:
                 "torch_cuda": torch.cuda.get_rng_state_all(),
             },
         }
+        if not self.functional_only and self.features.regulatory_provenance is not None:
+            payload["regulatory_feature_cache"] = self.features.regulatory_provenance
         tmp = Path(str(path) + ".tmp")
         torch.save(payload, tmp)
         os.replace(tmp, path)
@@ -670,6 +909,17 @@ class LocusCLSJointTrainer:
             opt_kwargs.pop("fused", None)
             optimizer = torch.optim.AdamW(groups, **opt_kwargs)
         schedules0, plan0 = self._schedules(1)
+        plan_hasher = hashlib.sha256()
+        for source_i, local_step in plan0:
+            row_slots, cpg_slots = schedules0[source_i][local_step]
+            plan_hasher.update(np.asarray([source_i, local_step], np.int64).tobytes())
+            plan_hasher.update(np.asarray(row_slots, np.int64).tobytes())
+            plan_hasher.update(np.asarray(cpg_slots, np.int64).tobytes())
+        self.first_epoch_plan_sha256 = plan_hasher.hexdigest()
+        self.trainable_parameter_count = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print(f"[locus-cls-joint] params={self.trainable_parameter_count} epoch1_plan_sha256={self.first_epoch_plan_sha256}", flush=True)
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats(self.device)
         steps_per_epoch = len(plan0)
         horizon = int(cfg.scheduler_horizon_epochs or self.epochs)
         scheduler = build_lr_scheduler(
@@ -748,14 +998,14 @@ class LocusCLSJointTrainer:
                     data_wait_seconds += wait_seconds
                     (
                         source_i, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu,
-                        finite_count, batch_pair_slots, prepare_seconds,
+                        functional_cpu, finite_count, batch_pair_slots, prepare_seconds,
                     ) = block
                     cpu_prepare_seconds += prepare_seconds
                     observed_pairs += finite_count
                     pair_slots += batch_pair_slots
                     pool = self.pools[source_i]
                     result = self._step(
-                        pool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, finite_count,
+                        pool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, functional_cpu, finite_count,
                     )
                     if result is None:
                         continue
@@ -788,12 +1038,20 @@ class LocusCLSJointTrainer:
                 "observed_pairs": observed_pairs, "pair_slots": pair_slots,
                 "pair_slots_per_second": pair_slots / training_seconds if training_seconds else float("nan"),
                 "optimizer_steps": optimizer_steps, "loss": mean_loss,
+                "trainable_parameters": self.trainable_parameter_count,
+                "epoch1_plan_sha256": self.first_epoch_plan_sha256,
+                "peak_cuda_memory_bytes": torch.cuda.max_memory_allocated(self.device) if torch.cuda.is_available() else None,
                 "lr": optimizer.param_groups[0]["lr"],
             }
             piece_means = {
                 k: float((v / piece_counts[k]).cpu()) if isinstance(v, torch.Tensor) else float(v / piece_counts[k])
                 for k, v in piece_sums.items() if piece_counts[k]
             }
+            # Persisted to history.json (not just W&B) so per-epoch loss-term
+            # diagnostics (e.g. the H0/H1/H2 sample-wise-Pearson experiment's
+            # beta_mse/mean_aux_loss/sample_pcc_loss raw+weighted, mean_rho_p)
+            # survive an offline/no-wandb run.
+            row["loss_components"] = piece_means
             validation_started = time.time()
             validated = self.mode == "development" and (epoch % cfg.validation_every == 0 or epoch == self.epochs)
             if validated:
@@ -825,6 +1083,9 @@ class LocusCLSJointTrainer:
                 wandb_log = {
                     "train/loss": row["loss"], "train/lr": row["lr"], "train/seconds": row["seconds"],
                     "train/optimizer_steps": row["optimizer_steps"],
+                    "system/trainable_parameters": row["trainable_parameters"],
+                    "system/peak_cuda_memory_bytes": row["peak_cuda_memory_bytes"],
+                    "train/pair_slots_per_second": row["pair_slots_per_second"],
                     **{f"train/{k}": v for k, v in piece_means.items()},
                     **{f"diagnostics/{k}": v for k, v in diagnostics.items()},
                 }
@@ -856,6 +1117,9 @@ class LocusCLSJointTrainer:
             "best_inner_double_ood_mas_pcc": None if self.mode == "final" else best_score,
             "epochs_planned": self.epochs, "epochs_run": last_epoch,
             "elapsed_seconds": time.time() - started_all, "run_dir": str(self.store.path),
+            "trainable_parameters": self.trainable_parameter_count,
+            "peak_cuda_memory_bytes": torch.cuda.max_memory_allocated(self.device) if torch.cuda.is_available() else None,
+            "epoch1_plan_sha256": self.first_epoch_plan_sha256,
         }
         write_json(self.store.training_file("summary.json"), summary)
         if self.wandb_run is not None:
@@ -884,6 +1148,9 @@ def evaluate_official_split(
     scope: str = "chr1",
     sample_chunk: int = 128,
     cpg_chunk: int = 2048,
+    functional_atlas: str | Path | None = None,
+    annotation_cache: str | Path | None = None,
+    functional_only: bool = False,
 ) -> dict:
     """Evaluate a checkpoint on all three TRUE official MethylProphet views.
 
@@ -893,7 +1160,27 @@ def evaluate_official_split(
     namespace per view.
     """
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    if ckpt.get("regulatory_feature_cache") is not None:
+        supplied_cache = LocusFeatureCache(feature_cache)
+        if supplied_cache.regulatory_provenance != ckpt["regulatory_feature_cache"]:
+            raise ValueError("evaluation regulatory feature cache differs from the trained checkpoint")
     lc = ckpt.get("locus_cls") or {}
+    checkpoint_functional = lc.get("functional_locus")
+    if checkpoint_functional is not None and (functional_atlas is None or annotation_cache is None):
+        raise ValueError("functional checkpoint evaluation requires --functional-atlas and --annotation-cache")
+    if checkpoint_functional is None and (functional_atlas is not None or annotation_cache is not None):
+        raise ValueError("cannot enable functional conditioning when evaluating a non-functional checkpoint")
+    if checkpoint_functional is not None:
+        checkpoint_functional_only = checkpoint_functional.get("mode") == "functional_only"
+        if bool(functional_only) != checkpoint_functional_only:
+            raise ValueError("--functional-only does not match the checkpoint metadata")
+        supplied = {
+            "functional_atlas": str(Path(functional_atlas).resolve()),
+            "annotation_cache": str(Path(annotation_cache).resolve()),
+        }
+        for key, value in supplied.items():
+            if value != checkpoint_functional.get(key):
+                raise ValueError(f"evaluation {key} does not match the checkpoint metadata")
     # LocusCLSJointTrainer always wants its own run-store scratch dir (distinct
     # from `output`, which here is the single evaluation-summary JSON file the
     # scripts/evaluate.py CLI convention expects). track=False: this is an
@@ -911,8 +1198,11 @@ def evaluate_official_split(
         use_raw_product=lc.get("use_raw_product", True), product_mlp=lc.get("product_mlp", False),
         include_raw_rna=lc.get("include_raw_rna", True), include_raw_cpg=lc.get("include_raw_cpg", True),
         query_source=lc.get("query_source", "ntv3"),
+        trunk_hidden_dim=lc.get("trunk_hidden_dim", 256), bottleneck_dim=lc.get("bottleneck_dim", 64),
         fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
         residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
+        functional_atlas=functional_atlas, annotation_cache=annotation_cache,
+        functional_only=functional_only,
         track=False,
     )
     try:

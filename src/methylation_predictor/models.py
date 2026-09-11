@@ -22,12 +22,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import json
+
 from pathlib import Path
 
 import numpy as np
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
+
+
+class _SparseMMFloat32(torch.autograd.Function):
+    """CSR @ dense with an explicitly fp32 backward for CUDA AMP."""
+    @staticmethod
+    def forward(ctx, sparse, dense):
+        ctx.sparse = sparse
+        return torch.sparse.mm(sparse, dense.float())
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_dense = torch.sparse.mm(ctx.sparse.transpose(0, 1), grad_output.float())
+        return None, grad_dense
 import torch.utils.checkpoint  # noqa: F401 -- trunk gradient checkpointing
 
 from .config import AxialConfig, EncoderConfig, InteractionConfig, ModelConfig, TrunkConfig
@@ -1035,7 +1051,466 @@ def is_architecture_variant(config: ModelConfig) -> bool:
         or config.trunk.kind != "none"
         or config.axial.enabled
         or config.beta_likelihood_head
+        or bool(config.functional_fusion_variant)
     )
+
+
+class FunctionalFFNBlock(nn.Module):
+    def __init__(self, width: int = 256, dropout: float = 0.1):
+        super().__init__()
+        self.norm = nn.LayerNorm(width)
+        self.ffn = nn.Sequential(
+            nn.Linear(width, 4 * width), nn.GELU(), nn.Dropout(dropout),
+            nn.Linear(4 * width, width), nn.Dropout(dropout),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.ffn(self.norm(x))
+
+
+class FunctionalCrossAttentionBlock(nn.Module):
+    """Pre-norm locus-to-RNA attention, optionally gated before head mixing."""
+    def __init__(self, width: int, n_heads: int, dropout: float, gated: bool):
+        super().__init__()
+        if width % n_heads:
+            raise ValueError("functional fusion width must be divisible by n_heads")
+        self.n_heads, self.head_dim, self.gated = n_heads, width // n_heads, gated
+        self.q_norm, self.k_norm, self.v_norm = nn.LayerNorm(width), nn.LayerNorm(width), nn.LayerNorm(width)
+        self.query, self.key, self.value, self.out = (nn.Linear(width, width) for _ in range(4))
+        self.attn_dropout = nn.Dropout(dropout)
+        self.out_dropout = nn.Dropout(dropout)
+        self.ffn = FunctionalFFNBlock(width, dropout)
+        self.gate_norm = nn.LayerNorm(width) if gated else None
+        self.gate = nn.Linear(width, n_heads) if gated else None
+        if self.gate is not None:
+            nn.init.zeros_(self.gate.weight); nn.init.zeros_(self.gate.bias)
+        self.last_gates: torch.Tensor | None = None
+
+    def forward(self, h: torch.Tensor, tokens: torch.Tensor, static_locus: torch.Tensor) -> torch.Tensor:
+        batch, n_loci, width = h.shape
+        n_programs = tokens.shape[1]
+        q = self.query(self.q_norm(h)).view(batch, n_loci, self.n_heads, self.head_dim)
+        k = self.key(self.k_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        v = self.value(self.v_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        scores = torch.einsum("blhd,bkhd->bhlk", q, k) / self.head_dim ** 0.5
+        weights = self.attn_dropout(torch.softmax(scores, dim=-1))
+        heads = torch.einsum("bhlk,bkhd->blhd", weights, v)
+        if self.gate is not None:
+            gates = 2.0 * torch.sigmoid(self.gate(self.gate_norm(static_locus)))
+            self.last_gates = gates.detach()
+            heads = heads * gates[None, :, :, None]
+        u = h + self.out_dropout(self.out(heads.reshape(batch, n_loci, width)))
+        return self.ffn(u)
+
+
+class GroupedFunctionalEncoder(nn.Module):
+    """Four explicit 64D regulatory streams (accessibility/histone/binding/context),
+    concatenated to a 256D locus representation without pre-mixing the groups.
+
+    Track-group membership is a fixed lookup over the 4165 ``all_primary``
+    atlas ranks (``resources/functional_fusion/track_group_id_*.npy``: 0 =
+    accessibility, 1 = histone, 2 = binding = CTCF + TF binding). Context
+    (23D static/breadth features) is not track-based and always applies.
+    """
+
+    GROUP_NAMES = ("accessibility", "histone", "binding", "context")
+    STREAM_DIM = 64
+
+    def __init__(self, n_tracks: int, dense_dim: int, group_id: torch.Tensor,
+                 group_sizes: tuple[int, int, int]):
+        super().__init__()
+        if group_id.shape != (n_tracks,):
+            raise ValueError(f"group_id must have shape ({n_tracks},), got {tuple(group_id.shape)}")
+        self.register_buffer("group_id", group_id.to(torch.long), persistent=False)
+        # Local (per-group) embedding index for each global track rank, so each
+        # group's EmbeddingBag is sized exactly to its own track count.
+        local_id = torch.zeros(n_tracks, dtype=torch.long)
+        for g in range(3):
+            mask = group_id == g
+            local_id[mask] = torch.arange(int(mask.sum()))
+        self.register_buffer("local_id", local_id, persistent=False)
+        self.group_sizes = tuple(int(s) for s in group_sizes)
+        self.bags = nn.ModuleList([
+            nn.EmbeddingBag(size, self.STREAM_DIM, mode="mean", include_last_offset=True)
+            for size in self.group_sizes
+        ])
+        self.context_encoder = nn.Sequential(
+            nn.LayerNorm(dense_dim), nn.Linear(dense_dim, self.STREAM_DIM), nn.GELU(),
+        )
+
+    def forward(self, track_indices: torch.Tensor, offsets: torch.Tensor,
+                dense: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        n_loci = offsets.numel() - 1
+        device = dense.device
+        counts = offsets[1:] - offsets[:-1]
+        locus_ids = torch.repeat_interleave(torch.arange(n_loci, device=device), counts)
+        track_group = self.group_id[track_indices] if track_indices.numel() else \
+            track_indices.new_zeros(0)
+        track_local = self.local_id[track_indices] if track_indices.numel() else \
+            track_indices.new_zeros(0)
+        streams = []
+        for g, bag in enumerate(self.bags):
+            mask = track_group == g
+            sel_locus = locus_ids[mask]
+            sel_local = track_local[mask]
+            counts_g = torch.zeros(n_loci, dtype=torch.long, device=device)
+            if sel_locus.numel():
+                counts_g.scatter_add_(0, sel_locus, torch.ones_like(sel_locus))
+            offsets_g = torch.zeros(n_loci + 1, dtype=torch.long, device=device)
+            torch.cumsum(counts_g, dim=0, out=offsets_g[1:])
+            streams.append(bag(sel_local, offsets_g))
+        streams.append(self.context_encoder(dense))
+        return torch.cat(streams, dim=-1), streams
+
+
+class StandardCrossAttentionBlock(FunctionalCrossAttentionBlock):
+    """Alias of F0's single ungated cross-attention block, kept as an explicit
+    named control for the G-ladder (G0/G1 share this exact class)."""
+
+    def __init__(self, width: int, n_heads: int, dropout: float):
+        super().__init__(width, n_heads, dropout, gated=False)
+
+
+class RegulatoryHeadCrossAttention(nn.Module):
+    """One regulatory-group query per attention head: head h's query comes
+    from stream h (accessibility/histone/binding/context) instead of from a
+    single locus-invariant projection shared across heads. RNA program tokens
+    remain the usual K/V, decomposed into the same ``n_heads`` heads.
+
+    Returns the raw post-out-projection attention output only (no residual/
+    FFN) so G2 can wrap it in the standard block convention while G3/G4 build
+    on top of the same primitive.
+    """
+
+    def __init__(self, width: int, n_heads: int, dropout: float):
+        super().__init__()
+        if width % n_heads:
+            raise ValueError("regulatory-head attention width must be divisible by n_heads")
+        self.n_heads, self.head_dim = n_heads, width // n_heads
+        self.k_norm, self.v_norm = nn.LayerNorm(width), nn.LayerNorm(width)
+        self.key, self.value, self.out = nn.Linear(width, width), nn.Linear(width, width), nn.Linear(width, width)
+        self.query_norms = nn.ModuleList([nn.LayerNorm(self.head_dim) for _ in range(n_heads)])
+        self.query_proj = nn.ModuleList([nn.Linear(self.head_dim, self.head_dim) for _ in range(n_heads)])
+        self.attn_dropout = nn.Dropout(dropout)
+        self.out_dropout = nn.Dropout(dropout)
+        self.last_head_entropy: torch.Tensor | None = None
+        self.last_head_topk_mass: torch.Tensor | None = None
+
+    def forward(self, streams: list[torch.Tensor], tokens: torch.Tensor) -> torch.Tensor:
+        if len(streams) != self.n_heads:
+            raise ValueError(f"expected exactly {self.n_heads} regulatory streams, got {len(streams)}")
+        batch, n_programs, _ = tokens.shape
+        k = self.key(self.k_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        v = self.value(self.v_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        outs, entropies, topk = [], [], []
+        top_k = min(8, n_programs)
+        for head in range(self.n_heads):
+            q = self.query_proj[head](self.query_norms[head](streams[head]))  # [n_loci, head_dim]
+            scores = torch.einsum("ld,bkd->blk", q, k[:, :, head, :]) / (self.head_dim ** 0.5)
+            weights = self.attn_dropout(torch.softmax(scores, dim=-1))
+            outs.append(torch.einsum("blk,bkd->bld", weights, v[:, :, head, :]))
+            with torch.no_grad():
+                p = weights.clamp_min(1e-12)
+                entropies.append((-(p * p.log()).sum(-1)).mean())
+                topk.append(weights.topk(top_k, dim=-1).values.sum(-1).mean())
+        self.last_head_entropy = torch.stack(entropies).detach()
+        self.last_head_topk_mass = torch.stack(topk).detach()
+        heads = torch.cat(outs, dim=-1)
+        return self.out_dropout(self.out(heads))
+
+
+class AdaptiveResidualGate(nn.Module):
+    """G3: ``h = f_c + gate * Wa(a)``, ``gate = sigmoid(Linear(LN([f_c, a])))``,
+    followed by the standard post-norm FFN residual. Gate bias/weight start at
+    zero so the gate is exactly 0.5 (neutral) at initialization."""
+
+    def __init__(self, width: int, dropout: float):
+        super().__init__()
+        self.gate_norm = nn.LayerNorm(2 * width)
+        self.gate = nn.Linear(2 * width, width)
+        nn.init.zeros_(self.gate.weight)
+        nn.init.zeros_(self.gate.bias)
+        self.value_proj = nn.Linear(width, width)
+        self.ffn = FunctionalFFNBlock(width, dropout)
+        self.last_gate: torch.Tensor | None = None
+
+    def forward(self, f_c: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
+        gate = torch.sigmoid(self.gate(self.gate_norm(torch.cat([f_c, a], dim=-1))))
+        self.last_gate = gate.detach()
+        h = f_c + gate * self.value_proj(a)
+        return self.ffn(h)
+
+
+class LowRankMultiplicativeFusion(nn.Module):
+    """G4: rank-128 multiplicative compatibility between ``f_c`` and the
+    regulatory-head attention output ``a``, folded back additively into
+    ``f_c``, then the same final FFN convention as G2/G3."""
+
+    RANK = 128
+
+    def __init__(self, width: int, dropout: float):
+        super().__init__()
+        self.u_proj = nn.Linear(width, self.RANK)
+        self.v_proj = nn.Linear(width, self.RANK)
+        self.delta = nn.Sequential(
+            nn.LayerNorm(2 * width + self.RANK), nn.Linear(2 * width + self.RANK, width),
+            nn.GELU(), nn.Linear(width, width),
+        )
+        self.ffn = FunctionalFFNBlock(width, dropout)
+
+    def forward(self, f_c: torch.Tensor, a: torch.Tensor) -> torch.Tensor:
+        u, v = self.u_proj(f_c), self.v_proj(a)
+        m = u * v
+        if m.shape[-1] != self.RANK:
+            raise RuntimeError(f"low-rank product must be exactly {self.RANK}D, got {m.shape[-1]}")
+        h = f_c + self.delta(torch.cat([f_c, a, m], dim=-1))
+        return self.ffn(h)
+
+
+def _load_functional_track_groups() -> tuple[torch.Tensor, tuple[int, int, int]]:
+    """Fixed accessibility/histone/binding group lookup for the 4165 ``all_primary``
+    atlas ranks -- see ``resources/functional_fusion/track_group_id_chr1_all_sources.{npy,json}``.
+    """
+    root = Path(__file__).resolve().parents[2] / "resources" / "functional_fusion"
+    group_id = np.load(root / "track_group_id_chr1_all_sources.npy")
+    meta = json.loads((root / "track_group_id_chr1_all_sources.json").read_text())
+    return torch.from_numpy(group_id.astype(np.int64)), tuple(meta["group_sizes"])
+
+
+class FunctionalFusionModel(nn.Module):
+    """Functional-only F0--F6 and G0--G4 ladders; never reads a genomic/FM embedding.
+
+    G0--G4 (``docs/RNA_METHYLATION.md``'s regulatory-fusion ladder) isolate the
+    fusion between the four-stream functional/regulatory representation of a
+    CpG locus and the RNA program-token representation, holding the RNA
+    encoder, dimensions, pools, split, loss, optimizer and beta head fixed:
+
+      * ``g0_control``    -- identical math to ``f0_single`` (one unified
+        track embedding + one standard cross-attention block). The frozen F0
+        control.
+      * ``g1_grouped``     -- ``GroupedFunctionalEncoder``'s four 64D streams
+        concatenated to 256D, then the *same* standard cross-attention block
+        as G0. Isolates whether preserving regulatory modality identity
+        before fusion helps, independent of head-level routing.
+      * ``g2_regulatory_head`` -- ``RegulatoryHeadCrossAttention``: one
+        stream maps to one attention head (accessibility/histone/binding/
+        context queries), RNA tokens decomposed into the usual 4 K/V heads.
+      * ``g3_gated_residual``  -- G2 + ``AdaptiveResidualGate``.
+      * ``g4_lowrank_fusion``  -- G2 + ``LowRankMultiplicativeFusion``.
+    """
+    VARIANTS = {"f0_single", "f1_capacity", "f2_iter2", "f3_iter4",
+                "f4_head_gated", "f5_atlas_router", "f6_router_head_gated", "f7_standardized",
+                "g0_control", "g1_grouped", "g2_regulatory_head",
+                "g3_gated_residual", "g4_lowrank_fusion",
+                "g2_mean_proxy"}
+    G_VARIANTS = {"g0_control", "g1_grouped", "g2_regulatory_head",
+                  "g3_gated_residual", "g4_lowrank_fusion", "g2_mean_proxy"}
+    # Off-ladder ablation (docs/MEAN_CONTRIBUTION_EXPERIMENTS.md's causal claim,
+    # applied to the functional/regulatory domain): G2's architecture plus a
+    # locus-only mean head supervised against cpg_statistics' target_mu, kept
+    # deliberately separate from the G0-G4 fixed-loss comparison ladder (its
+    # loss differs -- a nonzero mean_aux_weight -- so it cannot share that
+    # ladder's fairness guarantee). See FunctionalFusionModel's forward for how
+    # mu_logit is produced only for this variant.
+    MEAN_PROXY_VARIANTS = {"g2_mean_proxy"}
+    N_TRACKS, DENSE_DIM, WIDTH = 4165, 23, 256
+
+    def __init__(self, input_dim: int, config: ModelConfig, dense_dim: int = 23):
+        super().__init__()
+        self.DENSE_DIM = int(dense_dim)
+        variant = config.functional_fusion_variant
+        if variant not in self.VARIANTS:
+            raise ValueError(f"unknown functional_fusion_variant={variant!r}")
+        enc = config.encoder
+        if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
+            raise ValueError("functional fusion requires locus_attention RNA tokens with program_dim=256")
+        self.variant = variant
+        self.is_g_variant = variant in self.G_VARIANTS
+        self.rna_encoder = build_rna_encoder(enc, input_dim=input_dim, locus_dim=self.WIDTH)
+        self.head = nn.Sequential(nn.LayerNorm(self.WIDTH), nn.Linear(self.WIDTH, 1))
+        self.last_router_normalization: torch.Tensor | None = None
+
+        if self.is_g_variant:
+            self.track_embedding = None
+            self.dense_encoder = None
+            self.locus_norm = None
+            self.router_query = None
+            self.router_key = None
+            self.blocks = nn.ModuleList()
+            self.capacity_blocks = nn.ModuleList()
+            if variant == "g0_control":
+                # Byte-identical math to f0_single: one unified track embedding
+                # + one standard cross-attention block, no grouped streams.
+                self.track_embedding = nn.EmbeddingBag(
+                    self.N_TRACKS, self.WIDTH, mode="mean", include_last_offset=True,
+                )
+                self.dense_encoder = nn.Sequential(
+                    nn.LayerNorm(self.DENSE_DIM), nn.Linear(self.DENSE_DIM, self.WIDTH), nn.GELU(),
+                )
+                self.locus_norm = nn.LayerNorm(self.WIDTH)
+                self.standard_block = StandardCrossAttentionBlock(self.WIDTH, enc.n_heads, enc.dropout)
+            else:
+                group_id, group_sizes = _load_functional_track_groups()
+                self.functional_encoder = GroupedFunctionalEncoder(self.N_TRACKS, self.DENSE_DIM, group_id, group_sizes)
+                if variant == "g1_grouped":
+                    self.standard_block = StandardCrossAttentionBlock(self.WIDTH, enc.n_heads, enc.dropout)
+                else:
+                    self.regulatory_attention = RegulatoryHeadCrossAttention(self.WIDTH, enc.n_heads, enc.dropout)
+                    self.regulatory_ffn = FunctionalFFNBlock(self.WIDTH, enc.dropout) if variant in {"g2_regulatory_head", "g2_mean_proxy"} else None
+                    self.gate = AdaptiveResidualGate(self.WIDTH, enc.dropout) if variant == "g3_gated_residual" else None
+                    self.lowrank = LowRankMultiplicativeFusion(self.WIDTH, enc.dropout) if variant == "g4_lowrank_fusion" else None
+            self.mean_head = nn.Linear(self.WIDTH, 1) if variant in self.MEAN_PROXY_VARIANTS else None
+            return
+
+        if variant == "f7_standardized":
+            from .regulatory_embedding import StandardizedTrackEmbedding
+            self.track_embedding = StandardizedTrackEmbedding(self.N_TRACKS, self.WIDTH)
+        else:
+            self.track_embedding = nn.EmbeddingBag(
+                self.N_TRACKS, self.WIDTH, mode="mean", include_last_offset=True,
+            )
+        # TODO(f5-follow-up, only if routing wins): test
+        # E_track = E_assay + E_target + E_biosample + E_block as a separate
+        # ablation. F0--F6 deliberately share this unfactorized table.
+        self.dense_encoder = nn.Sequential(nn.LayerNorm(self.DENSE_DIM), nn.Linear(self.DENSE_DIM, self.WIDTH), nn.GELU())
+        self.locus_norm = nn.LayerNorm(self.WIDTH)
+        self.router_query = nn.Linear(self.WIDTH, self.WIDTH) if "router" in variant else None
+        self.router_key = nn.Linear(self.WIDTH, self.WIDTH) if "router" in variant else None
+        depth = {"f0_single": 1, "f1_capacity": 1, "f2_iter2": 2,
+                 "f3_iter4": 4, "f4_head_gated": 2,
+                 "f5_atlas_router": 2, "f6_router_head_gated": 2, "f7_standardized": 1}[variant]
+        gated = variant in {"f4_head_gated", "f6_router_head_gated"}
+        self.blocks = nn.ModuleList([
+            FunctionalCrossAttentionBlock(self.WIDTH, enc.n_heads, enc.dropout, gated) for _ in range(depth)
+        ])
+        self.capacity_blocks = nn.ModuleList([FunctionalFFNBlock(self.WIDTH, enc.dropout) for _ in range(2)]) if variant == "f1_capacity" else nn.ModuleList()
+
+    @property
+    def requires_cpg_positions(self) -> bool:
+        return False
+
+    def _routed_peak(self, tokens: torch.Tensor, indices: torch.Tensor, offsets: torch.Tensor) -> torch.Tensor:
+        batch, n_loci = tokens.shape[0], offsets.numel() - 1
+        if indices.numel() == 0:
+            self.last_router_normalization = tokens.new_zeros((batch, n_loci)).detach()
+            return tokens.new_zeros((batch, n_loci, self.WIDTH))
+        embeddings = self.track_embedding.weight
+        # cuSPARSE backward does not support the mixed fp32-CSR/bf16-dense
+        # combination produced by outer autocast. Keep this small 4,165-track
+        # routing calculation explicitly fp32.
+        with torch.autocast(device_type=tokens.device.type, enabled=False):
+            q = self.router_query(tokens.mean(dim=1).float())
+            keys = self.router_key(embeddings.float())
+            relevance = torch.sigmoid(q @ keys.T / self.WIDTH ** 0.5)
+        x = torch.sparse_csr_tensor(offsets, indices, torch.ones_like(indices, dtype=torch.float32),
+                                    size=(n_loci, self.N_TRACKS), device=indices.device)
+        routed, sums = [], []
+        for patient in range(batch):
+            denom = _SparseMMFloat32.apply(x, relevance[patient, :, None]).squeeze(1)
+            numerator = _SparseMMFloat32.apply(x, relevance[patient, :, None] * embeddings.float())
+            routed.append(numerator / denom.clamp_min(1e-8)[:, None])
+            sums.append(torch.where(denom > 0, torch.ones_like(denom), torch.zeros_like(denom)))
+        self.last_router_normalization = torch.stack(sums).detach()
+        return torch.stack(routed)
+
+    def diagnostics(self) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for block_i, block in enumerate(self.blocks):
+            if block.last_gates is not None:
+                for head_i in range(block.n_heads):
+                    values = block.last_gates[:, head_i].float()
+                    out[f"gate/block{block_i}/head{head_i}/mean"] = float(values.mean())
+                    out[f"gate/block{block_i}/head{head_i}/std"] = float(values.std(unbiased=False))
+        attn = getattr(self, "regulatory_attention", None)
+        if attn is not None and attn.last_head_entropy is not None:
+            for head_i, name in enumerate(GroupedFunctionalEncoder.GROUP_NAMES):
+                out[f"regulatory_attn/head{head_i}_{name}/entropy"] = float(attn.last_head_entropy[head_i])
+                out[f"regulatory_attn/head{head_i}_{name}/top8_mass"] = float(attn.last_head_topk_mass[head_i])
+        gate = getattr(self, "gate", None)
+        if gate is not None and gate.last_gate is not None:
+            values = gate.last_gate.float().flatten()
+            # torch.quantile caps input size (16,777,216 elements); a full
+            # [batch, n_loci, 256] gate tensor routinely exceeds that, so
+            # subsample before quantiles (mean/std above stay exact).
+            quantile_cap = 1_000_000
+            if values.numel() > quantile_cap:
+                idx = torch.randperm(values.numel(), device=values.device)[:quantile_cap]
+                quantile_values = values[idx]
+            else:
+                quantile_values = values
+            quantiles = torch.quantile(quantile_values, torch.tensor([0.1, 0.5, 0.9], device=values.device))
+            out["g3_gate/mean"] = float(values.mean())
+            out["g3_gate/std"] = float(values.std(unbiased=False))
+            out["g3_gate/q10"], out["g3_gate/q50"], out["g3_gate/q90"] = (float(v) for v in quantiles)
+        return out
+
+    def _forward_g_variant(self, rna: torch.Tensor, functional_track_indices: torch.Tensor,
+                            functional_offsets: torch.Tensor, functional_dense: torch.Tensor) -> dict[str, torch.Tensor]:
+        representation = self.rna_encoder(rna)
+        if representation.program_tokens is None:
+            raise RuntimeError("RNA encoder did not produce program tokens")
+        tokens = representation.program_tokens
+        batch = rna.shape[0]
+
+        if self.variant == "g0_control":
+            dense = self.dense_encoder(functional_dense)
+            peak = self.track_embedding(functional_track_indices, functional_offsets)
+            f_c = self.locus_norm(peak + dense)
+            h = self.standard_block(f_c[None, :, :].expand(batch, -1, -1), tokens, f_c)
+            logit = self.head(h).squeeze(-1)
+            return {"beta": torch.sigmoid(logit), "delta_logit": logit, "raw_delta": logit,
+                    "prediction_logit": logit, "mu_logit": None, "residual_logit": logit, "h_cpg": f_c}
+
+        f_c, streams = self.functional_encoder(functional_track_indices, functional_offsets, functional_dense)
+        if self.variant == "g1_grouped":
+            h = self.standard_block(f_c[None, :, :].expand(batch, -1, -1), tokens, f_c)
+        else:
+            a = self.regulatory_attention(streams, tokens)
+            f_c_expanded = f_c[None, :, :].expand(batch, -1, -1)
+            if self.variant in {"g2_regulatory_head", "g2_mean_proxy"}:
+                u = f_c_expanded + a
+                h = self.regulatory_ffn(u)
+            elif self.variant == "g3_gated_residual":
+                h = self.gate(f_c_expanded, a)
+            elif self.variant == "g4_lowrank_fusion":
+                h = self.lowrank(f_c_expanded, a)
+            else:
+                raise ValueError(f"unhandled g-variant {self.variant!r}")
+        logit = self.head(h).squeeze(-1)
+        # mu_logit is a locus-only auxiliary probe (docs/MEAN_CONTRIBUTION_EXPERIMENTS.md's
+        # causal claim, ported to the functional/regulatory domain): computed
+        # from f_c alone, never from the patient-conditioned h, and never fed
+        # back into beta_hat -- see mean_head's docstring at construction.
+        mu_logit = self.mean_head(f_c).squeeze(-1) if self.mean_head is not None else None
+        return {"beta": torch.sigmoid(logit), "delta_logit": logit, "raw_delta": logit,
+                "prediction_logit": logit, "mu_logit": mu_logit, "residual_logit": logit, "h_cpg": f_c}
+
+    def forward(self, rna: torch.Tensor, cpg_embedding: torch.Tensor | None = None,
+                cpg_positions: torch.Tensor | None = None, *, functional_track_indices: torch.Tensor,
+                functional_offsets: torch.Tensor, functional_dense: torch.Tensor) -> dict[str, torch.Tensor]:
+        del cpg_embedding, cpg_positions  # explicit: genomic/FM input is not consumed
+        if self.is_g_variant:
+            return self._forward_g_variant(rna, functional_track_indices, functional_offsets, functional_dense)
+        representation = self.rna_encoder(rna)
+        if representation.program_tokens is None:
+            raise RuntimeError("RNA encoder did not produce program tokens")
+        tokens = representation.program_tokens
+        dense = self.dense_encoder(functional_dense)
+        if self.router_query is None:
+            peak = self.track_embedding(functional_track_indices, functional_offsets)
+            static = self.locus_norm(peak + dense)
+            h = static[None, :, :].expand(rna.shape[0], -1, -1)
+        else:
+            peak = self._routed_peak(tokens, functional_track_indices, functional_offsets)
+            static = self.locus_norm(self.track_embedding(functional_track_indices, functional_offsets) + dense)
+            h = self.locus_norm(peak + dense[None, :, :])
+        for block in self.blocks:
+            h = block(h, tokens, static)
+        for block in self.capacity_blocks:
+            h = block(h)
+        logit = self.head(h).squeeze(-1)
+        return {"beta": torch.sigmoid(logit), "delta_logit": logit, "raw_delta": logit,
+                "prediction_logit": logit, "mu_logit": None, "residual_logit": logit, "h_cpg": static}
 
 
 class FeatureFusionArchitectureVariantModel(nn.Module):
@@ -1103,6 +1578,8 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
         product_mlp: bool = False,
         fusion_init_std: float = 0.01,
         query_source: str = "ntv3",
+        functional_conditioning: bool = False,
+        functional_only: bool = False,
     ):
         super().__init__()
         self.config = config
@@ -1236,6 +1713,33 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
             nn.init.zeros_(self.fusion.weight)
         nn.init.zeros_(self.fusion.bias)
 
+        # Constructed after every pre-existing module so enabling this optional
+        # residual cannot perturb initialization of parameters shared with the
+        # control arm under the same seed.
+        self.functional_conditioning = bool(functional_conditioning)
+        self.functional_only = bool(functional_only)
+        if self.functional_only and not self.functional_conditioning:
+            raise ValueError("functional_only requires functional_conditioning")
+        if self.functional_conditioning:
+            cpu_rng_state = torch.get_rng_state()
+            try:
+                self.functional_peak_embedding = nn.EmbeddingBag(
+                    4165, 64, mode="mean", include_last_offset=True,
+                )
+                self.functional_dense_encoder = nn.Sequential(
+                    nn.LayerNorm(23), nn.Linear(23, 64), nn.GELU(),
+                )
+                self.functional_fusion = nn.Sequential(
+                    nn.LayerNorm(128), nn.Linear(128, 64), nn.GELU(),
+                )
+                self.functional_delta = nn.Linear(64, cpg_input_dim, bias=False)
+                if not self.functional_only:
+                    nn.init.zeros_(self.functional_delta.weight)
+            finally:
+                # Keep subsequent dropout/data-order RNG identical to the
+                # control arm as well as preserving common initialization.
+                torch.set_rng_state(cpu_rng_state)
+
     @property
     def requires_cpg_positions(self) -> bool:
         return self.axial is not None
@@ -1250,7 +1754,18 @@ class FeatureFusionArchitectureVariantModel(nn.Module):
 
     def forward(
         self, rna: torch.Tensor, cpg_embedding: torch.Tensor, cpg_positions: torch.Tensor | None = None,
+        functional_track_indices: torch.Tensor | None = None,
+        functional_offsets: torch.Tensor | None = None,
+        functional_dense: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
+        if self.functional_conditioning:
+            if functional_track_indices is None or functional_offsets is None or functional_dense is None:
+                raise ValueError("functional conditioning requires track indices, offsets, and dense features")
+            peak_pattern = self.functional_peak_embedding(functional_track_indices, functional_offsets)
+            dense_context = self.functional_dense_encoder(functional_dense)
+            functional = self.functional_fusion(torch.cat([peak_pattern, dense_context], dim=-1))
+            functional_embedding = self.functional_delta(functional)
+            cpg_embedding = functional_embedding if self.functional_only else cpg_embedding + functional_embedding
         representation = self.rna_encoder(rna)
         batch = rna.shape[0]
         n_loci = cpg_embedding.shape[0]
@@ -1338,3 +1853,323 @@ def feature_fusion_variant_label(config: ModelConfig) -> str:
     if config.beta_likelihood_head:
         parts.append("betahead")
     return "_".join(parts)
+
+
+class SimpleCrossAttention(nn.Module):
+    """One plain multi-head cross-attention layer, no residual/FFN wrapper:
+    ``a_pc = softmax(Q(h_c) K(RNA_programs)^T / sqrt(d)) V(RNA_programs)``.
+    Deliberately bare -- ``FunctionalConcatMASModel`` composes its own
+    representation from ``concat(h_c, a_pc)`` externally, so this layer must
+    not add its own residual around ``h_c`` (that would make ``h_c`` appear
+    twice, implicitly).
+    """
+
+    def __init__(self, width: int, n_heads: int, dropout: float = 0.0):
+        super().__init__()
+        if width % n_heads:
+            raise ValueError("cross-attention width must be divisible by n_heads")
+        self.n_heads, self.head_dim = n_heads, width // n_heads
+        self.q_norm, self.k_norm, self.v_norm = nn.LayerNorm(width), nn.LayerNorm(width), nn.LayerNorm(width)
+        self.query, self.key, self.value, self.out = (nn.Linear(width, width) for _ in range(4))
+        self.attn_dropout = nn.Dropout(dropout)
+
+    def forward(self, h_c: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+        """``h_c``: [n_loci, width] (locus-only, no batch axis).
+        ``tokens``: [batch, n_programs, width]. Returns ``[batch, n_loci, width]``."""
+        batch, n_programs, width = tokens.shape
+        n_loci = h_c.shape[0]
+        q = self.query(self.q_norm(h_c)).view(n_loci, self.n_heads, self.head_dim)
+        k = self.key(self.k_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        v = self.value(self.v_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        scores = torch.einsum("lhd,bkhd->bhlk", q, k) / (self.head_dim ** 0.5)
+        weights = self.attn_dropout(torch.softmax(scores, dim=-1))
+        attended = torch.einsum("bhlk,bkhd->blhd", weights, v)
+        return self.out(attended.reshape(batch, n_loci, width))
+
+
+class FunctionalConcatMASModel(nn.Module):
+    """Focused experiment (docs/RNA_METHYLATION.md's sample-wise-Pearson
+    ladder, H0/H1/H2): a cleaner final-prediction architecture than the G0-G4
+    ladder, trained with an explicit sample-wise (per-patient, across-CpG)
+    Pearson auxiliary loss (``losses.sample_pearson_loss``) in addition to
+    beta MSE and the mean-branch proxy task.
+
+    Reuses the exact same functional CpG encoder as G0 (one unified
+    ``EmbeddingBag`` over all 4165 tracks + a dense static/breadth MLP,
+    summed and LayerNorm'd -- ``docs/RNA_METHYLATION.md``'s regulatory-fusion
+    ladder) and the exact same RNA encoder (``build_rna_encoder``,
+    ``encoder.kind=locus_attention``, 64x256 program tokens) -- neither is
+    redesigned here, only the final-prediction topology and the loss are:
+
+      h_c = functional_encoder(track_indices, offsets, dense)   # [n_loci, 256], locus-only
+
+      mu_hat_c = sigmoid(MeanMLP(h_c))          # TRAINING ONLY, never read by beta_hat
+      a_pc = SimpleCrossAttention(h_c, RNA_programs)             # [batch, n_loci, 256]
+      z_pc = concat(h_c, a_pc)                                   # [batch, n_loci, 512]
+      beta_hat = sigmoid(MLP_512_256_128_1(z_pc))
+
+    Gradient contract (see tests/test_functional_locus.py): ``mu_hat_c`` only
+    ever depends on ``h_c`` (never on ``a_pc``/``beta_hat``), so a backward
+    pass through it alone reaches only ``functional_encoder`` + ``mean_head``
+    -- by construction, not via any ``detach()``. ``beta_hat`` depends on both
+    ``h_c`` and ``a_pc``, so it reaches ``functional_encoder``, ``rna_encoder``,
+    ``cross_attention`` and ``final_regressor``. ``mu_hat_c`` is never
+    concatenated into ``z_pc`` and never read by the inference path.
+
+    ``detach_h_c_main_path`` (off by default, opt-in via ``mas_concat_v2_detached``):
+    a follow-up ablation on the H0/H1/H2 sweep, motivated by H0's val_cpg
+    overfit (train_cpg/mean_rho_p improving while val_cpg_x_val_sample MAS-PCC
+    plateaus and MSE climbs -- locus-identity overfitting, the 4165-track
+    EmbeddingBag memorizing idiosyncratic track combinations of *seen* CpGs
+    under the noisy per-patient beta objective). When true, ``h_c`` is
+    ``.detach()``-ed before it is used as the cross-attention query AND before
+    it is concatenated into ``z_pc`` -- both usages, so no path from
+    ``L_beta_MSE``/``L_sample_PCC`` reaches ``functional_encoder`` any more;
+    only ``L_mean`` (a locus-level, cross-patient-averaged, far less noisy
+    target) still shapes it. ``cross_attention``/``final_regressor`` keep
+    getting gradient from the main path as before -- only the upstream
+    producer of their ``h_c`` input is cut off.
+    """
+
+    N_TRACKS, DENSE_DIM, WIDTH = 4165, 23, 256
+
+    def __init__(self, input_dim: int, config: ModelConfig, detach_h_c_main_path: bool = False,
+                 separate_concat_norm: bool = False, final_regressor_dropout: float = 0.0):
+        super().__init__()
+        self.detach_h_c_main_path = bool(detach_h_c_main_path)
+        # v3 follow-up: LayerNorm h_c and r_pc (the cross-attention output)
+        # INDEPENDENTLY right before concatenation, so the final MLP sees two
+        # representations on a matched scale rather than potentially picking
+        # the higher-norm modality by default. Off by default (v1/v2 keep
+        # their original byte-for-byte concat).
+        self.separate_concat_norm = bool(separate_concat_norm)
+        enc = config.encoder
+        if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
+            raise ValueError("FunctionalConcatMASModel requires locus_attention RNA tokens with program_dim=256")
+        self.rna_encoder = build_rna_encoder(enc, input_dim=input_dim, locus_dim=self.WIDTH)
+        # Same functional encoder as G0 (docs/RNA_METHYLATION.md) -- not redesigned.
+        self.track_embedding = nn.EmbeddingBag(self.N_TRACKS, self.WIDTH, mode="mean", include_last_offset=True)
+        self.dense_encoder = nn.Sequential(nn.LayerNorm(self.DENSE_DIM), nn.Linear(self.DENSE_DIM, self.WIDTH), nn.GELU())
+        self.locus_norm = nn.LayerNorm(self.WIDTH)
+        self.cross_attention = SimpleCrossAttention(self.WIDTH, enc.n_heads, enc.dropout)
+        self.mean_head = nn.Sequential(
+            nn.LayerNorm(self.WIDTH), nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Linear(128, 1),
+        )
+        self.h_c_concat_norm = nn.LayerNorm(self.WIDTH) if self.separate_concat_norm else None
+        self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH) if self.separate_concat_norm else None
+        # Regularization follow-up: final_regressor previously had NO dropout
+        # at all -- the highest-capacity module on the direct beta_hat path,
+        # and a plausible driver of the val_cpg generalization gap that
+        # persisted unchanged across every fusion-mechanism intervention
+        # tried so far (detach_h_c_main_path, centered-MSE, separate_concat_norm
+        # + locus-wise PCC -- none moved the epoch-7 MSE inflection). Off by
+        # default (0.0 preserves v1/v2/v3 byte-for-byte).
+        self.final_regressor_dropout = float(final_regressor_dropout)
+        self.final_regressor = nn.Sequential(
+            nn.Linear(2 * self.WIDTH, self.WIDTH), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(128, 1),
+        )
+
+    @property
+    def requires_cpg_positions(self) -> bool:
+        return False
+
+    def forward(self, rna: torch.Tensor, cpg_embedding: torch.Tensor | None = None,
+                cpg_positions: torch.Tensor | None = None, *, functional_track_indices: torch.Tensor,
+                functional_offsets: torch.Tensor, functional_dense: torch.Tensor) -> dict[str, torch.Tensor]:
+        del cpg_embedding, cpg_positions  # explicit: genomic/FM input is not consumed
+        representation = self.rna_encoder(rna)
+        if representation.program_tokens is None:
+            raise RuntimeError("RNA encoder did not produce program tokens")
+        tokens = representation.program_tokens
+
+        peak = self.track_embedding(functional_track_indices, functional_offsets)
+        dense = self.dense_encoder(functional_dense)
+        h_c = self.locus_norm(peak + dense)  # [n_loci, 256], locus-only
+
+        mu_hat = torch.sigmoid(self.mean_head(h_c).squeeze(-1))  # [n_loci] -- training-only probe, always fed the non-detached h_c
+
+        # detach_h_c_main_path: both usages below (query AND concat) must use
+        # the same detached tensor, or gradient from L_beta/L_sample_PCC would
+        # still reach functional_encoder through whichever one is left attached.
+        h_c_main = h_c.detach() if self.detach_h_c_main_path else h_c
+        r_pc = self.cross_attention(h_c_main, tokens)  # [batch, n_loci, 256] -- pure RNA context, no +h_c residual
+        h_c_for_concat = self.h_c_concat_norm(h_c_main) if self.separate_concat_norm else h_c_main
+        r_pc_for_concat = self.r_pc_concat_norm(r_pc) if self.separate_concat_norm else r_pc
+        z_pc = torch.cat([h_c_for_concat[None, :, :].expand(r_pc_for_concat.shape[0], -1, -1), r_pc_for_concat], dim=-1)  # [batch, n_loci, 512]
+        logit = self.final_regressor(z_pc).squeeze(-1)
+        beta = torch.sigmoid(logit)
+        return {
+            "beta": beta, "delta_logit": logit, "raw_delta": logit, "prediction_logit": logit,
+            "mu_logit": None, "mu_hat": mu_hat, "residual_logit": logit, "h_cpg": h_c,
+        }
+
+
+class BatchedCrossAttention(nn.Module):
+    """Same math as ``SimpleCrossAttention`` (bare MHA, no residual/FFN
+    wrapper), except the query already carries a batch (patient) axis --
+    ``[batch, n_loci, width]`` instead of ``[n_loci, width]``. Used by
+    ``FunctionalConcatIterativeRNAModel``'s second retrieval block, whose
+    query is the already patient-conditioned ``r1``, not the locus-only
+    ``h_c``.
+    """
+
+    def __init__(self, width: int, n_heads: int, dropout: float = 0.0):
+        super().__init__()
+        if width % n_heads:
+            raise ValueError("cross-attention width must be divisible by n_heads")
+        self.n_heads, self.head_dim = n_heads, width // n_heads
+        self.q_norm, self.k_norm, self.v_norm = nn.LayerNorm(width), nn.LayerNorm(width), nn.LayerNorm(width)
+        self.query, self.key, self.value, self.out = (nn.Linear(width, width) for _ in range(4))
+        self.attn_dropout = nn.Dropout(dropout)
+
+    def forward(self, query: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+        batch, n_loci, width = query.shape
+        n_programs = tokens.shape[1]
+        q = self.query(self.q_norm(query)).view(batch, n_loci, self.n_heads, self.head_dim)
+        k = self.key(self.k_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        v = self.value(self.v_norm(tokens)).view(batch, n_programs, self.n_heads, self.head_dim)
+        scores = torch.einsum("blhd,bkhd->bhlk", q, k) / (self.head_dim ** 0.5)
+        weights = self.attn_dropout(torch.softmax(scores, dim=-1))
+        attended = torch.einsum("bhlk,bkhd->blhd", weights, v)
+        return self.out(attended.reshape(batch, n_loci, width))
+
+
+class FunctionalConcatIterativeRNAModel(nn.Module):
+    """``mas_concat_v3_purecontext`` (``FunctionalConcatMASModel``) with its
+    single cross-attention retrieval replaced by a stack of ``N_BLOCKS``
+    IDENTICAL pre-norm cross-attention + FFN blocks -- the 2026-09-11
+    "iterative RNA retrieval" candidate (corrected after the first attempt's
+    special-cased, non-residual first block turned out not to match the
+    intended design), isolating retrieval DEPTH as the sole architectural
+    difference from that reference. The functional encoder, mean head, RNA
+    encoder, final regressor, loss and every other hyperparameter are
+    byte-for-byte the same as ``FunctionalConcatMASModel``
+    (``separate_concat_norm``-equivalent, ``final_regressor_dropout=0.15``);
+    only the retrieval stack between ``h_c``/``R_p`` and the final concat
+    differs:
+
+      state_0 = h_c broadcast to [batch, n_loci, width]   -- state now
+                                                               carries a
+                                                               patient axis
+                                                               from block 1
+      for i in 1..N_BLOCKS:
+          state = state + MHA(Q=LN(state), K=V=LN(R_p))   -- residual ALWAYS
+                                                               applied, every
+                                                               block, including
+                                                               the first
+          state = state + FFN(LN(state))                  -- FunctionalFFNBlock,
+                                                               residual baked in
+
+      h = LN(h_c) (the ORIGINAL, pre-stack locus representation);
+      r = LN(state_N_BLOCKS); z = concat([h, r]) -> same 512->256->128->1 MLP
+      as the reference, sigmoid output.
+
+    ``mu_hat`` is produced from ``h_c`` only, exactly as in
+    ``FunctionalConcatMASModel`` -- never read by ``beta_hat``, never detached,
+    with no computational path from ``L_mean`` into the RNA encoder, any
+    retrieval block, or the final regressor (by construction: ``h_c`` never
+    depends on ``tokens``, and the mean head reads ``h_c`` directly, not any
+    ``state_i``).
+    """
+
+    N_TRACKS, DENSE_DIM, WIDTH, N_BLOCKS = 4165, 23, 256, 4
+    # Bounds peak activation memory for large WGBS-sized blocks (up to 20480
+    # loci): N_BLOCKS retrieval blocks + N_BLOCKS 256->1024->256 FFNs + the
+    # final MLP, all applied per-locus/per-token, make this model's per-locus
+    # activation footprint several times ``FunctionalConcatMASModel``'s
+    # single-block one. Chunking over the (patient-invariant) locus axis is
+    # mathematically exact -- every op here (attention against the fixed RNA
+    # tokens, FFN, LayerNorm, the final MLP) is independent across loci -- it
+    # only bounds peak memory, it does not change the result or the
+    # effective batching.
+    LOCUS_CHUNK = 1024
+
+    def __init__(self, input_dim: int, config: ModelConfig, final_regressor_dropout: float = 0.0):
+        super().__init__()
+        enc = config.encoder
+        if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
+            raise ValueError("FunctionalConcatIterativeRNAModel requires locus_attention RNA tokens with program_dim=256")
+        self.rna_encoder = build_rna_encoder(enc, input_dim=input_dim, locus_dim=self.WIDTH)
+        self.track_embedding = nn.EmbeddingBag(self.N_TRACKS, self.WIDTH, mode="mean", include_last_offset=True)
+        self.dense_encoder = nn.Sequential(nn.LayerNorm(self.DENSE_DIM), nn.Linear(self.DENSE_DIM, self.WIDTH), nn.GELU())
+        self.locus_norm = nn.LayerNorm(self.WIDTH)
+        self.mean_head = nn.Sequential(
+            nn.LayerNorm(self.WIDTH), nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Linear(128, 1),
+        )
+
+        self.retrieval_attn = nn.ModuleList([
+            BatchedCrossAttention(self.WIDTH, enc.n_heads, enc.dropout) for _ in range(self.N_BLOCKS)
+        ])
+        self.retrieval_ffn = nn.ModuleList([
+            FunctionalFFNBlock(self.WIDTH, enc.dropout) for _ in range(self.N_BLOCKS)
+        ])
+
+        self.h_c_concat_norm = nn.LayerNorm(self.WIDTH)
+        self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
+        self.final_regressor_dropout = float(final_regressor_dropout)
+        self.final_regressor = nn.Sequential(
+            nn.Linear(2 * self.WIDTH, self.WIDTH), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(128, 1),
+        )
+
+    @property
+    def requires_cpg_positions(self) -> bool:
+        return False
+
+    def _retrieve_and_predict(self, h_c_chunk: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+        """The ``N_BLOCKS``-deep iterative retrieval stack + final regressor
+        for one locus chunk. See ``LOCUS_CHUNK``'s docstring: purely a
+        memory-bounding split, not a change in what's computed."""
+        batch = tokens.shape[0]
+        state = h_c_chunk[None, :, :].expand(batch, -1, -1)
+        for attn, ffn in zip(self.retrieval_attn, self.retrieval_ffn):
+            state = state + attn(state, tokens)  # residual, every block (including the first)
+            state = ffn(state)                   # FunctionalFFNBlock: state + FFN(LN(state))
+        h_c_for_concat = self.h_c_concat_norm(h_c_chunk)  # ORIGINAL, pre-stack h_c
+        r_pc_for_concat = self.r_pc_concat_norm(state)
+        z_pc = torch.cat([h_c_for_concat[None, :, :].expand(batch, -1, -1), r_pc_for_concat], dim=-1)
+        return self.final_regressor(z_pc).squeeze(-1)
+
+    def forward(self, rna: torch.Tensor, cpg_embedding: torch.Tensor | None = None,
+                cpg_positions: torch.Tensor | None = None, *, functional_track_indices: torch.Tensor,
+                functional_offsets: torch.Tensor, functional_dense: torch.Tensor) -> dict[str, torch.Tensor]:
+        del cpg_embedding, cpg_positions  # explicit: genomic/FM input is not consumed
+        representation = self.rna_encoder(rna)
+        if representation.program_tokens is None:
+            raise RuntimeError("RNA encoder did not produce program tokens")
+        tokens = representation.program_tokens
+
+        peak = self.track_embedding(functional_track_indices, functional_offsets)
+        dense = self.dense_encoder(functional_dense)
+        h_c = self.locus_norm(peak + dense)  # [n_loci, 256], locus-only
+
+        mu_hat = torch.sigmoid(self.mean_head(h_c).squeeze(-1))  # training-only probe, always fed h_c
+
+        n_loci = h_c.shape[0]
+        if n_loci <= self.LOCUS_CHUNK:
+            logit = self._retrieve_and_predict(h_c, tokens)
+        else:
+            # Plain forward-chunking alone does NOT bound backward-pass peak
+            # memory: autograd retains every chunk's intermediate activations
+            # for the eventual backward, so their sum is no smaller than the
+            # unchunked computation. Gradient checkpointing (recompute each
+            # chunk's forward during backward instead of retaining it) is what
+            # actually bounds peak memory to O(LOCUS_CHUNK) regardless of
+            # n_loci -- only used in training (autograd needs no graph in
+            # eval/inference, chunking alone is already memory-bounded there).
+            chunks = []
+            for start in range(0, n_loci, self.LOCUS_CHUNK):
+                chunk = h_c[start:start + self.LOCUS_CHUNK]
+                if self.training and torch.is_grad_enabled():
+                    chunks.append(checkpoint(self._retrieve_and_predict, chunk, tokens, use_reentrant=False))
+                else:
+                    chunks.append(self._retrieve_and_predict(chunk, tokens))
+            logit = torch.cat(chunks, dim=1)
+        beta = torch.sigmoid(logit)
+        return {
+            "beta": beta, "delta_logit": logit, "raw_delta": logit, "prediction_logit": logit,
+            "mu_logit": None, "mu_hat": mu_hat, "residual_logit": logit, "h_cpg": h_c,
+        }

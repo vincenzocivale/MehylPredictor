@@ -1,0 +1,7 @@
+extends: base.yaml
+# F7 projection initialized by PCA fitted only on inner training loci.
+# Everything else remains identical to the F7/F0 development comparison.
+model:
+  functional_fusion_variant: f7_standardized
+  functional_projection_init: artifacts/regulatory_embedding/projections/chr1_dev_pca256.pt
+tracking: {backend: none}

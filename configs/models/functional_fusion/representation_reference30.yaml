@@ -1,0 +1,5 @@
+extends: ../rna_methylation_locus_attention.yaml
+# Same recipe for NTv3 POST and frozen regulatory PCA: only feature-cache
+# differs. Keep architecture, initial model weights, loss and schedule fixed.
+training: {epochs: 30, scheduler_horizon_epochs: 30}
+tracking: {backend: none}

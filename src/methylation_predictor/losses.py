@@ -90,6 +90,77 @@ def masked_locus_pearson(
     return correlations, valid
 
 
+def within_locus_centered_mse_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+    config: LossConfig,
+) -> tuple[torch.Tensor, int]:
+    """MSE on the WITHIN-locus (across-sample-centred) residual only: for
+    each CpG, subtract its own per-batch across-patient mean from both
+    prediction and target before squaring the error, so the between-locus
+    (mean-level) component of the error -- already handled by the mean-head
+    auxiliary task and dominant in plain beta MSE (diagnosed: target's
+    between-locus variance is ~6x its within-locus variance on chr1 Array) --
+    contributes nothing to this term. Directly rewards getting the
+    patient-specific (RNA-driven) deviation right, rather than mostly the
+    locus-level constant.
+
+    Reuses ``_locus_centred_stats`` (proven/tested by ``masked_locus_pearson``)
+    for the actual centring; only loci with at least
+    ``config.locus_min_observed_samples`` observed patients in this batch are
+    scored (a locus-mean estimated from too few patients is a noisy centring
+    reference). Returns ``(loss, n_valid_loci)``.
+    """
+    _validate_locus_batch_shape(prediction, target, mask)
+    pred_centred, truth_centred, _, _, _, _, has_min_samples = _locus_centred_stats(
+        prediction, target, mask, config.locus_min_observed_samples,
+    )
+    valid_mask = mask & has_min_samples.unsqueeze(0)
+    if not bool(valid_mask.any()):
+        zero = prediction.sum() * 0.0
+        return zero, 0
+    error = (pred_centred - truth_centred) ** 2
+    loss = masked_mean(error, valid_mask)
+    return loss, int(has_min_samples.sum())
+
+
+def sample_correlation_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+    config: LossConfig,
+) -> tuple[torch.Tensor, torch.Tensor, int]:
+    """Pearson correlation across CpGs, independently for every sample/patient
+    (the sample-wise/MAC-direction counterpart of ``locus_correlation_loss``'s
+    per-CpG/MAS-direction correlation) -- the H0/H1/H2 sample-wise-Pearson
+    experiment's ``L_sample_PCC`` term.
+
+    ``rho_p = corr_c(prediction[p, :], target[p, :])`` over the CpGs present
+    in the batch for sample p; the loss is ``1 - mean_p(rho_p)`` (mean, not
+    median: the differentiable surrogate for the reported median-across-
+    samples correlation metric). Reuses ``masked_locus_pearson``'s proven
+    numerically-stable centred implementation by transposing the [samples,
+    cpgs] tensors to [cpgs, samples] -- that function is axis-agnostic, it
+    just correlates across dim 0 independently per column of dim 1.
+
+    Returns ``(loss, mean_rho_p, n_valid_samples)``.
+    """
+    correlations, valid = masked_locus_pearson(
+        prediction.transpose(0, 1),
+        target.transpose(0, 1),
+        mask.transpose(0, 1),
+        min_observed_samples=config.sample_pearson_min_observed_cpgs,
+        epsilon=config.sample_pearson_epsilon,
+    )
+    valid_values = correlations[valid]
+    if valid_values.numel() == 0:
+        zero = prediction.sum() * 0.0
+        return zero, zero, 0
+    mean_rho = valid_values.mean()
+    return 1.0 - mean_rho, mean_rho.detach(), int(valid_values.numel())
+
+
 def locus_correlation_loss(
     prediction: torch.Tensor,
     target: torch.Tensor,

@@ -4,3 +4,4 @@ transformers>=4.48,<5
 huggingface_hub>=0.27
 pyfaidx>=0.8
 safetensors>=0.4
+pyBigWig>=0.3.22

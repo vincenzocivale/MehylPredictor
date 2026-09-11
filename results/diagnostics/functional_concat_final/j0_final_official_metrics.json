@@ -1,0 +1,45 @@
+{
+  "model": "feature_fusion_locus_cls",
+  "checkpoint": "/dune/DATASETS/MethylPredictionData/experiments/runs/runs/locus_cls_joint/chr1/functional-concat-purecontext-final-chr1-seed17/checkpoints/last.pt",
+  "checkpoint_epoch": 80,
+  "eval_scope": "chr1",
+  "view": "val_cpg_x_val_sample",
+  "metrics": {
+    "rows": 6129992,
+    "mse": 0.021538065377883133,
+    "mae": 0.09043395947544114,
+    "prior_mse": 0.027223526572326653,
+    "skill_vs_prior": 0.20884366980664892,
+    "mas_pcc": 0.5233525204686558,
+    "mac_pcc": 0.9248950229220483
+  },
+  "views": {
+    "train_cpg_x_val_sample": {
+      "rows": 30563936,
+      "mse": 0.011476497327892908,
+      "mae": 0.06773661131491829,
+      "prior_mse": 0.023267619029304534,
+      "skill_vs_prior": 0.5067609920276428,
+      "mas_pcc": 0.7069601404487165,
+      "mac_pcc": 0.961872902517694
+    },
+    "val_cpg_x_train_sample": {
+      "rows": 55154676,
+      "mse": 0.02104681513768627,
+      "mae": 0.08946781446928502,
+      "prior_mse": 0.027401995828971383,
+      "skill_vs_prior": 0.23192400768727783,
+      "mas_pcc": 0.5607244883971241,
+      "mac_pcc": 0.9266965045054736
+    },
+    "val_cpg_x_val_sample": {
+      "rows": 6129992,
+      "mse": 0.021538065377883133,
+      "mae": 0.09043395947544114,
+      "prior_mse": 0.027223526572326653,
+      "skill_vs_prior": 0.20884366980664892,
+      "mas_pcc": 0.5233525204686558,
+      "mac_pcc": 0.9248950229220483
+    }
+  }
+}

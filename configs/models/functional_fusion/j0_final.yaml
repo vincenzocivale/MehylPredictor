@@ -1,0 +1,52 @@
+extends: base.yaml
+# TRUE chr1 final-protocol run of the simplest strong functional-only
+# candidate (2026-09-11 pivot away from the regulatory-slot-transformer
+# architecture; see docs/RNA_METHYLATION.md's mas_concat_v3_purecontext
+# entry). Architecture is UNCHANGED from hv3/hv3d's development-split
+# ablation (FunctionalConcatMASModel: unified 4165-track EmbeddingBag +
+# 23-dim dense MLP functional encoder, h_c LayerNorm'd; a training-only
+# mean head reading h_c directly, never detached, with no computational
+# path back from it into the RNA encoder/cross-attention/final MLP; a single
+# non-residual cross-attention r_pc = MHA(Q=LN(h_c), K=V=LN(RNA programs));
+# separate_concat_norm=true LayerNorms h_c and r_pc independently before
+# concat; final_regressor_dropout=0.15 on the 512->256->128->1 MLP) -- only
+# the protocol changes here: mode=final (not development), epochs/horizon 80
+# (not 40), full official chr1 Array/EPIC/WGBS training pools.
+model: {functional_fusion_variant: mas_concat_v3_purecontext}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, purecontext, chr1-final]

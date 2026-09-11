@@ -1,0 +1,15 @@
+extends: base.yaml
+# Off-ladder ablation, NOT part of the G0-G4 fixed-loss comparison (loss
+# differs from the rest of the ladder by design -- see mean_head in
+# models.py and docs/MEAN_CONTRIBUTION_EXPERIMENTS.md's causal claim, applied
+# here to the functional/regulatory domain instead of the NTv3-embedding
+# domain it was originally established on). Same G2 architecture
+# (RegulatoryHeadCrossAttention) plus a locus-only mean head supervised
+# against cpg_statistics' target_mu, mirroring full_reference's
+# mean_aux_weight=0.15 from results/reference/ours/03_mean_contribution.yaml.
+model: {functional_fusion_variant: g2_mean_proxy}
+training: {epochs: 20, scheduler_horizon_epochs: 20}
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15
+tracking: {backend: wandb, project: MethylPredictor, mode: online, group: regulatory_fusion_ladder, job_type: train, tags: [functional-only, regulatory-fusion-ladder, mean-proxy-ablation]}
