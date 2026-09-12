@@ -41,17 +41,10 @@ from torch.nn import functional as F
 
 from ..losses import locus_correlation_loss, masked_mean, sample_correlation_loss, within_locus_centered_mse_loss
 from ..config import TrainingConfig
-from ..modeling import (
-    DepthResidualAblationPredictor,
-    EfficientSingleAttentionPredictor,
-    FunctionalBaselinePredictor,
-    FunctionalGeneFFNFusionPredictor,
-    GatedResidualPredictor,
-    IterativeRetrievalPredictor,
-    RNAEncoderComparisonPredictor,
-    SingleRetrievalPredictor,
+from ..modeling.factory import (
+    SUPPORTED_FUNCTIONAL_VARIANTS,
+    build_functional_predictor,
 )
-from ..modeling.baselines import BASELINE_VARIANTS
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
@@ -251,138 +244,22 @@ class LocusCLSJointTrainer:
 
         self.use_mean_branch = bool(use_mean_branch)
         self._fusion_init_std = float(fusion_init_std)
-        # Paper-facing functional-locus models only. The historical
-        # FeatureFusion shared-backbone family has been removed from the repo.
-        # ablation_depth1_residual / ablation_depth4_noresidual: the
-        # depth-vs-residual ablation (docs/RNA_METHYLATION.md) disentangling
-        # J0/J1's two confounded architectural axes -- see
-        # modeling/ablation.py's module docstring.
-        self.ablation_variants = {
-            "ablation_depth1_residual": {"n_blocks": 1, "attn_residual": True},
-            "ablation_depth4_noresidual": {"n_blocks": 4, "attn_residual": False},
-            # 2026-09-11: how far the classic (attn_residual=True) J1-style
-            # depth ladder can go on one RTX PRO 5000 -- see the VRAM-scaling
-            # note this same date in modeling/ablation.py's module docstring.
-            # Not run yet; smoke-test each before the full 80-epoch launch.
-            "ablation_depth8_residual": {"n_blocks": 8, "attn_residual": True},
-            "ablation_depth10_residual": {"n_blocks": 10, "attn_residual": True},
-            "ablation_depth12_residual": {"n_blocks": 12, "attn_residual": True},
-        }
-        # efficient_single_attn_residual_ffn: J4, a follow-up candidate (not
-        # a diagnostic cell) once ablation_depth1_residual supports "the
-        # residual matters, not the repeated attention" -- single
-        # cross-attention + residual, then n_ffn_blocks FFN-only residual
-        # blocks (default 4, matching J1's total FFN depth). See
-        # modeling/ablation.py's module docstring.
-        self.efficient_variants = {
-            "efficient_single_attn_residual_ffn": {"n_ffn_blocks": 4},
-            # J7 (2026-09-12): ablation_depth8_residual (J5) is outperforming
-            # J1 (depth 4) -- if it's the FFN/residual depth that matters and
-            # not the repeated cross-attention (the expensive op this whole
-            # family is testing), 1x attention + 8 cheap FFN blocks should
-            # recover most of depth8's gain without paying for 8x
-            # cross-attention. See modeling/ablation.py's module docstring.
-            "efficient_single_attn_8ffn_residual": {"n_ffn_blocks": 8},
-            # J8 (retrieval-only 16-FFN) was implemented and queued
-            # 2026-09-12 but never launched, then dropped: J7 (8 FFN) beat
-            # J4 (4 FFN) by only ~0.0005 MAS-PCC on the headline view --
-            # noise-level -- so pushing retrieval-only FFN depth further
-            # wasn't worth the GPU time. See git history before this
-            # removal if the retrieval-only axis needs revisiting. J9b's
-            # early training-loss signal (functional-branch depth) looked
-            # more promising at the time of this call.
-            # J9b (2026-09-12): J7/J8 added FFN depth to the RNA-conditioned
-            # retrieval branch; this asks the same question about the OTHER
-            # branch -- does FFN depth on the functional-annotation branch
-            # (h_c, from track_embedding+dense_encoder) also help? Retrieval
-            # depth held fixed at J7's 8 (the best cost/benefit point found
-            # so far) so a gain here is attributable to the functional branch
-            # alone. deep_query stays False -- the cross-attention query is
-            # still the shallow h_c, unchanged from J7 -- see
-            # EfficientSingleAttentionPredictor's docstring. J9c (query fed
-            # by the deepened h_c) is the deliberate follow-up if this wins.
-            "efficient_single_attn_8ffn_residual_functional8": {
-                "n_ffn_blocks": 8, "n_functional_ffn_blocks": 8, "deep_query": False,
-            },
-            # J10 (2026-09-12): symmetric-depth control -- 4 FFN blocks on
-            # EACH branch (retrieval matching J4's depth exactly, functional
-            # matching it too) instead of J9b's asymmetric 8/8 (retrieval
-            # held at J7's depth). Answers a different question than J9b:
-            # not "does functional depth help on top of J7's already-deep
-            # retrieval", but "at matched, moderate depth on both branches,
-            # is functional-branch depth still worth it over J4 alone".
-            # deep_query stays False, same isolation rationale as J9b.
-            "efficient_single_attn_4ffn_residual_functional4": {
-                "n_ffn_blocks": 4, "n_functional_ffn_blocks": 4, "deep_query": False,
-            },
-        }
-        # ablation_depth1_gated_residual: J6, Flamingo-style learned scalar
-        # gate on J1's per-block residual add instead of an unconditional
-        # one (n_blocks=1, matching ablation_depth1_residual's depth). See
-        # modeling/ablation.py's module docstring (GatedResidualPredictor).
-        self.gated_variants = {
-            "ablation_depth1_gated_residual": {"n_blocks": 1},
-        }
-        # ffn_fusion_*: J9 (2026-09-12), 2 extra FFN residual blocks on EACH
-        # branch (functional locus branch + gene-expression/RNA-attention
-        # branch) before fusion, testing the final recombination mechanism
-        # itself -- concat (baseline) vs. FiLM vs. two-stream residual
-        # mixing -- as the sole varying axis. See
-        # modeling/ablation.py's FunctionalGeneFFNFusionPredictor docstring.
-        self.ffn_fusion_variants = {
-            "ffn_fusion_concat": {"fusion_mode": "concat"},
-            "ffn_fusion_film": {"fusion_mode": "film"},
-            "ffn_fusion_two_stream_residual": {"fusion_mode": "two_stream_residual"},
-            # ffn_fusion_two_stream_residual_{8_8,4_4} (2026-09-12): candidate
-            # "definitive model" scale-up of the two_stream_residual ladder
-            # cell above, once it's judged the winning fusion mechanism --
-            # depth raised symmetrically on both branches from the ladder's
-            # 2/2 to 8/8 (heavier) and 4/4 (lighter), n_head_ffn_blocks left
-            # at the default 2 ("due FFN" before beta prediction, unchanged).
-            # fusion_dropout=0.1 (matching this recipe family's usual
-            # enc.dropout/final_regressor_dropout scale) on the two
-            # cross-injection projections, which the ladder cells leave at
-            # the safe (no-op) default -- see FunctionalGeneFFNFusionPredictor's
-            # docstring for why the extra branch depth here makes that a
-            # sensible place to add regularization.
-            "ffn_fusion_two_stream_residual_8_8": {
-                "fusion_mode": "two_stream_residual",
-                "n_functional_ffn_blocks": 8,
-                "n_gene_expr_ffn_blocks": 8,
-                "fusion_dropout": 0.1,
-            },
-            "ffn_fusion_two_stream_residual_4_4": {
-                "fusion_mode": "two_stream_residual",
-                "n_functional_ffn_blocks": 4,
-                "n_gene_expr_ffn_blocks": 4,
-                "fusion_dropout": 0.1,
-            },
-        }
-        allowed_variants = {
-            "mas_concat_v3_purecontext",
-            "mas_concat_v4_iterative",
-            "functional_rna_encoder_comparison",
-            *BASELINE_VARIANTS,
-            *self.ablation_variants,
-            *self.efficient_variants,
-            *self.gated_variants,
-            *self.ffn_fusion_variants,
-        }
+        # Experiment-specific architecture kwargs live in
+        # modeling.factory; the trainer only enforces shared harness invariants.
         if not self.functional_only or self.functional is None:
             raise ValueError(
                 "paper-facing RNA training requires --functional-only plus "
                 "--functional-atlas and --annotation-cache"
             )
-        if self.functional_fusion_variant not in allowed_variants:
+        if self.functional_fusion_variant not in SUPPORTED_FUNCTIONAL_VARIANTS:
             raise ValueError(
                 "unsupported paper-facing functional_fusion_variant "
                 f"{self.functional_fusion_variant!r}; expected one of "
-                f"{sorted(allowed_variants)}"
+                f"{sorted(SUPPORTED_FUNCTIONAL_VARIANTS)}"
             )
         if residual_aux_weight != 0.0:
             raise ValueError(
-                f"{self.functional_fusion_variant} requires "
-                "residual_aux_weight=0"
+                f"{self.functional_fusion_variant} requires residual_aux_weight=0"
             )
         if self.aux_weight < 0.0:
             raise ValueError("aux_weight must be non-negative")
@@ -407,87 +284,14 @@ class LocusCLSJointTrainer:
                 "final_regressor_dropout", 0.0
             )
         )
-
-        if self.functional_fusion_variant in BASELINE_VARIANTS:
-            self.architecture_label = self.functional_fusion_variant
-            self.model = FunctionalBaselinePredictor(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                variant=self.functional_fusion_variant,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-            ).to(self.device)
-        elif (
-            self.functional_fusion_variant
-            == "functional_rna_encoder_comparison"
-        ):
-            source = self.recipe.model.encoder.frozen_embedding_source
-            suffix = (
-                f"-{source}"
-                if source
-                else f"-{self.recipe.model.encoder.kind}"
-            )
-            self.architecture_label = (
-                "functional_rna_encoder_comparison" + suffix
-            )
-            self.model = RNAEncoderComparisonPredictor(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-            ).to(self.device)
-        elif self.functional_fusion_variant in self.ablation_variants:
-            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
-            self.model = DepthResidualAblationPredictor(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-                **self.ablation_variants[self.functional_fusion_variant],
-            ).to(self.device)
-        elif self.functional_fusion_variant in self.efficient_variants:
-            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
-            self.model = EfficientSingleAttentionPredictor(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-                **self.efficient_variants[self.functional_fusion_variant],
-            ).to(self.device)
-        elif self.functional_fusion_variant in self.gated_variants:
-            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
-            self.model = GatedResidualPredictor(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-                **self.gated_variants[self.functional_fusion_variant],
-            ).to(self.device)
-        elif self.functional_fusion_variant in self.ffn_fusion_variants:
-            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
-            self.model = FunctionalGeneFFNFusionPredictor(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-                **self.ffn_fusion_variants[self.functional_fusion_variant],
-            ).to(self.device)
-        else:
-            candidate_cls = (
-                IterativeRetrievalPredictor
-                if self.functional_fusion_variant
-                == "mas_concat_v4_iterative"
-                else SingleRetrievalPredictor
-            )
-            self.architecture_label = (
-                f"functional_concat_{self.functional_fusion_variant}"
-            )
-            self.model = candidate_cls(
-                self.rna.values.shape[1],
-                self.recipe.model,
-                final_regressor_dropout=final_regressor_dropout,
-                use_mean_proxy=use_mean_branch,
-            ).to(self.device)
+        self.model, self.architecture_label = build_functional_predictor(
+            variant=self.functional_fusion_variant,
+            input_dim=self.rna.values.shape[1],
+            config=self.recipe.model,
+            final_regressor_dropout=final_regressor_dropout,
+            use_mean_proxy=use_mean_branch,
+        )
+        self.model = self.model.to(self.device)
         self.train_model = (
             torch.compile(self.model, mode=cfg.compile_mode) if cfg.compile else self.model
         )

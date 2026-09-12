@@ -192,3 +192,17 @@ Git history.
 models and uses only the functional objective path. Some obsolete constructor,
 checkpoint-metadata, and config fields are intentionally left for phase 4b2
 so this large model-family deletion can be regression-tested independently.
+
+## Phase 4b2a: live experiment registry isolated from trainer
+
+The refactor branch accumulated additional functional experiments while the
+repository cleanup was in progress (depth/residual, efficient single-attention,
+gated residual, functional-branch depth, and FFN-fusion variants).
+
+Those variants are now a protected live experiment surface. Their
+selector-to-constructor mapping lives in `modeling/factory.py`; the training
+harness no longer embeds J-number-specific architecture dictionaries.
+
+This phase intentionally changes no recipe, checkpoint schema, model math,
+optimizer, batching, loss, run ID, or result path. Configuration-schema
+pruning is deferred until the active experiment recipes are frozen.
