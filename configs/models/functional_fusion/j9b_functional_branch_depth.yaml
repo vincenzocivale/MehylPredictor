@@ -1,0 +1,64 @@
+extends: base.yaml
+# Functional-branch depth candidate (2026-09-12, J9b): J7's retrieval side
+# held fixed (1x cross-attention + 8 FFN-only residual blocks on `state`),
+# plus 8 NEW FFN-only residual blocks on the functional-annotation branch
+# (h_c, from track_embedding+dense_encoder -- no genomic/NTv3 embedding is
+# used anywhere in this architecture) instead of that branch's current two
+# shallow encoders summed and normalized. Motivated by J7/J8 showing FFN
+# depth helps the RNA-conditioned retrieval branch -- does it also help the
+# OTHER branch? Retrieval depth held at J7's value (not J4's or J8's) so a
+# gain here is attributable to functional-branch depth alone, not a
+# retrieval-depth interaction. deep_query stays False: the cross-attention
+# query is still the shallow, un-deepened h_c, byte-for-byte identical to
+# J7's retrieval mechanism -- see
+# src/methylation_predictor/modeling/ablation.py's
+# EfficientSingleAttentionPredictor docstring for why the query is
+# deliberately NOT fed the deepened representation here (that is J9c, a
+# follow-up only worth running if J9b shows a real gain). Otherwise
+# byte-for-byte identical to j7_efficient_single_attn_8ffn.yaml: mean head,
+# RNA encoder, final MLP, loss, optimizer, LR, data pools, seed, epochs,
+# TRUE chr1 mode=final protocol.
+model:
+  functional_fusion_variant: efficient_single_attn_8ffn_residual_functional8
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  # Matched to j7_efficient_single_attn_8ffn.yaml's reduced array batch
+  # (640->320), conservatively -- the 8 extra functional_ffn blocks operate
+  # on h_c ([n_loci, WIDTH], not replicated per RNA sample like `state` is)
+  # so they should add only a small fraction of J7's own footprint, but this
+  # has not been VRAM-profiled yet; revisit if headroom allows restoring 640.
+  array: {sample_size: 320, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, efficient-single-attn, 8ffn, functional-branch-depth, chr1-final]

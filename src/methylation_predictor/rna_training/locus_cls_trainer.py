@@ -291,6 +291,19 @@ class LocusCLSJointTrainer:
             # GPU -- 1x attention + 16 cheap FFN blocks is the only
             # feasible way to test this depth at all here.
             "efficient_single_attn_16ffn_residual": {"n_ffn_blocks": 16},
+            # J9b (2026-09-12): J7/J8 added FFN depth to the RNA-conditioned
+            # retrieval branch; this asks the same question about the OTHER
+            # branch -- does FFN depth on the functional-annotation branch
+            # (h_c, from track_embedding+dense_encoder) also help? Retrieval
+            # depth held fixed at J7's 8 (the best cost/benefit point found
+            # so far) so a gain here is attributable to the functional branch
+            # alone. deep_query stays False -- the cross-attention query is
+            # still the shallow h_c, unchanged from J7 -- see
+            # EfficientSingleAttentionPredictor's docstring. J9c (query fed
+            # by the deepened h_c) is the deliberate follow-up if this wins.
+            "efficient_single_attn_8ffn_residual_functional8": {
+                "n_ffn_blocks": 8, "n_functional_ffn_blocks": 8, "deep_query": False,
+            },
         }
         # ablation_depth1_gated_residual: J6, Flamingo-style learned scalar
         # gate on J1's per-block residual add instead of an unconditional

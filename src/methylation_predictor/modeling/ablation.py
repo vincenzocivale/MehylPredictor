@@ -246,6 +246,24 @@ class EfficientSingleAttentionPredictor(nn.Module):
     and including the residual add, then keeps refining `state` through
     ``n_ffn_blocks`` independent ``FeedForwardResidual`` blocks with no
     further attention, instead of stopping after one.
+
+    J9b (2026-09-12) asks the same depth question about the OTHER branch:
+    J7/J8 showed FFN depth helps the RNA-conditioned retrieval state
+    (``state``) -- does it also help the functional-annotation branch
+    (``h_c``, from ``track_embedding``+``dense_encoder``), which today is
+    just two shallow encoders summed and normalized? ``n_functional_ffn_blocks``
+    (default 0 = J4/J7/J8 behavior, unchanged) runs ``h_c`` through that many
+    extra ``FeedForwardResidual`` blocks to get ``h_c_deep``, used for
+    ``mean_head`` and the final concat.
+
+    Deliberately NOT fed into the cross-attention query: the query
+    (``state``'s initial value) stays the shallow, un-deepened ``h_c`` --
+    identical to J7's retrieval mechanism -- so a J9b gain can only be
+    attributed to "a richer functional representation improves the
+    downstream heads", not to "a different query changed what gets
+    retrieved from RNA" (a second, separate hypothesis). ``deep_query=True``
+    is the deliberate follow-up (J9c) that lets ``h_c_deep`` drive the query
+    too, once J9b establishes there is a gain worth attributing.
     """
 
     N_TRACKS = 4165
@@ -259,13 +277,21 @@ class EfficientSingleAttentionPredictor(nn.Module):
         config: ModelConfig,
         *,
         n_ffn_blocks: int = 4,
+        n_functional_ffn_blocks: int = 0,
+        deep_query: bool = False,
         final_regressor_dropout: float = 0.15,
         use_mean_proxy: bool = True,
     ):
         super().__init__()
         if n_ffn_blocks < 1:
             raise ValueError("n_ffn_blocks must be >= 1")
+        if n_functional_ffn_blocks < 0:
+            raise ValueError("n_functional_ffn_blocks must be >= 0")
+        if deep_query and n_functional_ffn_blocks < 1:
+            raise ValueError("deep_query requires n_functional_ffn_blocks >= 1")
         self.n_ffn_blocks = int(n_ffn_blocks)
+        self.n_functional_ffn_blocks = int(n_functional_ffn_blocks)
+        self.deep_query = bool(deep_query)
         enc = config.encoder
         if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
             raise ValueError(
@@ -299,6 +325,12 @@ class EfficientSingleAttentionPredictor(nn.Module):
         self.retrieval_ffn = nn.ModuleList([
             FeedForwardResidual(self.WIDTH, enc.dropout) for _ in range(self.n_ffn_blocks)
         ])
+        # J9b: extra non-linear capacity on the functional-annotation branch
+        # alone (h_c -> h_c_deep), never touching the RNA side. Cheap: h_c is
+        # [n_loci, WIDTH], not replicated per RNA sample like `state` is.
+        self.functional_ffn = nn.ModuleList([
+            FeedForwardResidual(self.WIDTH, enc.dropout) for _ in range(self.n_functional_ffn_blocks)
+        ])
         self.h_c_concat_norm = nn.LayerNorm(self.WIDTH)
         self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
         self.final_regressor_dropout = float(final_regressor_dropout)
@@ -312,15 +344,17 @@ class EfficientSingleAttentionPredictor(nn.Module):
     def requires_cpg_positions(self) -> bool:
         return False
 
-    def _retrieve_and_predict(self, h_c_chunk: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+    def _retrieve_and_predict(
+        self, h_c_query_chunk: torch.Tensor, h_c_concat_chunk: torch.Tensor, tokens: torch.Tensor,
+    ) -> torch.Tensor:
         batch = tokens.shape[0]
-        state = h_c_chunk[None, :, :].expand(batch, -1, -1)
+        state = h_c_query_chunk[None, :, :].expand(batch, -1, -1)
         a = self.retrieval_attn(state, tokens)
         state = state + a
         for ffn in self.retrieval_ffn:
             state = ffn(state)  # FeedForwardResidual: always has its own internal residual
 
-        h_for_concat = self.h_c_concat_norm(h_c_chunk)
+        h_for_concat = self.h_c_concat_norm(h_c_concat_chunk)
         r_for_concat = self.r_pc_concat_norm(state)
         z_pc = torch.cat(
             [h_for_concat[None, :, :].expand(batch, -1, -1), r_for_concat], dim=-1,
@@ -343,24 +377,36 @@ class EfficientSingleAttentionPredictor(nn.Module):
         peak = self.track_embedding(functional_track_indices, functional_offsets)
         dense = self.dense_encoder(functional_dense)
         h_c = self.locus_norm(peak + dense)
+        # J9b: extra FFN capacity on the functional-annotation branch alone.
+        # h_c_deep feeds mean_head and the final concat; h_c_query (the
+        # cross-attention query) stays the shallow h_c unless deep_query=True
+        # (J9c) -- see the class docstring for why these are kept separate.
+        h_c_deep = h_c
+        for ffn in self.functional_ffn:
+            h_c_deep = ffn(h_c_deep)
+        h_c_query = h_c_deep if self.deep_query else h_c
         mu_hat = (
             None if self.mean_head is None
-            else torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+            else torch.sigmoid(self.mean_head(h_c_deep).squeeze(-1))
         )
 
         n_loci = h_c.shape[0]
         if n_loci <= self.LOCUS_CHUNK:
-            logit = self._retrieve_and_predict(h_c, tokens)
+            logit = self._retrieve_and_predict(h_c_query, h_c_deep, tokens)
         else:
             chunks = []
             for start in range(0, n_loci, self.LOCUS_CHUNK):
-                chunk = h_c[start:start + self.LOCUS_CHUNK]
+                query_chunk = h_c_query[start:start + self.LOCUS_CHUNK]
+                concat_chunk = h_c_deep[start:start + self.LOCUS_CHUNK]
                 if self.training and torch.is_grad_enabled():
                     chunks.append(
-                        checkpoint(self._retrieve_and_predict, chunk, tokens, use_reentrant=False)
+                        checkpoint(
+                            self._retrieve_and_predict, query_chunk, concat_chunk, tokens,
+                            use_reentrant=False,
+                        )
                     )
                 else:
-                    chunks.append(self._retrieve_and_predict(chunk, tokens))
+                    chunks.append(self._retrieve_and_predict(query_chunk, concat_chunk, tokens))
             logit = torch.cat(chunks, dim=1)
 
         beta = torch.sigmoid(logit)
