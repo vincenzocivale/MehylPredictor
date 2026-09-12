@@ -31,7 +31,7 @@ mkdir -p "$LOGDIR"
 
 DATA_ARGS=(
   --canonical-root /dune/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1
-  --feature-cache /dune/DATASETS/MethylPredictionData/derived/methylprophet_table5_tcga_chr1/features
+  --prior-cache /dune/DATASETS/MethylPredictionData/derived/methylprophet_table5_tcga_chr1/features
   --rna-cache /dune/DATASETS/MethylPredictionData/derived/methylprophet_table5_tcga_chr1/rna
   --registry /dune/DATASETS/MethylPredictionData/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
   --prepared-root /dune/DATASETS/MethylPredictionData/derived/methylprophet_table5_tcga_chr1

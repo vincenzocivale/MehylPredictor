@@ -43,7 +43,7 @@ done
 
 DATA_ARGS=(
   --canonical-root /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1
-  --feature-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/features
+  --prior-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/features
   --rna-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/rna
   --registry /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
   --prepared-root /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1

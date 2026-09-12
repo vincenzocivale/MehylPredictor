@@ -46,7 +46,7 @@ ORCH_LOG="$LOGDIR/ffn_fusion_orchestrator.log"
 
 DATA_ARGS=(
   --canonical-root /home/vcivale/dune_data/datasets/methylprophet_repro_v1
-  --feature-cache /home/vcivale/dune_data/derived/methylprophet_table5_tcga_chr1/features
+  --prior-cache /home/vcivale/dune_data/derived/methylprophet_table5_tcga_chr1/features
   --rna-cache /home/vcivale/dune_data/derived/methylprophet_table5_tcga_chr1/rna
   --registry /home/vcivale/dune_data/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
   --prepared-root /home/vcivale/dune_data/derived/methylprophet_table5_tcga_chr1

@@ -106,7 +106,7 @@ def data_paths(
         "scope": "chr1",
         "canonical_root": str(canonical),
         "prepared_root": str(prepared),
-        "feature_cache": str(prepared / "features"),
+        "prior_cache": str(prepared / "features"),
         "rna_cache": str(prepared / "rna"),
         "registry": str(
             canonical / "cpg" / "registries" / "array_cpg_map.parquet"

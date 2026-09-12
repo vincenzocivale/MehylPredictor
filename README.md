@@ -126,7 +126,7 @@ python scripts/train.py \
   --canonical-root "$TCGA_CANONICAL_ROOT" \
   --registry "$REGISTRY" \
   --rna-cache "$RNA_CACHE" \
-  --feature-cache "$LEGACY_FEATURE_CACHE" \
+  --prior-cache "$PRIOR_CACHE" \
   --cpg-targets-dir "$CPG_TARGETS" \
   --functional-atlas "$FUNCTIONAL_ATLAS" \
   --annotation-cache "$ANNOTATION_CACHE" \
@@ -135,8 +135,9 @@ python scripts/train.py \
   --run-id functional-reference-seed17
 ```
 
-`--feature-cache` is still required by transitional trainer/evaluation plumbing;
-the paper-facing J0/J1 forward pass ignores genomic/FM embeddings.
+`--prior-cache` is metric-only. During training it may be omitted if
+prior-relative development metrics are not needed; official evaluation uses it
+to reproduce `prior_mse` and `skill_vs_prior`.
 
 ## Evaluate
 
@@ -149,7 +150,7 @@ python scripts/evaluate.py \
   --canonical-root "$TCGA_CANONICAL_ROOT" \
   --registry "$REGISTRY" \
   --rna-cache "$RNA_CACHE" \
-  --feature-cache "$LEGACY_FEATURE_CACHE" \
+  --prior-cache "$PRIOR_CACHE" \
   --cpg-targets-dir "$CPG_TARGETS" \
   --functional-atlas "$FUNCTIONAL_ATLAS" \
   --annotation-cache "$ANNOTATION_CACHE" \
@@ -195,7 +196,7 @@ final repository boundary is documented in
 
 Current priorities after the functional/core cutover are:
 
-1. prune transitional shared-backbone-era trainer/config fields;
-2. remove the legacy genomic feature-cache requirement from functional runs;
+1. simplify historical trainer/CLI naming and remove redundant functional-mode flags;
+2. freeze the active architecture-experiment surface;
 3. consolidate data preparation and paper-table reproduction commands;
 4. perform the final repository and reproducibility audit.

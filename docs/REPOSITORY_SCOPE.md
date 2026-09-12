@@ -221,3 +221,18 @@ runs remain resumable.
 
 The actual recipe/config-schema deletion is deferred until the active
 architecture experiments are frozen.
+
+## Phase 4c: RNA runtime independent of genomic feature embeddings
+
+The RNA workflow no longer consumes the historical 1,536-D CpG embedding cache. Model batches contain RNA, methylation targets, and functional-locus features only.
+
+Prior-relative metrics use the separate `LocusPriorCache` contract:
+
+```text
+cpg_idx.npy
+prior.npy
+```
+
+The old derived feature directory may still be supplied as `--prior-cache` during migration because it contains those two arrays, but the RNA runtime does not open its embedding or sigma files. The standalone `cpg_prior` baseline remains the only supported evaluator that still uses `LocusFeatureCache`.
+
+All active J-series shell launchers, the mean-proxy harness, and the RNA-encoder-comparison harness now pass `--prior-cache`, so the executable experiment surface matches the runtime API.

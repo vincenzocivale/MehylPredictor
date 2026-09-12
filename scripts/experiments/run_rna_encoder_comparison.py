@@ -41,7 +41,7 @@ def paths_for(root: Path) -> dict[str, Path]:
     return {
         "canonical": canonical,
         "prepared": prepared,
-        "feature_cache": prepared / "features",
+        "prior_cache": prepared / "features",
         "canonical_rna": prepared / "rna",
         "bulkformer_147m": (
             root / "derived" / "bulkformer_embeddings" / "tcga_147m"
@@ -139,8 +139,8 @@ def train_cmd(
         str(paths["canonical"]),
         "--prepared-root",
         str(paths["prepared"]),
-        "--feature-cache",
-        str(paths["feature_cache"]),
+        "--prior-cache",
+        str(paths["prior_cache"]),
         "--rna-cache",
         str(cache_for(arm, paths)),
         "--registry",
@@ -189,8 +189,8 @@ def evaluate_cmd(
         str(paths["canonical"]),
         "--prepared-root",
         str(paths["prepared"]),
-        "--feature-cache",
-        str(paths["feature_cache"]),
+        "--prior-cache",
+        str(paths["prior_cache"]),
         "--rna-cache",
         str(cache_for(arm, paths)),
         "--registry",
@@ -211,7 +211,7 @@ def validate_inputs(
 ) -> None:
     required = [
         paths["prepared"],
-        paths["feature_cache"],
+        paths["prior_cache"],
         paths["cpg_targets"],
         paths["functional_atlas"],
         paths["annotation_cache"],

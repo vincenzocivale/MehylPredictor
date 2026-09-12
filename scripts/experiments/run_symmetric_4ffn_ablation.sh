@@ -51,7 +51,7 @@ done
 DATAROOT="${DATAROOT:-/dune/DATASETS/MethylPredictionData}"
 DATA_ARGS=(
   --canonical-root "$DATAROOT/datasets/methylprophet_repro_v1"
-  --feature-cache "$DATAROOT/derived/methylprophet_table5_tcga_chr1/features"
+  --prior-cache "$DATAROOT/derived/methylprophet_table5_tcga_chr1/features"
   --rna-cache "$DATAROOT/derived/methylprophet_table5_tcga_chr1/rna"
   --registry "$DATAROOT/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet"
   --prepared-root "$DATAROOT/derived/methylprophet_table5_tcga_chr1"

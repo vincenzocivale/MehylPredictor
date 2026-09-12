@@ -72,7 +72,7 @@ def test_generated_training_command_is_functional_only(tmp_path):
     paths = {
         "canonical": tmp_path / "canonical",
         "prepared": tmp_path / "prepared",
-        "feature_cache": tmp_path / "features",
+        "prior_cache": tmp_path / "prior",
         "canonical_rna": tmp_path / "rna",
         "bulkformer_147m": tmp_path / "bulkformer",
         "bulkrnabert": tmp_path / "bulkrnabert",
@@ -93,6 +93,10 @@ def test_generated_training_command_is_functional_only(tmp_path):
     )
 
     assert "--functional-only" in cmd
+    assert "--feature-cache" not in cmd
+    assert cmd[cmd.index("--prior-cache") + 1] == str(
+        paths["prior_cache"]
+    )
     assert cmd[cmd.index("--functional-atlas") + 1] == str(
         paths["functional_atlas"]
     )
@@ -107,7 +111,7 @@ def test_generated_eval_command_uses_same_functional_inputs(tmp_path):
     paths = {
         "canonical": tmp_path / "canonical",
         "prepared": tmp_path / "prepared",
-        "feature_cache": tmp_path / "features",
+        "prior_cache": tmp_path / "prior",
         "canonical_rna": tmp_path / "rna",
         "bulkformer_147m": tmp_path / "bulkformer",
         "bulkrnabert": tmp_path / "bulkrnabert",
@@ -121,6 +125,10 @@ def test_generated_eval_command_uses_same_functional_inputs(tmp_path):
     cmd = runner.evaluate_cmd(arm, 29, paths)
 
     assert "--functional-only" in cmd
+    assert "--feature-cache" not in cmd
+    assert cmd[cmd.index("--prior-cache") + 1] == str(
+        paths["prior_cache"]
+    )
     assert cmd[cmd.index("--rna-cache") + 1] == str(
         paths["bulkformer_147m"]
     )
