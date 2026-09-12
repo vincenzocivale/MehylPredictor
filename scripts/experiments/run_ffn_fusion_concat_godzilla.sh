@@ -30,7 +30,7 @@ DATA_ARGS=(
   --cpg-targets-dir /home/vcivale/MethylPredictorData/derived/cpg_statistics/chr1
   --functional-atlas /home/vcivale/MethylPredictorData/derived/ntv3_functional_peak_atlas_chr1_all_sources
   --annotation-cache /home/vcivale/MethylPredictorData/derived/ntv3_probe_targets/chr1_annotation_features_all_sources
-  --functional-only
+  
 )
 OUTROOT="/home/vcivale/MethylPredictorData/experiments/runs"
 RUN_ID="ffn-fusion-concat-final-chr1-seed17"
@@ -41,7 +41,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 echo "[ffnfusion-concat] 1-epoch mode=final smoke test..." | tee -a "$LOGDIR/ffn_fusion_concat_godzilla_orchestrator.log"
 rm -rf "/tmp/${RUN_ID}_smoke"
-if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
     --mode final --recipe "$RECIPE" \
     --output-root "/tmp/${RUN_ID}_smoke" --run-id smoke-1ep --epochs 1 --seed 17 \
     "${DATA_ARGS[@]}" > "$LOGDIR/smoke_${RUN_ID}.log" 2>&1; then
@@ -54,7 +54,7 @@ echo "[ffnfusion-concat] smoke test passed. Launching the full 80-epoch run..." 
   | tee -a "$LOGDIR/ffn_fusion_concat_godzilla_orchestrator.log"
 
 rm -rf "$OUTROOT/runs/locus_cls_joint/chr1/${RUN_ID}"  # fresh run, not a resume
-if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
     --mode final --recipe "$RECIPE" \
     --output-root "$OUTROOT" --run-id "$RUN_ID" --seed 17 \
     "${DATA_ARGS[@]}" > "$LOGDIR/${RUN_ID}.log" 2>&1; then
@@ -68,7 +68,7 @@ echo "[ffnfusion-concat] ffn_fusion_concat finished successfully." \
 echo "[ffnfusion-concat] evaluating checkpoint on all three official views..." \
   | tee -a "$LOGDIR/ffn_fusion_concat_godzilla_orchestrator.log"
 RUN_DIR="$OUTROOT/runs/locus_cls_joint/chr1/${RUN_ID}"
-"$PY" scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_backbone \
+"$PY" scripts/evaluate.py --model rna_methylation  \
   --checkpoint "$RUN_DIR/checkpoints/last.pt" --eval-scope chr1 --recipe "$RECIPE" \
   --output "$RUN_DIR/evaluation/chr1/official_split.json" \
   "${DATA_ARGS[@]}" > "$LOGDIR/eval_${RUN_ID}.log" 2>&1 \

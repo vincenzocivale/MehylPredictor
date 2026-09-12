@@ -53,7 +53,7 @@ DATA_ARGS=(
   --cpg-targets-dir /home/vcivale/dune_data/derived/cpg_statistics/chr1
   --functional-atlas /home/vcivale/dune_data/derived/ntv3_functional_peak_atlas_chr1_all_sources
   --annotation-cache /home/vcivale/dune_data/derived/ntv3_probe_targets/chr1_annotation_features_all_sources
-  --functional-only
+  
 )
 OUTROOT="/home/vcivale/dune_data/experiments/runs"
 
@@ -68,7 +68,7 @@ run_cell () {
 
   echo "[ffn_fusion] $label: 1-epoch mode=final smoke test..." | tee -a "$ORCH_LOG"
   rm -rf "/tmp/${run_id}_smoke"
-  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
       --mode final --recipe "$recipe" \
       --output-root "/tmp/${run_id}_smoke" --run-id smoke-1ep --epochs 1 --seed 17 \
       "${DATA_ARGS[@]}" > "$LOGDIR/smoke_${run_id}.log" 2>&1; then
@@ -81,7 +81,7 @@ run_cell () {
     | tee -a "$ORCH_LOG"
 
   rm -rf "$run_dir"  # fresh run, not a resume
-  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
       --mode final --recipe "$recipe" \
       --output-root "$OUTROOT" --run-id "$run_id" --seed 17 \
       "${DATA_ARGS[@]}" > "$LOGDIR/${run_id}.log" 2>&1; then
@@ -91,7 +91,7 @@ run_cell () {
   fi
   echo "[ffn_fusion] $label training finished. Evaluating checkpoint..." | tee -a "$ORCH_LOG"
 
-  if ! "$PY" scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_backbone \
+  if ! "$PY" scripts/evaluate.py --model rna_methylation  \
       --checkpoint "$run_dir/checkpoints/last.pt" --eval-scope chr1 \
       --recipe "$recipe" \
       "${DATA_ARGS[@]}" \

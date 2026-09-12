@@ -3,8 +3,7 @@
 
 The paper-facing RNA model is selected by ``configs/models/main.yaml`` and uses
 a functional CpG representation plus locus-conditioned retrieval from learned
-RNA program tokens. Historical ``--engine`` names are retained temporarily for
-CLI/checkpoint compatibility while trainer internals are refactored.
+RNA program tokens. Functional locus inputs are mandatory for RNA training.
 """
 from __future__ import annotations
 import argparse, json
@@ -13,9 +12,9 @@ import yaml
 
 
 def _rna(args):
-    from methylation_predictor.rna_training.locus_cls_trainer import LocusCLSJointTrainer
+    from methylation_predictor.rna_training import RNAMethylationTrainer
     if args.scope == "chr1" and not args.prepared_root:
-        raise ValueError("matched_chr1_shared_backbone requires --prepared-root (matched_chr1 data root)")
+        raise ValueError("chr1 RNA training requires --prepared-root (matched protocol data root)")
     if not args.cpg_targets_dir:
         raise ValueError("RNA training requires --cpg-targets-dir (targets for the training-only mean-proxy task)")
     from methylation_predictor.rna_training.config import load_rna_recipe
@@ -28,7 +27,7 @@ def _rna(args):
         training_sources = tuple(recipe_raw["training_sources"])
     else:
         training_sources = None
-    trainer = LocusCLSJointTrainer(
+    trainer = RNAMethylationTrainer(
         canonical_root=args.canonical_root, scope=args.scope, recipe_path=args.recipe,
         rna_cache=args.rna_cache, prior_cache=args.prior_cache, registry=args.registry,
         cpg_targets_dir=args.cpg_targets_dir, output_root=args.output_root,
@@ -40,7 +39,6 @@ def _rna(args):
         training_sources=training_sources,
         functional_atlas=args.functional_atlas, annotation_cache=args.annotation_cache,
         bigwig_cache=args.bigwig_cache,
-        functional_only=args.functional_only,
     )
     try:
         return trainer.run()
@@ -60,7 +58,7 @@ def _stats(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--prior-cache",help="optional metric-only locus prior cache (cpg_idx.npy + prior.npy)"); p.add_argument("--rna-cache"); p.add_argument("--functional-atlas"); p.add_argument("--annotation-cache"); p.add_argument("--bigwig-cache",help="optional complete BigWig PCA context cache"); p.add_argument("--functional-only",action="store_true"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--engine",choices=["matched_chr1_shared_backbone","shared_backbone"],default="shared_backbone"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); p.add_argument("--training-sources",default=None,help="comma-separated subset of array,epic,wgbs to restrict training to (paper section B.6 source ablation); array is always included; default is all three, unchanged from before this flag existed"); args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--output-root",required=True); p.add_argument("--run-id",default=None); p.add_argument("--resume",action="store_true"); p.add_argument("--lr",type=float,default=None); p.add_argument("--epochs",type=int,default=None); p.add_argument("--scheduler",choices=["constant","cosine","cosine_warmup"],default=None); p.add_argument("--seed",type=int,default=None); p.add_argument("--registry",required=True); p.add_argument("--canonical-root"); p.add_argument("--prior-cache",help="optional metric-only locus prior cache (cpg_idx.npy + prior.npy)"); p.add_argument("--rna-cache"); p.add_argument("--functional-atlas"); p.add_argument("--annotation-cache"); p.add_argument("--bigwig-cache",help="optional complete BigWig PCA context cache"); p.add_argument("--mode",choices=["development","final"],default="final"); p.add_argument("--prepared-root"); p.add_argument("--targets"); p.add_argument("--embeddings"); p.add_argument("--cpg-targets-dir",help="cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--early-stop-patience",type=int,default=None,help="stop once the training signal hasn't improved for this many epochs"); p.add_argument("--development-split-seed",type=int,default=None,help="fix the inner development split independently of the training seed"); p.add_argument("--training-sources",default=None,help="comma-separated subset of array,epic,wgbs to restrict training to (paper section B.6 source ablation); array is always included; default is all three, unchanged from before this flag existed"); args=p.parse_args()
     if args.model=="rna_methylation":
         for name in ("canonical_root","rna_cache","functional_atlas","annotation_cache"):
             if getattr(args,name) is None: p.error(f"--{name.replace('_','-')} is required for RNA training")

@@ -9,7 +9,7 @@ import time
 import yaml
 
 from ..run_store import SearchStore, write_json, write_yaml
-from .locus_cls_trainer import LocusCLSJointTrainer
+from .locus_cls_trainer import RNAMethylationTrainer
 
 
 def run_search(
@@ -26,12 +26,12 @@ def run_search(
     for lr, scheduler in itertools.product(learning_rates, schedulers):
         candidate_id = f"lr{lr:.2g}-{scheduler}-e{max_epochs}".replace("+", "")
         started = time.time()
-        trainer = LocusCLSJointTrainer(
+        trainer = RNAMethylationTrainer(
             canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
             rna_cache=rna_cache, prior_cache=prior_cache, registry=registry,
             cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
             functional_atlas=functional_atlas, annotation_cache=annotation_cache,
-            bigwig_cache=bigwig_cache, functional_only=True,
+            bigwig_cache=bigwig_cache,
             output_root=store.path / "runs", mode="development", run_id=candidate_id,
             overrides={"learning_rate": float(lr), "scheduler": scheduler, "epochs": int(max_epochs), "seed": int(seed)},
             track=False,

@@ -127,8 +127,6 @@ def train_cmd(
         "rna_methylation",
         "--scope",
         "chr1",
-        "--engine",
-        "matched_chr1_shared_backbone",
         "--mode",
         mode,
         "--recipe",
@@ -151,7 +149,6 @@ def train_cmd(
         str(paths["functional_atlas"]),
         "--annotation-cache",
         str(paths["annotation_cache"]),
-        "--functional-only",
         "--output-root",
         str(paths["output_root"]),
         "--run-id",
@@ -175,8 +172,6 @@ def evaluate_cmd(
         "scripts/evaluate.py",
         "--model",
         "rna_methylation",
-        "--engine",
-        "matched_chr1_shared_backbone",
         "--checkpoint",
         str(rd / "checkpoints" / "best.pt"),
         "--eval-scope",
@@ -201,7 +196,6 @@ def evaluate_cmd(
         str(paths["functional_atlas"]),
         "--annotation-cache",
         str(paths["annotation_cache"]),
-        "--functional-only",
     ]
 
 

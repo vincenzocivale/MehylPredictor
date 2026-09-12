@@ -68,7 +68,7 @@ def test_runner_cache_mapping_is_explicit(tmp_path):
     ) == paths["bulkrnabert"]
 
 
-def test_generated_training_command_is_functional_only(tmp_path):
+def test_generated_training_command_uses_functional_inputs(tmp_path):
     paths = {
         "canonical": tmp_path / "canonical",
         "prepared": tmp_path / "prepared",
@@ -92,7 +92,8 @@ def test_generated_training_command_is_functional_only(tmp_path):
         early_stop_patience=6,
     )
 
-    assert "--functional-only" in cmd
+    assert "--functional-only" not in cmd
+    assert "--engine" not in cmd
     assert "--feature-cache" not in cmd
     assert cmd[cmd.index("--prior-cache") + 1] == str(
         paths["prior_cache"]
@@ -124,7 +125,8 @@ def test_generated_eval_command_uses_same_functional_inputs(tmp_path):
     arm = suite.ARMS[3]
     cmd = runner.evaluate_cmd(arm, 29, paths)
 
-    assert "--functional-only" in cmd
+    assert "--functional-only" not in cmd
+    assert "--engine" not in cmd
     assert "--feature-cache" not in cmd
     assert cmd[cmd.index("--prior-cache") + 1] == str(
         paths["prior_cache"]

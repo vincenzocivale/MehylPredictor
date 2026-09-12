@@ -144,7 +144,7 @@ The migrated runner:
 
 - is chr1-only;
 - passes the frozen functional atlas and annotation cache explicitly;
-- always uses `--functional-only`;
+- always supplies the frozen functional atlas and annotation cache;
 - selects canonical RNA, BulkFormer, or BulkRNABert sample caches explicitly;
 - uses fresh `functional-rnaenc-*` run IDs;
 - supports `--print-commands` for command-level audit before GPU execution.
@@ -236,3 +236,9 @@ prior.npy
 The old derived feature directory may still be supplied as `--prior-cache` during migration because it contains those two arrays, but the RNA runtime does not open its embedding or sigma files. The standalone `cpg_prior` baseline remains the only supported evaluator that still uses `LocusFeatureCache`.
 
 All active J-series shell launchers, the mean-proxy harness, and the RNA-encoder-comparison harness now pass `--prior-cache`, so the executable experiment surface matches the runtime API.
+
+## Phase 4d1: single RNA trainer and CLI
+
+The live trainer is now `RNAMethylationTrainer`. The historical `LocusCLSJointTrainer` symbol remains only as a temporary direct-import compatibility alias and is no longer part of the package public API.
+
+RNA training and evaluation no longer expose `--engine` or `--functional-only`. Functional locus inputs are mandatory and there is only one paper-facing runtime. Existing run directories and checkpoint metadata intentionally keep the historical `locus_cls_joint` identifier so in-flight runs remain resumable and existing evaluation paths do not move.

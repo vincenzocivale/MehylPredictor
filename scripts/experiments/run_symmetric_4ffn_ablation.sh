@@ -58,7 +58,7 @@ DATA_ARGS=(
   --cpg-targets-dir "$DATAROOT/derived/cpg_statistics/chr1"
   --functional-atlas "$DATAROOT/derived/ntv3_functional_peak_atlas_chr1_all_sources"
   --annotation-cache "$DATAROOT/derived/ntv3_probe_targets/chr1_annotation_features_all_sources"
-  --functional-only
+  
 )
 OUTROOT="$DATAROOT/experiments/runs"
 RUN_ID="symmetric-4ffn-both-branches-final-chr1-seed17"
@@ -69,7 +69,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 echo "[j10] 1-epoch mode=final smoke test..." | tee -a "$LOGDIR/j10_orchestrator.log"
 rm -rf "/tmp/${RUN_ID}_smoke"
-if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
     --mode final --recipe "$RECIPE" \
     --output-root "/tmp/${RUN_ID}_smoke" --run-id smoke-1ep --epochs 1 --seed 17 \
     "${DATA_ARGS[@]}" > "$LOGDIR/smoke_${RUN_ID}.log" 2>&1; then
@@ -82,7 +82,7 @@ echo "[j10] smoke test passed. Launching the full 80-epoch run..." \
   | tee -a "$LOGDIR/j10_orchestrator.log"
 
 rm -rf "$OUTROOT/runs/locus_cls_joint/chr1/${RUN_ID}"  # fresh run, not a resume
-if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
     --mode final --recipe "$RECIPE" \
     --output-root "$OUTROOT" --run-id "$RUN_ID" --seed 17 \
     "${DATA_ARGS[@]}" > "$LOGDIR/${RUN_ID}.log" 2>&1; then

@@ -23,7 +23,7 @@ DATA_ARGS=(
   --cpg-targets-dir /dune/DATASETS/MethylPredictionData/derived/cpg_statistics/chr1
   --functional-atlas /dune/DATASETS/MethylPredictionData/derived/ntv3_functional_peak_atlas_chr1_all_sources
   --annotation-cache /dune/DATASETS/MethylPredictionData/derived/ntv3_probe_targets/chr1_annotation_features_all_sources
-  --functional-only
+  
 )
 
 echo "[wait-and-run] waiting for run-1 PID $RUN1_PID to exit..." | tee -a "$LOGDIR/orchestrator.log"
@@ -54,7 +54,7 @@ echo "[wait-and-run] run-1 succeeded (${EPOCHS_RUN} epochs recorded, checkpoint 
 
 SMOKE_OK=0
 rm -rf /tmp/j1_iterative_smoke
-"$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+"$PY" scripts/train.py --model rna_methylation --scope chr1  \
   --mode final --recipe configs/models/functional_fusion/j1_iterative.yaml \
   --output-root /tmp/j1_iterative_smoke --run-id j1-smoke-1ep --epochs 1 --seed 17 \
   "${DATA_ARGS[@]}" > "$LOGDIR/smoke_j1.log" 2>&1 && SMOKE_OK=1 || SMOKE_OK=0
@@ -70,7 +70,7 @@ echo "[wait-and-run] j1 smoke test passed. Launching the full 80-epoch iterative
 
 RUN2_ID="functional-iterative-rna2-final-chr1-seed17"
 OUTROOT="/dune/DATASETS/MethylPredictionData/experiments/runs"
-"$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+"$PY" scripts/train.py --model rna_methylation --scope chr1  \
   --mode final --recipe configs/models/functional_fusion/j1_iterative.yaml \
   --output-root "$OUTROOT" --run-id "$RUN2_ID" --seed 17 \
   "${DATA_ARGS[@]}" > "$LOGDIR/${RUN2_ID}.log" 2>&1

@@ -1,27 +1,13 @@
-"""Trainer for ``models.FeatureFusionLocusCLSModel`` -- the repo's primary/
-reference RNA-methylation architecture as of 2026-09-03 (see
-docs/RNA_METHYLATION.md): late fusion of two learned representations (a
-locus-only "mean" branch, an RNA-conditioned "raw" branch) into a single
-prediction head, replacing the earlier two-stage frozen-prior + residual
-pipeline (``VarianceNormalizedResidualModel``/``RNAMethylationPredictor``,
-still frozen for old-checkpoint compatibility -- see CLAUDE.md's "Model
-compatibility note"). Selected via the ``shared_backbone_locus_cls_2026_09``
-ablation ladder (``results/reference/ablations.yaml``) -- see that entry and
-``models.FeatureFusionLocusCLSModel``'s docstring for the architecture/
-selection rationale.
+"""Training and official evaluation for RNA-to-DNAm prediction.
 
-Trained end-to-end in one phase from random initialization -- no separate
-pretraining stage, no warm start from another checkpoint (an earlier
-two-phase design and "direct"/"anchored" model variants it warm-started were
-superseded by this single-phase, single-head architecture; see git history
-for that earlier exploration).
+The paper-facing model uses a reference functional CpG representation and
+locus-conditioned retrieval from patient RNA program tokens. This module owns
+the TCGA protocol, source scheduling, optimization, checkpointing and official
+three-view evaluation for that model family.
 
-Wired into the stable CLI: ``scripts/train.py --model rna_methylation
---engine matched_chr1_shared_backbone`` (currently chr1-only, matched_chr1
-data). Deliberately still isolated from the frozen MethylProphet benchmark
-trainer (see CLAUDE.md: "the MethylProphet benchmark is isolated, not
-central") -- this module owns its own pool/schedule/read_block logic,
-mirroring (not sharing) ``JointRNAMethylationTrainer``'s.
+Historical shared-backbone engine names are no longer part of the runtime API.
+The on-disk run/checkpoint identifiers are intentionally retained during this
+migration so existing runs remain resumable and evaluable.
 """
 from __future__ import annotations
 
@@ -135,10 +121,8 @@ def _retired_locus_compat(recipe_raw: dict) -> dict:
     return resolved
 
 
-class LocusCLSJointTrainer:
-    """Single model, single optimizer, single training phase. Pool/schedule/
-    read_block logic mirrors JointRNAMethylationTrainer's (duplicated rather
-    than shared, same isolation note as that module)."""
+class RNAMethylationTrainer:
+    """Single-stage trainer for the functional-locus RNA model family."""
 
     def __init__(
         self,
@@ -165,7 +149,6 @@ class LocusCLSJointTrainer:
         functional_atlas: str | Path | None = None,
         annotation_cache: str | Path | None = None,
         bigwig_cache: str | Path | None = None,
-        functional_only: bool = False,
     ):
         self.development_split_seed = (
             None
@@ -240,18 +223,19 @@ class LocusCLSJointTrainer:
                 self.protocol.array_val_cpg_idx,
             ]))
             self.prior_cache.index.positions_of(evaluation_cpgs)
-        if (functional_atlas is None) != (annotation_cache is None):
-            raise ValueError("--functional-atlas and --annotation-cache must be provided together")
-        self.functional = (
-            FunctionalLocusCache(functional_atlas, annotation_cache, bigwig_cache)
-            if functional_atlas is not None else None
+        if functional_atlas is None or annotation_cache is None:
+            raise ValueError(
+                "RNA methylation training requires --functional-atlas and "
+                "--annotation-cache"
+            )
+        self.functional = FunctionalLocusCache(
+            functional_atlas,
+            annotation_cache,
+            bigwig_cache,
         )
-        self.functional_only = bool(functional_only)
-        if self.functional_only and self.functional is None:
-            raise ValueError("--functional-only requires both functional caches")
-        self.functional_fusion_variant = self.recipe.model.functional_fusion_variant
-        if self.functional_fusion_variant and not self.functional_only:
-            raise ValueError("model.functional_fusion_variant requires --functional-only")
+        self.functional_fusion_variant = (
+            self.recipe.model.functional_fusion_variant
+        )
         if self.functional is not None:
             required_axes = {
                 "array_train": self.protocol.array_train_cpg_idx,
@@ -275,11 +259,6 @@ class LocusCLSJointTrainer:
         self.use_mean_branch = bool(use_mean_branch)
         # Experiment-specific architecture kwargs live in
         # modeling.factory; the trainer only enforces shared harness invariants.
-        if not self.functional_only or self.functional is None:
-            raise ValueError(
-                "paper-facing RNA training requires --functional-only plus "
-                "--functional-atlas and --annotation-cache"
-            )
         if self.functional_fusion_variant not in SUPPORTED_FUNCTIONAL_VARIANTS:
             raise ValueError(
                 "unsupported paper-facing functional_fusion_variant "
@@ -343,11 +322,8 @@ class LocusCLSJointTrainer:
                 "n_tracks": 4165, "dense_dim": 23,
                 "encoder_dim": 256 if self.functional_fusion_variant else 64,
                 **({"fusion_variant": self.functional_fusion_variant} if self.functional_fusion_variant else {}),
-                "residual_policy": (
-                    "random_initialized_functional_projection" if self.functional_only
-                    else "zero_initialized_additive_projection"
-                ),
-                "mode": "functional_only" if self.functional_only else "additive_residual",
+                "residual_policy": "random_initialized_functional_projection",
+                "mode": "functional_only",
             }
         # Same preserve-compatibility convention as query_source above: only record
         # training_sources when it's a real restriction (paper section B.6's source
@@ -764,11 +740,8 @@ class LocusCLSJointTrainer:
                     "n_tracks": 4165, "dense_dim": self.functional.DENSE_DIM,
                     "encoder_dim": 256 if self.functional_fusion_variant else 64,
                     **({"fusion_variant": self.functional_fusion_variant} if self.functional_fusion_variant else {}),
-                    "residual_policy": (
-                        "random_initialized_functional_projection" if self.functional_only
-                        else "zero_initialized_additive_projection"
-                    ),
-                    "mode": "functional_only" if self.functional_only else "additive_residual",
+                    "residual_policy": "random_initialized_functional_projection",
+                    "mode": "functional_only",
                 }} if self.functional is not None else {}),
             },
             "wandb": None if self.wandb_run is None else {
@@ -1021,6 +994,9 @@ class LocusCLSJointTrainer:
         return summary
 
 
+# Temporary compatibility alias for pre-4d direct imports.
+LocusCLSJointTrainer = RNAMethylationTrainer
+
 def evaluate_official_split(
     *,
     checkpoint: str | Path,
@@ -1037,7 +1013,6 @@ def evaluate_official_split(
     cpg_chunk: int = 2048,
     functional_atlas: str | Path | None = None,
     annotation_cache: str | Path | None = None,
-    functional_only: bool = False,
 ) -> dict:
     """Evaluate a checkpoint on all three TRUE official MethylProphet views.
 
@@ -1054,30 +1029,37 @@ def evaluate_official_split(
         )
     lc = ckpt.get("locus_cls") or {}
     checkpoint_functional = lc.get("functional_locus")
-    if checkpoint_functional is not None and (functional_atlas is None or annotation_cache is None):
-        raise ValueError("functional checkpoint evaluation requires --functional-atlas and --annotation-cache")
-    if checkpoint_functional is None and (functional_atlas is not None or annotation_cache is not None):
-        raise ValueError("cannot enable functional conditioning when evaluating a non-functional checkpoint")
-    if checkpoint_functional is not None:
-        checkpoint_functional_only = checkpoint_functional.get("mode") == "functional_only"
-        if bool(functional_only) != checkpoint_functional_only:
-            raise ValueError("--functional-only does not match the checkpoint metadata")
-        supplied = {
-            "functional_atlas": str(Path(functional_atlas).resolve()),
-            "annotation_cache": str(Path(annotation_cache).resolve()),
-        }
-        for key, value in supplied.items():
-            if value != checkpoint_functional.get(key):
-                raise ValueError(f"evaluation {key} does not match the checkpoint metadata")
-    # LocusCLSJointTrainer always wants its own run-store scratch dir (distinct
+    if checkpoint_functional is None:
+        raise ValueError(
+            "paper-facing RNA evaluation supports functional checkpoints only"
+        )
+    if checkpoint_functional.get("mode") != "functional_only":
+        raise ValueError(
+            "checkpoint is not a paper-facing functional-only RNA model"
+        )
+    if functional_atlas is None or annotation_cache is None:
+        raise ValueError(
+            "functional checkpoint evaluation requires --functional-atlas "
+            "and --annotation-cache"
+        )
+    supplied = {
+        "functional_atlas": str(Path(functional_atlas).resolve()),
+        "annotation_cache": str(Path(annotation_cache).resolve()),
+    }
+    for key, value in supplied.items():
+        if value != checkpoint_functional.get(key):
+            raise ValueError(
+                f"evaluation {key} does not match the checkpoint metadata"
+            )
+    # RNAMethylationTrainer always wants its own run-store scratch dir (distinct
     # from `output`, which here is the single evaluation-summary JSON file the
     # scripts/evaluate.py CLI convention expects). track=False: this is an
     # evaluation-only re-instantiation of the model, not a second training run --
     # it must not open its own wandb run. The training run this checkpoint came
     # from is resumed explicitly below instead, by (project, entity, run_id)
-    # persisted into the checkpoint by LocusCLSJointTrainer._save_checkpoint.
+    # persisted into the checkpoint by RNAMethylationTrainer._save_checkpoint.
     scratch_root = Path(output).parent / ".eval_runs"
-    trainer = LocusCLSJointTrainer(
+    trainer = RNAMethylationTrainer(
         canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
         rna_cache=rna_cache, prior_cache=prior_cache, registry=registry,
         cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
@@ -1086,7 +1068,6 @@ def evaluate_official_split(
         use_mean_branch=lc.get("use_mean_branch", True),
         aux_weight=lc.get("aux_weight", 0.15),
         functional_atlas=functional_atlas, annotation_cache=annotation_cache,
-        functional_only=functional_only,
         track=False,
     )
     try:

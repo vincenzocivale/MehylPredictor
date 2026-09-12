@@ -38,7 +38,7 @@ DATA_ARGS=(
   --cpg-targets-dir /dune/DATASETS/MethylPredictionData/derived/cpg_statistics/chr1
   --functional-atlas /dune/DATASETS/MethylPredictionData/derived/ntv3_functional_peak_atlas_chr1_all_sources
   --annotation-cache /dune/DATASETS/MethylPredictionData/derived/ntv3_probe_targets/chr1_annotation_features_all_sources
-  --functional-only
+  
 )
 OUTROOT="/dune/DATASETS/MethylPredictionData/experiments/runs"
 
@@ -49,7 +49,7 @@ run_cell () {
   local recipe="$1" run_id="$2" label="$3"
   echo "[ablation] $label: 1-epoch mode=final smoke test..." | tee -a "$LOGDIR/ablation_orchestrator.log"
   rm -rf "/tmp/${run_id}_smoke"
-  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
       --mode final --recipe "$recipe" \
       --output-root "/tmp/${run_id}_smoke" --run-id smoke-1ep --epochs 1 --seed 17 \
       "${DATA_ARGS[@]}" > "$LOGDIR/smoke_${run_id}.log" 2>&1; then
@@ -62,7 +62,7 @@ run_cell () {
     | tee -a "$LOGDIR/ablation_orchestrator.log"
 
   rm -rf "$OUTROOT/runs/locus_cls_joint/chr1/${run_id}"  # fresh run, not a resume
-  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
+  if ! "$PY" scripts/train.py --model rna_methylation --scope chr1  \
       --mode final --recipe "$recipe" \
       --output-root "$OUTROOT" --run-id "$run_id" --seed 17 \
       "${DATA_ARGS[@]}" > "$LOGDIR/${run_id}.log" 2>&1; then

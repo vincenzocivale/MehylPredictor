@@ -13,16 +13,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY = "mean_contribution_functional_2026_09"
-ENGINE = "matched_chr1_shared_backbone"
 SEEDS = (17, 29, 43)
-
-
-def engine_for(scope: str) -> str:
-    if scope != "chr1":
-        raise SystemExit(
-            "functional mean-proxy ablation is currently frozen for chr1 only"
-        )
-    return ENGINE
 
 
 def seeds_for(scope: str) -> tuple[int, ...]:

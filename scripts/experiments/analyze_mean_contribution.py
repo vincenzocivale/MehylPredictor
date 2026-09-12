@@ -24,7 +24,7 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from methylation_predictor.rna_training.locus_cls_trainer import LocusCLSJointTrainer  # noqa: E402
+from methylation_predictor.rna_training import RNAMethylationTrainer  # noqa: E402
 from methylation_predictor.rna_training.matched_chr1_data import load_matched_chr1_protocol_and_sources  # noqa: E402
 from methylation_predictor.run_store import write_json  # noqa: E402
 
@@ -43,7 +43,7 @@ def _basic_regression(target: np.ndarray, pred: np.ndarray) -> dict[str, float |
     return {"n": int(len(t)), "mse": mse, "mae": mae, "pearson": pearson, "r2": r2}
 
 
-def _target_mu(trainer: LocusCLSJointTrainer, cpg_ids: np.ndarray) -> np.ndarray:
+def _target_mu(trainer: RNAMethylationTrainer, cpg_ids: np.ndarray) -> np.ndarray:
     present = trainer.cpg_target_index.contains(cpg_ids)
     out = np.full(len(cpg_ids), np.nan, dtype=np.float64)
     if present.any():
@@ -53,7 +53,7 @@ def _target_mu(trainer: LocusCLSJointTrainer, cpg_ids: np.ndarray) -> np.ndarray
 
 
 def _functional_inputs(
-    trainer: LocusCLSJointTrainer,
+    trainer: RNAMethylationTrainer,
     cpg_ids: np.ndarray,
 ) -> dict[str, torch.Tensor]:
     if trainer.functional is None:
@@ -74,7 +74,7 @@ def _functional_inputs(
 
 @torch.no_grad()
 def _extract_functional_locus(
-    trainer: LocusCLSJointTrainer,
+    trainer: RNAMethylationTrainer,
     cpg_ids: np.ndarray,
     chunk: int,
 ) -> tuple[np.ndarray, np.ndarray] | None:
@@ -139,7 +139,7 @@ def _linear_probe(
 
 @torch.no_grad()
 def _view_diagnostics(
-    trainer: LocusCLSJointTrainer,
+    trainer: RNAMethylationTrainer,
     sample_ids: np.ndarray,
     cpg_ids: np.ndarray,
     *,
@@ -233,7 +233,7 @@ def checkpoint_mode(args) -> int:
     ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     lc = ckpt.get("locus_cls") or {}
     scratch = Path(args.output).parent / ".mean_diag_eval"
-    trainer = LocusCLSJointTrainer(
+    trainer = RNAMethylationTrainer(
         canonical_root=args.canonical_root,
         scope=args.scope,
         recipe_path=args.recipe,
@@ -249,7 +249,6 @@ def checkpoint_mode(args) -> int:
         aux_weight=lc.get("aux_weight", 0.15),
         functional_atlas=args.functional_atlas,
         annotation_cache=args.annotation_cache,
-        functional_only=True,
         track=False,
     )
     try:

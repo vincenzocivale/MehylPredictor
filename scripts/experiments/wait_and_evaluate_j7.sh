@@ -24,7 +24,7 @@ done
 echo "[eval] training finished. Evaluating checkpoint..." | tee -a "$LOGDIR/eval_j7_orchestrator.log"
 
 cd "$ROOT"
-python scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_backbone \
+python scripts/evaluate.py --model rna_methylation  \
   --checkpoint "$RUN_DIR/checkpoints/last.pt" --eval-scope chr1 \
   --recipe configs/models/functional_fusion/j7_efficient_single_attn_8ffn.yaml \
   --canonical-root /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1 \
@@ -35,7 +35,6 @@ python scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_
   --cpg-targets-dir /home/vcivale/MethylPredictorData/derived/cpg_statistics/chr1 \
   --functional-atlas /home/vcivale/MethylPredictorData/derived/ntv3_functional_peak_atlas_chr1_all_sources \
   --annotation-cache /home/vcivale/MethylPredictorData/derived/ntv3_probe_targets/chr1_annotation_features_all_sources \
-  --functional-only \
   --output "$RUN_DIR/evaluation/chr1/official_split.json" \
   > "$LOGDIR/eval_${RUN_ID}.log" 2>&1
 

@@ -14,7 +14,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mean_contribution_suite import REPO_ROOT, Arm, data_paths, engine_for, select, seeds_for  # noqa: E402
+from mean_contribution_suite import REPO_ROOT, Arm, data_paths, select, seeds_for  # noqa: E402
 
 
 def _gpu_free_gb(index: int) -> float | None:
@@ -52,17 +52,16 @@ def _diag_file(run_dir: Path, scope: str) -> Path:
     return run_dir / "evaluation" / scope / "mean_diagnostics.json"
 
 
-def _train_cmd(arm: Arm, seed: int, scope: str, engine: str, paths: dict[str, str], resume: bool) -> list[str]:
+def _train_cmd(arm: Arm, seed: int, scope: str, paths: dict[str, str], resume: bool) -> list[str]:
     cmd = [
         sys.executable, "scripts/train.py",
-        "--model", "rna_methylation", "--scope", scope, "--engine", engine, "--mode", "final",
+        "--model", "rna_methylation", "--scope", scope, "--mode", "final",
         "--recipe", arm.recipe, "--seed", str(seed), "--run-id", arm.run_id(seed, scope),
         "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
         "--prior-cache", paths["prior_cache"], "--rna-cache", paths["rna_cache"],
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
         "--functional-atlas", paths["functional_atlas"],
         "--annotation-cache", paths["annotation_cache"],
-        "--functional-only",
         "--output-root", paths["output_root"],
     ]
     if resume:
@@ -70,10 +69,10 @@ def _train_cmd(arm: Arm, seed: int, scope: str, engine: str, paths: dict[str, st
     return cmd
 
 
-def _eval_cmd(arm: Arm, run_dir: Path, scope: str, engine: str, paths: dict[str, str]) -> list[str]:
+def _eval_cmd(arm: Arm, run_dir: Path, scope: str, paths: dict[str, str]) -> list[str]:
     return [
         sys.executable, "scripts/evaluate.py",
-        "--model", "rna_methylation", "--engine", engine,
+        "--model", "rna_methylation",
         "--checkpoint", str(run_dir / "checkpoints" / "best.pt"),
         "--eval-scope", scope, "--recipe", arm.recipe,
         "--canonical-root", paths["canonical_root"], "--prepared-root", paths["prepared_root"],
@@ -81,7 +80,6 @@ def _eval_cmd(arm: Arm, run_dir: Path, scope: str, engine: str, paths: dict[str,
         "--registry", paths["registry"], "--cpg-targets-dir", paths["cpg_targets_dir"],
         "--functional-atlas", paths["functional_atlas"],
         "--annotation-cache", paths["annotation_cache"],
-        "--functional-only",
         "--output", str(_eval_file(run_dir, scope)),
     ]
 
@@ -121,7 +119,6 @@ def main() -> int:
 
     os.chdir(REPO_ROOT)
     scope = args.scope
-    engine = engine_for(scope)
     arms = select(args.arms)
     seeds = _parse_seeds(args.seeds, scope)
     paths = data_paths(args.data_root, scope=scope)
@@ -143,9 +140,9 @@ def main() -> int:
 
             commands = []
             if not train_done:
-                commands.append(("train", _train_cmd(arm, seed, scope, engine, paths, resume)))
+                commands.append(("train", _train_cmd(arm, seed, scope, paths, resume)))
             if not eval_done or args.refresh_evaluation:
-                commands.append(("eval", _eval_cmd(arm, run_dir, scope, engine, paths)))
+                commands.append(("eval", _eval_cmd(arm, run_dir, scope, paths)))
             if not diag_done or args.refresh_diagnostics:
                 commands.append(("diag", _diag_cmd(arm, run_dir, scope, paths)))
 
