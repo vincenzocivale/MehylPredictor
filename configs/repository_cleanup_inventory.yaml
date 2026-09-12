@@ -1,6 +1,7 @@
 schema_version: 1
-goal: keep the repository clean while protected architecture-search runs finish; perform destructive experiment/data
-  cleanup only after the final architecture and fresh paper runs are locked
+goal: keep the repository clean while protected architecture-search runs finish; perform
+  destructive experiment/data cleanup only after the final architecture and fresh
+  paper runs are locked
 remove_now:
   completed_in_this_phase:
   - phase5b_audit_config_fields.py
@@ -12,8 +13,8 @@ remove_now:
   - results/diagnostics/
   - docs/BENCHMARKS.md
   - docs/data/GENOMIC_FEATURE_STORE.md
-  rationale: delivery helpers, generated diagnostics, or documentation whose runtime assumptions are retired
-    and superseded
+  rationale: delivery helpers, generated diagnostics, or documentation whose runtime
+    assumptions are retired and superseded
 keep_now:
   core_runtime:
   - src/methylation_predictor/modeling/
@@ -53,37 +54,10 @@ protect_until_architecture_selection:
   source:
   - src/methylation_predictor/modeling/ablation.py
   - src/methylation_predictor/modeling/factory.py
-  recipes:
-  - configs/models/functional_fusion/j1_iterative.yaml
-  - configs/models/functional_fusion/j2_ablation_depth1_residual.yaml
-  - configs/models/functional_fusion/j3_ablation_depth4_noresidual.yaml
-  - configs/models/functional_fusion/j4_efficient_single_attn.yaml
-  - configs/models/functional_fusion/j5_ablation_depth8_residual.yaml
-  - configs/models/functional_fusion/j5_ablation_depth10_residual.yaml
-  - configs/models/functional_fusion/j5_ablation_depth12_residual.yaml
-  - configs/models/functional_fusion/j6_gated_residual.yaml
-  - configs/models/functional_fusion/j7_efficient_single_attn_8ffn.yaml
-  - configs/models/functional_fusion/j9a_ffn_fusion_concat.yaml
-  - configs/models/functional_fusion/j9b_ffn_fusion_film.yaml
-  - configs/models/functional_fusion/j9b_functional_branch_depth.yaml
-  - configs/models/functional_fusion/j9c_ffn_fusion_two_stream_residual.yaml
-  - configs/models/functional_fusion/j9d_ffn_fusion_two_stream_residual_8_8.yaml
-  - configs/models/functional_fusion/j9e_ffn_fusion_two_stream_residual_4_4.yaml
-  - configs/models/functional_fusion/j10_symmetric_4ffn_both_branches.yaml
-  launchers:
-  - scripts/experiments/run_depth_residual_ablation.sh
-  - scripts/experiments/run_efficient_8ffn_ablation.sh
-  - scripts/experiments/run_efficient_single_attn_ablation.sh
-  - scripts/experiments/run_ffn_fusion_concat_godzilla.sh
-  - scripts/experiments/run_ffn_fusion_ladder.sh
-  - scripts/experiments/run_functional_branch_depth_ablation.sh
-  - scripts/experiments/run_gated_residual_ablation.sh
-  - scripts/experiments/run_symmetric_4ffn_ablation.sh
-  - scripts/experiments/wait_and_evaluate_j4.sh
-  - scripts/experiments/wait_and_evaluate_j6.sh
-  - scripts/experiments/wait_and_evaluate_j7.sh
-  - scripts/experiments/wait_and_run_iterative_retrieval.sh
-  rule: do not refactor, rename, or delete while these runs may need resume/evaluation compatibility
+  recipes: []
+  launchers: []
+  rule: architecture selection complete; J-series recipes/launchers removed in Phase
+    6c; source/runtime compatibility deferred to Phase 6d
 remove_after_architecture_selection:
   compatibility_runtime:
   - src/methylation_predictor/rna_training/locus_cls_trainer.py
@@ -93,19 +67,19 @@ remove_after_architecture_selection:
   - ModelConfig compatibility-only fields/classes
   - legacy LossConfig fields
   research_surface:
-  - all non-selected J-series recipes
-  - all non-selected J-series launchers
-  - architecture-only tests for deleted predictors
-  - unused predictor classes in modeling/ablation.py
-  - factory selectors for deleted variants
+  - 'COMPLETED in Phase 6c: J-series recipes and launchers removed; hash audit retained
+    in configs/experiment_surface.yaml'
+  - 'DEFERRED to Phase 6d: unused predictor classes, factory selectors, architecture-only
+    tests, and compatibility runtime/config'
   compatibility_recipes:
   - configs/models/functional_fusion/base.yaml
   - configs/models/functional_fusion/j0_final.yaml
 reset_after_fresh_paper_runs:
   tracked_results:
   - results/reference/
-  policy: do not treat current frozen ledgers as final paper outputs; after the definitive architecture
-    is selected, launch clean paper experiments and rebuild a minimal results/paper tree from those runs
+  policy: do not treat current frozen ledgers as final paper outputs; after the definitive
+    architecture is selected, launch clean paper experiments and rebuild a minimal
+    results/paper tree from those runs
 review_before_final_release:
   ntv3_and_foundation_model_tooling:
   - src/methylation_predictor/ntv3_atlas.py
@@ -113,8 +87,8 @@ review_before_final_release:
   - configs/benchmark_foundation_models/
   - scripts/benchmark_foundation_models/
   - src/methylation_predictor/benchmark/foundation_models/
-  reason: retain until final comparator/ablation set is fixed; delete anything not required by the final
-    paper
+  reason: retain until final comparator/ablation set is fixed; delete anything not
+    required by the final paper
   project_specs:
   - PROJECT_SPECS.md
 external_data_cleanup_after_final_runs:
@@ -136,5 +110,38 @@ external_data_cleanup_after_final_runs:
   - smoke-test/evaluation scratch directories
   - obsolete architecture-search run directories
   - superseded development sweeps
-  safety_rule: data deletion must be driven by a separate dry-run dependency scanner after the final run
-    manifest exists; never delete by directory name alone
+  safety_rule: data deletion must be driven by a separate dry-run dependency scanner
+    after the final run manifest exists; never delete by directory name alone
+architecture_selection:
+  status: complete
+  selected_variant: efficient_single_attn_8ffn_residual_functional8_head2
+  research_surface_removed: true
+  removed_paths:
+  - configs/models/functional_fusion/j1_iterative.yaml
+  - configs/models/functional_fusion/j2_ablation_depth1_residual.yaml
+  - configs/models/functional_fusion/j3_ablation_depth4_noresidual.yaml
+  - configs/models/functional_fusion/j4_efficient_single_attn.yaml
+  - configs/models/functional_fusion/j5_ablation_depth8_residual.yaml
+  - configs/models/functional_fusion/j5_ablation_depth10_residual.yaml
+  - configs/models/functional_fusion/j5_ablation_depth12_residual.yaml
+  - configs/models/functional_fusion/j6_gated_residual.yaml
+  - configs/models/functional_fusion/j7_efficient_single_attn_8ffn.yaml
+  - configs/models/functional_fusion/j9a_ffn_fusion_concat.yaml
+  - configs/models/functional_fusion/j9b_ffn_fusion_film.yaml
+  - configs/models/functional_fusion/j9b_functional_branch_depth.yaml
+  - configs/models/functional_fusion/j9c_ffn_fusion_two_stream_residual.yaml
+  - configs/models/functional_fusion/j9d_ffn_fusion_two_stream_residual_8_8.yaml
+  - configs/models/functional_fusion/j9e_ffn_fusion_two_stream_residual_4_4.yaml
+  - configs/models/functional_fusion/j10_symmetric_4ffn_both_branches.yaml
+  - scripts/experiments/run_depth_residual_ablation.sh
+  - scripts/experiments/run_efficient_8ffn_ablation.sh
+  - scripts/experiments/run_efficient_single_attn_ablation.sh
+  - scripts/experiments/run_ffn_fusion_concat_godzilla.sh
+  - scripts/experiments/run_ffn_fusion_ladder.sh
+  - scripts/experiments/run_functional_branch_depth_ablation.sh
+  - scripts/experiments/run_gated_residual_ablation.sh
+  - scripts/experiments/run_symmetric_4ffn_ablation.sh
+  - scripts/experiments/wait_and_evaluate_j4.sh
+  - scripts/experiments/wait_and_evaluate_j6.sh
+  - scripts/experiments/wait_and_evaluate_j7.sh
+  - scripts/experiments/wait_and_run_iterative_retrieval.sh

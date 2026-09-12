@@ -35,6 +35,12 @@ EFFICIENT_VARIANTS = {
         "n_functional_ffn_blocks": 8,
         "deep_query": False,
     },
+    "efficient_single_attn_8ffn_residual_functional8_head2": {
+        "n_ffn_blocks": 8,
+        "n_functional_ffn_blocks": 8,
+        "deep_query": False,
+        "n_head_ffn_blocks": 2,
+    },
     "efficient_single_attn_4ffn_residual_functional4": {
         "n_ffn_blocks": 4,
         "n_functional_ffn_blocks": 4,

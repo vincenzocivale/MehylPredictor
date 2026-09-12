@@ -1,10 +1,7 @@
-# Paper-facing reference recipe.
+# Paper-facing final architecture.
 #
-# This is a standalone resolved copy of functional_fusion/j0_final.yaml.
-# It intentionally contains no `extends` so users can reproduce the reference
-# configuration from one file. A regression test guarantees exact recipe
-# equivalence with the historical J0 name during the migration.
-#
+# J9b functional-depth model + two residual FFN blocks in the final head.
+# Historical J9b is kept unchanged for checkpoint compatibility.
 model:
   encoder:
     kind: locus_attention
@@ -20,7 +17,7 @@ model:
     dropout: 0.1
   zero_init_residual: true
   variance_normalized_residual: true
-  functional_fusion_variant: mas_concat_v3_purecontext
+  functional_fusion_variant: efficient_single_attn_8ffn_residual_functional8_head2
 loss:
   beta_mse_weight: 1.0
   residual_huber_weight: 0.0
@@ -57,9 +54,9 @@ training:
 schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true
 structured_loss_sources:
-- array
-- epic
-- wgbs
+  - array
+  - epic
+  - wgbs
 locus_cls:
   use_mean_branch: true
   use_fusion_product: false
@@ -71,7 +68,7 @@ locus_cls:
   final_regressor_dropout: 0.15
 batching:
   array:
-    sample_size: 640
+    sample_size: 320
     cpg_size: 640
   epic:
     sample_size: 160
@@ -90,7 +87,9 @@ tracking:
   group: functional_concat_final
   job_type: train
   tags:
-  - functional-only
-  - mas-concat
-  - purecontext
-  - chr1-final
+    - functional-only
+    - efficient-single-attn
+    - retrieval-8ffn
+    - functional-8ffn
+    - head-2ffn
+    - final-architecture

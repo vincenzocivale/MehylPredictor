@@ -107,20 +107,13 @@ def test_main_is_the_only_primary_reference_recipe():
     assert "configs/models/functional_fusion/j0_final.yaml" in compat
 
 
-def test_research_ladder_is_protected_not_paper_facing():
+def test_research_ladder_is_removed_after_architecture_selection():
     manifest = _manifest()
-    protected = {
-        record["path"]
-        for record in manifest["models"]["protected_research"]
-    }
-    paper = {
-        record["path"]
-        for record in manifest["models"]["paper_facing"]
-    }
-
-    assert protected
-    assert protected.isdisjoint(paper)
-    assert all(
-        path.startswith("configs/models/functional_fusion/")
-        for path in protected
-    )
+    assert manifest["architecture_selection"]["status"] == "locked"
+    assert manifest["architecture_selection"]["research_surface_status"] == "removed"
+    assert manifest["models"]["protected_research"] == []
+    assert manifest["experiment_scripts"]["protected_research"] == []
+    removed = manifest["architecture_selection"]["research_surface_removed"]
+    assert removed
+    assert all(record["sha256"] for record in removed)
+    assert all(not (ROOT / record["path"]).exists() for record in removed)

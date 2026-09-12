@@ -160,11 +160,18 @@ class DepthResidualAblationPredictor(nn.Module):
         self.h_c_concat_norm = nn.LayerNorm(self.WIDTH)
         self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
         self.final_regressor_dropout = float(final_regressor_dropout)
+        # Keep historical final_regressor keys unchanged. Head2 reuses the
+        # existing 512->256 stage, inserts residual FFNs at width 256, then
+        # reuses the existing 256->128->1 tail.
         self.final_regressor = nn.Sequential(
             nn.Linear(2 * self.WIDTH, self.WIDTH), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
             nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
             nn.Linear(128, 1),
         )
+        self.head_ffn = nn.ModuleList([
+            FeedForwardResidual(self.WIDTH, self.final_regressor_dropout)
+            for _ in range(self.n_head_ffn_blocks)
+        ])
 
     @property
     def requires_cpg_positions(self) -> bool:
@@ -185,7 +192,18 @@ class DepthResidualAblationPredictor(nn.Module):
         z_pc = torch.cat(
             [h_for_concat[None, :, :].expand(batch, -1, -1), r_for_concat], dim=-1,
         )
-        return self.final_regressor(z_pc).squeeze(-1)
+        if self.n_head_ffn_blocks == 0:
+            return self.final_regressor(z_pc).squeeze(-1)
+
+        head = self.final_regressor[0](z_pc)
+        head = self.final_regressor[1](head)
+        head = self.final_regressor[2](head)
+        for ffn in self.head_ffn:
+            head = ffn(head)
+        head = self.final_regressor[3](head)
+        head = self.final_regressor[4](head)
+        head = self.final_regressor[5](head)
+        return self.final_regressor[6](head).squeeze(-1)
 
     def forward(
         self,
@@ -279,6 +297,7 @@ class EfficientSingleAttentionPredictor(nn.Module):
         n_ffn_blocks: int = 4,
         n_functional_ffn_blocks: int = 0,
         deep_query: bool = False,
+        n_head_ffn_blocks: int = 0,
         final_regressor_dropout: float = 0.15,
         use_mean_proxy: bool = True,
     ):
@@ -289,9 +308,12 @@ class EfficientSingleAttentionPredictor(nn.Module):
             raise ValueError("n_functional_ffn_blocks must be >= 0")
         if deep_query and n_functional_ffn_blocks < 1:
             raise ValueError("deep_query requires n_functional_ffn_blocks >= 1")
+        if n_head_ffn_blocks < 0:
+            raise ValueError("n_head_ffn_blocks must be >= 0")
         self.n_ffn_blocks = int(n_ffn_blocks)
         self.n_functional_ffn_blocks = int(n_functional_ffn_blocks)
         self.deep_query = bool(deep_query)
+        self.n_head_ffn_blocks = int(n_head_ffn_blocks)
         enc = config.encoder
         if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
             raise ValueError(

@@ -69,3 +69,11 @@ remain protected until architecture selection is locked, and historical
 artifacts cannot become deletion candidates until fresh standardized paper
 runs have also been verified.
 
+## Phase 6c architecture-search cleanup
+
+Architecture selection is complete. The J-series recipes and launchers were
+removed after their exact SHA-256 hashes were recorded in
+`configs/experiment_surface.yaml`. `configs/models/main.yaml` is now the only
+canonical final architecture recipe. Predictor/factory/config compatibility
+cleanup is intentionally deferred to Phase 6d.
+
