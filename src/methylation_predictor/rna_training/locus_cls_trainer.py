@@ -283,15 +283,14 @@ class LocusCLSJointTrainer:
             # recover most of depth8's gain without paying for 8x
             # cross-attention. See modeling/ablation.py's module docstring.
             "efficient_single_attn_8ffn_residual": {"n_ffn_blocks": 8},
-            # J8 (2026-09-12): pushes the same efficient-depth question
-            # further -- does the FFN-depth benefit continue past 8, or
-            # plateau/reverse? A FULL 16-block (attn+ffn each) variant like
-            # ablation_depth8_residual's family would need ~72GB alone
-            # (measured VRAM-vs-n_blocks scaling in modeling/ablation.py's
-            # module docstring), impractical on a single consumer/prosumer
-            # GPU -- 1x attention + 16 cheap FFN blocks is the only
-            # feasible way to test this depth at all here.
-            "efficient_single_attn_16ffn_residual": {"n_ffn_blocks": 16},
+            # J8 (retrieval-only 16-FFN) was implemented and queued
+            # 2026-09-12 but never launched, then dropped: J7 (8 FFN) beat
+            # J4 (4 FFN) by only ~0.0005 MAS-PCC on the headline view --
+            # noise-level -- so pushing retrieval-only FFN depth further
+            # wasn't worth the GPU time. See git history before this
+            # removal if the retrieval-only axis needs revisiting. J9b's
+            # early training-loss signal (functional-branch depth) looked
+            # more promising at the time of this call.
             # J9b (2026-09-12): J7/J8 added FFN depth to the RNA-conditioned
             # retrieval branch; this asks the same question about the OTHER
             # branch -- does FFN depth on the functional-annotation branch
