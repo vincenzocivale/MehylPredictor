@@ -53,10 +53,9 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         raw = _deep_merge(parent_raw, raw)
     model_raw = dict(raw.get("model", {}))
     interaction_raw = dict(model_raw.get("interaction", {}))
-    # The architecture-novelty blocks (trunk/axial/beta_likelihood_head) are
-    # parsed here too -- LocusCLSJointTrainer dispatches on them
-    # (is_architecture_variant) to select FeatureFusionArchitectureVariantModel
-    # over the reference FeatureFusionLocusCLSModel, see models.py.
+    # Historical architecture fields are still parsed during the
+    # compatibility window so existing recipes/resolved configs remain readable.
+    # Live model selection is centralized in modeling.factory.
     model = ModelConfig(
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
         interaction=InteractionConfig(**interaction_raw),

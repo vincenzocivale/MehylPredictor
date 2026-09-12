@@ -10,7 +10,9 @@ import h5py
 import numpy as np
 import pytest
 
-from methylation_predictor.rna_training.locus_cls_trainer import ordered_bounded_prefetch
+from methylation_predictor.rna_training.rna_methylation_trainer import (
+    ordered_bounded_prefetch,
+)
 from methylation_predictor.rna_training.matched_chr1_data import load_compact_scope_sources
 
 

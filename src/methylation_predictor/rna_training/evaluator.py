@@ -1,8 +1,6 @@
-"""Evaluate the zero-parameter CpG Prior baseline on chr1, chr123 or genome-wide
-Array views. (The RNA-methylation checkpoint evaluator lives in
-``rna_training.locus_cls_trainer.evaluate_official_split`` -- the earlier
-scope-general two-stage evaluator that used to live here, ``ScopedRNAEvaluator``,
-has been retired alongside the rest of that architecture generation.)
+"""Zero-parameter CpG-prior baseline evaluator.
+
+RNA checkpoint evaluation lives in `rna_training.rna_methylation_trainer.evaluate_rna_checkpoint`.
 """
 from __future__ import annotations
 

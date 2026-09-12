@@ -1,146 +1,63 @@
-# Refactored workflows
+# Workflows
 
-The repository has two trainable model families and one genomic-scope axis.
-Experiment history is not an API.
+The repository exposes two trainable model families:
 
-## Models
+- `rna_methylation`: patient-specific CpG methylation prediction from bulk RNA
+  plus a frozen reference functional representation of each CpG;
+- `cpg_statistics`: auxiliary/static CpG-statistics workflow.
 
-### `cpg_statistics`
+Experiment history is not part of the public API.
 
-Predicts static locus statistics from frozen NTv3 embeddings:
+## RNA methylation
 
-- `mu`: beta-space locus mean;
-- `sigma`: logit-space inter-sample scale used by the RNA residual model.
+The paper-facing model is described in [`MODEL.md`](MODEL.md):
 
-Targets can use Array, EPIC and WGBS simultaneously.  The target builder records
-per-technology counts and requires an explicit aggregation policy:
-`sample_weighted` or `technology_balanced`.  Official Array validation patients
-are excluded from target construction by default; auxiliary-only patients remain
-available as training evidence.
-
-### `rna_methylation`
-
-The reference architecture is the single-stage shared-backbone model
-(`FeatureFusionArchitectureVariantModel` with `encoder.kind=locus_attention`, see
-[`RNA_METHYLATION.md`](RNA_METHYLATION.md)):
-
-```
-CpG reference context -> frozen NTv3 1536-D embedding -> CpGTrunk -> h_mean
-patient RNA -> locus-conditioned RNA-attention encoder -> h_raw (RNA x CpG)
-[h_mean, h_raw] -> fusion -> beta_hat
+```text
+functional CpG atlas + static annotations -> locus representation h_c
+patient RNA -> program tokens
+h_c queries program tokens -> patient/locus RNA context
+[h_c ; RNA context] -> beta prediction
 ```
 
-Trained by `LocusCLSJointTrainer`, always via `scripts/train.py`'s shared-backbone
-engines (`matched_chr1_shared_backbone` for chr1, `shared_backbone` otherwise). The
-earlier two-stage frozen-prior + residual architecture (`RNA2DNAmModel`/
-`VarianceNormalizedResidualModel`/`RNAMethylationPredictor`) has been retired -- see
-`RNA_METHYLATION.md`'s "Retired architecture" section.
-
-## Genomic scopes
-
-- `chr1`
-- `chr123` = chr1 union chr2 union chr3
-- `genomewide`
-
-The scope filters the frozen official CpG split; it never changes architecture.
-`chr1` is the (verified) MethylProphet-matched benchmark scope; genome-wide is
-the primary general benchmark. `chr123` is a usable general scope but not
-currently a verified MethylProphet comparison -- see
-[`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md).
+The runtime is `RNAMethylationTrainer`. There is no selectable engine and no
+`functional_only` switch. Functional atlas and annotation caches are mandatory.
+The genomic/FM feature cache is not a model input.
 
 ## Training
 
-Use one entrypoint:
-
 ```bash
-python scripts/train.py --model rna_methylation --scope chr123 --engine shared_backbone \
-  --cpg-targets-dir /path/to/derived/cpg_statistics/chr123 ...
-python scripts/train.py --model cpg_statistics --scope genomewide ...
+python scripts/train.py   --model rna_methylation   --scope chr1   --recipe configs/models/main.yaml   --mode final   --canonical-root "$TCGA_CANONICAL_ROOT"   --prepared-root "$MATCHED_CHR1_ROOT"   --registry "$REGISTRY"   --rna-cache "$RNA_CACHE"   --prior-cache "$PRIOR_CACHE"   --cpg-targets-dir "$CPG_TARGETS"   --functional-atlas "$FUNCTIONAL_ATLAS"   --annotation-cache "$ANNOTATION_CACHE"   --output-root "$RUN_ROOT"   --run-id reference-seed17
 ```
 
-Learning rate, epoch budget, scheduler and seed can be overridden from the CLI.
-The reference RNA recipe is `configs/models/rna_methylation_locus_attention.yaml`: LR
-5e-5, constant scheduler, 80 epochs, seed 17, Array layout 512 x 512.
-
-For the exact MethylProphet-matched chr1 preparation, use:
-
-```bash
-python scripts/train.py \
-  --model rna_methylation --scope chr1 --engine matched_chr1_shared_backbone \
-  --prepared-root /path/to/prepared/benchmark_methylprophet \
-  --canonical-root /path/to/canonical \
-  --feature-cache /path/to/features \
-  --rna-cache /path/to/rna \
-  --registry /path/to/array_cpg_map.parquet \
-  --cpg-targets-dir /path/to/derived/cpg_statistics/chr1 \
-  --recipe configs/models/rna_methylation_locus_attention.yaml \
-  --output-root /path/to/repository/results/experiments
-```
-
-For genome-wide training the scalable default is `axis_full_coverage`: every
-sample and every CpG is touched in each epoch, but the complete Cartesian matrix
-is not enumerated.  Pair-complete training remains explicit for matched smaller
-benchmarks; the schedule policy is always recorded in run metadata.
-
-For pair-complete chr123 shared-backbone runs, prepare and use the compact target
-cache described in
-[`CHR123_TRAINING_OPTIMIZATIONS.md`](CHR123_TRAINING_OPTIMIZATIONS.md). It preserves
-the protocol while avoiding sparse HDF5 selections; on the reference server it reduced
-epoch time from about 18 minutes to 2.4 minutes.
-
-## Hyperparameter search
-
-`python scripts/tune.py` creates an inner-development split wholly inside the
-official training universe. RNA selection uses inner double-OOD MAS-PCC. The
-official MethylProphet-matched validation cells are not used for model selection.
-
-Search output:
-
-```
-results/experiments/searches/<model>/<scope>/<search-id>/
-  search_config.yaml
-  candidates.csv
-  selected.json
-  runs/
-```
+`--prior-cache` is metric-only. `--cpg-targets-dir` supplies `target_mu.npy`
+for the training-only mean-proxy objective.
 
 ## Evaluation
 
-Any RNA checkpoint can be evaluated on any scope:
-
-| train scope | chr1 | chr123 | genomewide |
-|---|---:|---:|---:|
-| chr1 | yes | yes | yes |
-| chr123 | yes | yes | yes |
-| genomewide | yes | yes | yes |
-
-The chr1/chr1 cell is the verified MethylProphet-matched comparison; chr123/chr123
-is a same-scope cell but not currently a verified MethylProphet comparison
-(see [`BENCHMARK_METHYLPROPHET.md`](BENCHMARK_METHYLPROPHET.md)); other
-cross-scope cells are generalization analyses.
-
+```bash
+python scripts/evaluate.py   --model rna_methylation   --checkpoint "$CHECKPOINT"   --recipe configs/models/main.yaml   --eval-scope chr1   --canonical-root "$TCGA_CANONICAL_ROOT"   --prepared-root "$MATCHED_CHR1_ROOT"   --registry "$REGISTRY"   --rna-cache "$RNA_CACHE"   --prior-cache "$PRIOR_CACHE"   --cpg-targets-dir "$CPG_TARGETS"   --functional-atlas "$FUNCTIONAL_ATLAS"   --annotation-cache "$ANNOTATION_CACHE"   --output "$OUTPUT_JSON"
 ```
-python scripts/evaluate.py --model rna_methylation \
-  --checkpoint ... --eval-scope genomewide ...
-```
+
+The three official views are train-CpG x validation-sample,
+validation-CpG x train-sample, and double-OOD validation-CpG x
+validation-sample.
 
 ## Run storage
 
-Training output is never mixed with search output:
+Existing runs remain under the historical compatibility key:
 
-```
-results/experiments/runs/<model>/<train-scope>/<run-id>/
-  config.resolved.yaml
-  metadata.json
-  checkpoints/{best.pt,last.pt}
-  training/{history.*,summary.json}
-  evaluation/<eval-scope>/{metrics.json,per_chromosome.csv,manifest.json}
-  logs/
+```text
+<output-root>/runs/locus_cls_joint/<scope>/<run-id>/
 ```
 
-`metadata.json` records model, training scope, data contract, hyperparameters,
-Git commit and the feature/RNA cache provenance available at launch. Evaluation
-manifests additionally record checkpoint SHA256 and evaluation scope.
+This string is retained for resume/evaluation compatibility; it is not the
+public trainer name.
 
-The raw `runs/` and `searches/` contents are gitignored. Small frozen reference
-numbers live in `results/reference/` and are version controlled.
+New code should import:
+
+```python
+from methylation_predictor.rna_training import (
+    RNAMethylationTrainer,
+    evaluate_rna_checkpoint,
+)
+```

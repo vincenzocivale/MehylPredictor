@@ -18,7 +18,7 @@
 # Run order (user-requested, 2026-09-12): two_stream_residual, then film,
 # then concat. Each cell: 1-epoch mode=final smoke test (must pass before
 # the full run starts), then the full 80-epoch run, then
-# evaluate_official_split on all three TRUE chr1 official views. A cell's
+# evaluate_rna_checkpoint on all three TRUE chr1 official views. A cell's
 # failure stops the ladder (does not attempt the next cell).
 #
 # Same cost class as J4 (1x cross-attention + 4 total FFN-residual blocks,

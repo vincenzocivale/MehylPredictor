@@ -1,13 +1,6 @@
-"""Shared helper for reading the official MethylProphet-matched chr1 split/data
-(``derived/methylprophet_table5_tcga_chr1``) directly, bypassing scope_protocol()'s
-own ``tcga_mix_chr1`` reconstruction and the full genome-wide canonical bundle.
+"""Readers for the exact MethylProphet-matched chr1 preparation.
 
-Used by more than one ablation-only trainer (``joint_trainer.py``,
-``locus_cls_trainer.py``) -- factored out here to avoid duplicating it. Still
-part of the same "ablation-only, isolated" family as those trainers (see
-CLAUDE.md's note on not routing generic-pipeline changes through the frozen
-MethylProphet benchmark trainer) -- this reads matched_chr1's *data*, it does
-not touch ``MethylProphetTrainer`` itself.
+These are data/protocol utilities used by `RNAMethylationTrainer`, not a separate training engine.
 """
 from __future__ import annotations
 

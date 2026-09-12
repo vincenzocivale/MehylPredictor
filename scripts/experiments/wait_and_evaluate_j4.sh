@@ -2,7 +2,7 @@
 # Waits for run_efficient_single_attn_ablation.sh's full 80-epoch run to
 # finish, then evaluates the resulting checkpoint on all three TRUE
 # official MethylProphet chr1 views in one call
-# (evaluate_official_split: train_cpg_x_val_sample, val_cpg_x_train_sample,
+# (evaluate_rna_checkpoint: train_cpg_x_val_sample, val_cpg_x_train_sample,
 # val_cpg_x_val_sample -- see rna_training/locus_cls_trainer.py).
 # Meant to be started via nohup, independent of the training orchestrator
 # process, so it runs even if the interactive session that launched

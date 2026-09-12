@@ -60,7 +60,7 @@ it is never gradient-checkpointed, unlike epic/wgbs whose cpg_size exceeds
 when an unrelated ~17GB was already in use by another process on the same
 GPU). Re-verify empirically before trusting this extrapolated past
 n_blocks=6 -- see ``ablation_depth8_residual``/``_depth10_residual``/
-``_depth12_residual`` in ``LocusCLSJointTrainer.ablation_variants``, meant
+the registered depth-residual variants in ``modeling.factory``, meant
 to be smoke-tested in increasing order once the GPU is free.
 
 ``GatedResidualPredictor`` (2026-09-11, J6) replaces J1's unconditional
@@ -620,7 +620,7 @@ class FunctionalGeneFFNFusionPredictor(nn.Module):
     ``gene_to_functional``+``functional_to_gene``), which unlike the branch
     FFN blocks have no dropout of their own. Meant for deeper branch-depth
     follow-ups (see ``ffn_fusion_two_stream_residual_8_8``/``_4_4`` in
-    ``LocusCLSJointTrainer.ffn_fusion_variants``) where the extra branch
+    the FFN-fusion variants registered in ``modeling.factory``) where the extra branch
     capacity makes overfitting at the fusion point more of a risk.
     """
 

@@ -5,9 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from methylation_predictor.rna_training.locus_cls_trainer import (
-    _retired_locus_compat,
-)
+from methylation_predictor.rna_training.rna_methylation_trainer import _retired_locus_compat
 
 
 ROOT = Path(__file__).resolve().parents[1]

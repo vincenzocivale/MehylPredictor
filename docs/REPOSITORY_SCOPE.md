@@ -242,3 +242,11 @@ All active J-series shell launchers, the mean-proxy harness, and the RNA-encoder
 The live trainer is now `RNAMethylationTrainer`. The historical `LocusCLSJointTrainer` symbol remains only as a temporary direct-import compatibility alias and is no longer part of the package public API.
 
 RNA training and evaluation no longer expose `--engine` or `--functional-only`. Functional locus inputs are mandatory and there is only one paper-facing runtime. Existing run directories and checkpoint metadata intentionally keep the historical `locus_cls_joint` identifier so in-flight runs remain resumable and existing evaluation paths do not move.
+
+## Phase 4d2: trainer module cutover
+
+The live RNA implementation now resides in `rna_training/rna_methylation_trainer.py`. The old `rna_training/locus_cls_trainer.py` file is a small compatibility shim only.
+
+The public evaluator name is `evaluate_rna_checkpoint`; the historical `evaluate_official_split` name remains available only through compatibility imports.
+
+Operational docs and agent guidance now describe the functional-locus runtime that actually exists. The historical `locus_cls_joint` run/checkpoint identifier remains unchanged for resume/evaluation compatibility.

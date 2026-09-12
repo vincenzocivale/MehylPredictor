@@ -2,7 +2,7 @@
 
 ``masked_mean``, ``masked_locus_pearson``/``locus_correlation_loss`` (the
 MAS-PCC term, opt-in via ``locus_pearson_weight``), and ``beta_nll_term`` are
-reused by ``rna_training.locus_cls_trainer._direct_beta_loss``, the sole
+reused by ``rna_training.rna_methylation_trainer._direct_beta_loss``, the sole
 RNA-methylation loss function. The earlier prior-anchored two-stage loss
 (``residual_loss``) that used to live here has been retired alongside that
 architecture generation.

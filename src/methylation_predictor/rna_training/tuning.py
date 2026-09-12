@@ -9,7 +9,7 @@ import time
 import yaml
 
 from ..run_store import SearchStore, write_json, write_yaml
-from .locus_cls_trainer import RNAMethylationTrainer
+from .rna_methylation_trainer import RNAMethylationTrainer
 
 
 def run_search(

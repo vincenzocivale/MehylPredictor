@@ -1,7 +1,7 @@
 #!/bin/bash
 # Waits for run_efficient_8ffn_ablation.sh's full 80-epoch run to finish,
 # then evaluates the resulting checkpoint on all three TRUE official
-# MethylProphet chr1 views in one call (evaluate_official_split).
+# MethylProphet chr1 views in one call (evaluate_rna_checkpoint).
 set -euo pipefail
 source /home/vcivale/miniconda3/etc/profile.d/conda.sh
 conda activate methyl-predictor

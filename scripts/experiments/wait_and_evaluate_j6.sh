@@ -1,7 +1,7 @@
 #!/bin/bash
 # Waits for run_gated_residual_ablation.sh's full 80-epoch run to finish,
 # then evaluates the resulting checkpoint on all three TRUE official
-# MethylProphet chr1 views in one call (evaluate_official_split).
+# MethylProphet chr1 views in one call (evaluate_rna_checkpoint).
 # Self-activates conda (see run_gated_residual_ablation.sh's comment on
 # why -- a previous companion script forgot this and silently failed with
 # "python: command not found" right after training completed).
