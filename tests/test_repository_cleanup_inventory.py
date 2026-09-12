@@ -69,15 +69,19 @@ def test_removed_doc_names_are_not_linked_from_current_docs():
     assert offenders == []
 
 
-def test_cleanup_inventory_protects_j_series_until_selection():
+def test_cleanup_inventory_j_series_protection_is_now_a_closed_historical_record():
+    # Architecture selection is locked (configs/experiment_surface.yaml) and
+    # J-series recipes/launchers/source were already removed in Phases 6c/6d1.
+    # This section must stay empty -- do not repopulate it with J-series paths.
     payload = yaml.safe_load(INVENTORY.read_text())
     protected = payload["protect_until_architecture_selection"]
 
-    assert protected["recipes"]
-    assert protected["launchers"]
+    assert protected["source"] == []
+    assert protected["recipes"] == []
+    assert protected["launchers"] == []
 
-    for relative in protected["recipes"] + protected["launchers"]:
-        assert (ROOT / relative).is_file(), relative
+    surface = yaml.safe_load((ROOT / "configs" / "experiment_surface.yaml").read_text())
+    assert surface["architecture_selection"]["status"] == "locked"
 
 
 def test_final_results_are_explicitly_deferred_not_deleted_now():

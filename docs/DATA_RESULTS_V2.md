@@ -73,6 +73,27 @@ inventory proves that no frozen paper input or retained run record needs them.
 Historical run directories are handled separately: metadata is slim-archived
 before heavy artifacts are deleted.
 
+## Job matrix and multi-machine execution
+
+`configs/paper_studies.yaml` is the single source of truth for the
+study/arm/seed/recipe job matrix. `scripts/run_paper_jobs.py` expands it into
+a deterministically ordered, shardable job list:
+
+```bash
+python scripts/run_paper_jobs.py --shard 0/3 --gpu 0
+python scripts/run_paper_jobs.py --shard 1/3 --gpu 0
+python scripts/run_paper_jobs.py --shard 2/3 --gpu 0
+```
+
+It validates each job's data dependencies before launch, reports `BLOCKED`
+for arms that require the still-missing BulkRNABert cache, skips jobs whose
+`paper/record.json` already exists, and supports `--list`/`--dry-run`.
+
+`src/methylation_predictor/artifact_uri.py` implements the `methyl-data://`
+resolver (`to_uri`/`from_uri`) used by `scripts/paper_experiment.py` and
+`scripts/collect_paper_runs.py` to keep curated `results/paper/**` records
+free of machine-specific absolute paths.
+
 ## Multi-machine use
 
 Each machine sets:

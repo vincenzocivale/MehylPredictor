@@ -1,0 +1,199 @@
+schema_version: 1
+name: paper_dependencies_v2
+contract: configs/data/storage_v2.yaml
+scope: chr1
+status: frozen
+
+external_inputs:
+  canonical_root:
+    path: datasets/methylprophet_repro_v1
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation]
+  prepared_root:
+    path: derived/methylprophet_table5_tcga_chr1
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation]
+    atomic_for_cleanup: true
+  registry:
+    path: datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
+    retention: runtime
+    kind: file
+    roles: [training, evaluation]
+  canonical_rna:
+    path: derived/methylprophet_table5_tcga_chr1/rna
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation]
+    required_files:
+      - rna_zscore.f16.npy
+      - rna_sample_idx.npy
+  prior_cache:
+    path: derived/methylprophet_table5_tcga_chr1/features
+    retention: runtime
+    kind: directory
+    roles: [evaluation]
+    required_files:
+      - cpg_idx.npy
+      - prior.npy
+    consumer_extra_files:
+      cpg_prior:
+        reason: current CpGPriorEvaluator still uses LocusFeatureCache
+        files:
+          - embeddings.f16.npy
+          - sigma.npy
+  cpg_targets:
+    path: derived/cpg_statistics/chr1
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation]
+    required_files:
+      - cpg_idx.npy
+      - target_mu.npy
+  functional_atlas:
+    path: derived/ntv3_functional_peak_atlas_chr1_all_sources
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation]
+    required_files:
+      - cpg_idx.npy
+      - breadth_features.f32.npy
+      - all_primary_overlap_csr/indices.npy
+      - all_primary_overlap_csr/indptr.npy
+      - all_primary_overlap_csr/shape.json
+  annotation_cache:
+    path: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation]
+    required_files:
+      - cpg_idx.npy
+      - annotation_core.f32.npy
+  bulkformer_rna:
+    path: derived/bulkformer_embeddings/tcga_147m
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation, comparator]
+    required_files:
+      - rna_zscore.f16.npy
+      - rna_sample_idx.npy
+  bulkrnabert_rna:
+    path: derived/bulkrnabert_embeddings/tcga
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation, comparator]
+    required_files:
+      - rna_zscore.f16.npy
+      - rna_sample_idx.npy
+  hg38_reference:
+    path: reference/hg38
+    retention: reproducibility
+    kind: directory
+    roles: [reproducibility]
+
+repo_inputs:
+  gene_pathway_membership:
+    path: resources/pathways/survpath_combine_tcga.npz
+    kind: file
+    roles: [training, comparator]
+
+dependency_sets:
+  rna_common:
+    - canonical_root
+    - prepared_root
+    - registry
+    - prior_cache
+    - cpg_targets
+    - functional_atlas
+    - annotation_cache
+  cpg_prior:
+    - canonical_root
+    - registry
+    - prior_cache
+
+studies:
+  main:
+    arms:
+      main:
+        recipe: configs/models/main.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+
+  functional_baselines:
+    arms:
+      global_rna_shift:
+        recipe: configs/models/baselines/functional_global_rna_shift.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+      mlp_rna_cpg:
+        recipe: configs/models/baselines/functional_mlp_rna_cpg.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+      bilinear_rna_cpg:
+        recipe: configs/models/baselines/functional_bilinear_rna_cpg.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+
+  mean_proxy:
+    arms:
+      full:
+        recipe: configs/models/main.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+      no_supervision:
+        recipe: configs/models/mean_contribution/no_mean_supervision.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+      no_branch:
+        recipe: configs/models/mean_contribution/no_mean_branch.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+
+  rna_encoder:
+    arms:
+      ours_program_tokens:
+        recipe: configs/models/rna_encoder_comparison/functional_ours_program_tokens.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+      bottleneck_mlp:
+        recipe: configs/models/rna_encoder_comparison/functional_bottleneck_mlp.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+      gene_pathway:
+        recipe: configs/models/rna_encoder_comparison/functional_gene_pathway.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [canonical_rna]
+        repo_inputs: [gene_pathway_membership]
+      bulkformer_147m:
+        recipe: configs/models/rna_encoder_comparison/functional_bulkformer_147m.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [bulkformer_rna]
+      bulkrnabert:
+        recipe: configs/models/rna_encoder_comparison/functional_bulkrnabert.yaml
+        seeds: [17, 29, 43]
+        dependency_sets: [rna_common]
+        external_inputs: [bulkrnabert_rna]
+
+  cpg_prior:
+    arms:
+      cpg_prior:
+        recipe: configs/models/baselines/baseline_cpg_prior.yaml
+        seeds: []
+        dependency_sets: [cpg_prior]
+        external_inputs: []
+        consumer_contract: cpg_prior
+
+reproducibility_inputs:
+  - hg38_reference

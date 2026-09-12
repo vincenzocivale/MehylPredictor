@@ -12,7 +12,7 @@ import pandas as pd
 
 from ..run_store import write_json
 from ..scopes import chromosome_lookup, evaluation_protocol
-from ..storage import LocusFeatureCache
+from ..storage import LocusPriorCache
 from ..tcga_canonical import TCGACanonicalBundle
 from .metrics import ArrayMomentMetrics
 
@@ -28,7 +28,7 @@ class CpGPriorEvaluator:
 
     def __init__(self,*,canonical_root,feature_cache,registry,eval_scope,output,sample_chunk=128,cpg_chunk=2048):
         self.root=Path(canonical_root); self.eval_scope=eval_scope; self.output=Path(output); self.output.mkdir(parents=True,exist_ok=True); self.sample_chunk=sample_chunk; self.cpg_chunk=cpg_chunk
-        self.bundle=TCGACanonicalBundle.from_root(self.root); self.protocol=evaluation_protocol(eval_scope,self.bundle,canonical_root=self.root); self.features=LocusFeatureCache(feature_cache); self.registry=Path(registry)
+        self.bundle=TCGACanonicalBundle.from_root(self.root); self.protocol=evaluation_protocol(eval_scope,self.bundle,canonical_root=self.root); self.features=LocusPriorCache(feature_cache); self.registry=Path(registry)
         self.train_scope="cpg_prior"
 
     def close(self): self.bundle.close()
@@ -48,7 +48,7 @@ class CpGPriorEvaluator:
         for s0 in range(0,len(sample_ids),self.sample_chunk):
             s1=min(s0+self.sample_chunk,len(sample_ids))
             for c0 in range(0,len(cpg_ids),self.cpg_chunk):
-                c1=min(c0+self.cpg_chunk,len(cpg_ids)); ids=cpg_ids[c0:c1]; _emb_np,prior_np,_sigma_np=self.features.get(ids)
+                c1=min(c0+self.cpg_chunk,len(cpg_ids)); ids=cpg_ids[c0:c1]; prior_np=self.features.get(ids)
                 target=source.block(rows[s0:s1],ids); pred_np=np.broadcast_to(prior_np[None,:],target.shape)
                 global_m.add(s0,c0,target,pred_np,prior_np)
                 local_chrom=chrom[c0:c1]

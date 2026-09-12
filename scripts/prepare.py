@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Data-preparation entrypoint for CpGStatisticsPredictor and the reference
-RNA-methylation model (FeatureFusionLocusCLSModel/FeatureFusionArchitectureVariantModel).
+"""Data-preparation entrypoint for CpGStatisticsPredictor and the CpG-prior
+zero-parameter baseline (EfficientSingleAttentionPredictor is the current RNA
+model; it does not consume this cache).
 
 --model cpg_statistics: build multi-technology CpG mean/sigma labels for
 chr1, chr123 or genome-wide (former scripts/prepare_statistics.py).
 
 --model rna_methylation: export a trained CpG-statistics checkpoint's
-predicted mu/sigma + NTv3 embeddings into the cache the RNA model consumes
-(former scripts/export_statistics_cache.py) - i.e. the second-stage step that
-must run after a cpg_statistics prepare+train cycle.
+predicted mu/sigma (plus legacy NTv3 embeddings, retained only for the
+CpG-prior baseline's historical feature-cache directory layout) into the
+locus-prior cache the CpG-prior baseline evaluator consumes (former
+scripts/export_statistics_cache.py) - i.e. the second-stage step that must
+run after a cpg_statistics prepare+train cycle.
 """
 from __future__ import annotations
 import argparse, json

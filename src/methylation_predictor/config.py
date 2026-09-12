@@ -9,9 +9,9 @@ class EncoderConfig:
     # only kind the frozen canonical model classes accept. "mlp"/"program_bottleneck"/
     # "locus_attention"/"bottleneck_mlp"/"frozen_embedding" are architecture-novelty
     # ablations (an ongoing RNA-encoder-comparison harness, not a closed one-off study)
-    # reachable only through ``models.FeatureFusionArchitectureVariantModel`` -- see
-    # docs/RNA_METHYLATION.md's "Forward direction" section and
-    # results/reference/ablations/architecture_novelty_2026_09/README.md.
+    # reachable only through the retained RNA-encoder-comparison recipes/comparators
+    # in ``modeling.rna_comparators`` -- see docs/RNA_METHYLATION.md's "Forward
+    # direction" section and results/reference/ablations/architecture_novelty_2026_09/README.md.
     kind: str = "linear"
     # Canonical width of the RNA latent (LinearRNAEncoder output / ProductInteraction
     # rna_dim). A wider value is an architecture-scaling ablation only -- see

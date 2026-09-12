@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 
 from methylation_predictor.config import EncoderConfig, ModelConfig
-from methylation_predictor.modeling import SingleRetrievalPredictor
+from methylation_predictor.modeling import EfficientSingleAttentionPredictor
 from methylation_predictor.rna_training.config import load_rna_recipe
 
 
@@ -29,7 +29,7 @@ def test_mean_contribution_recipes_isolate_only_intended_factors():
     )
 
     assert full["model"]["functional_fusion_variant"] == (
-        "mas_concat_v3_purecontext"
+        "efficient_single_attn_8ffn_residual_functional8_head2"
     )
     assert full["locus_cls"]["use_mean_branch"] is True
     assert full["locus_cls"]["aux_weight"] == 0.15
@@ -59,7 +59,7 @@ def _config() -> ModelConfig:
 
 def test_no_mean_branch_preserves_every_shared_initial_parameter():
     torch.manual_seed(17)
-    full = SingleRetrievalPredictor(
+    full = EfficientSingleAttentionPredictor(
         48,
         _config(),
         final_regressor_dropout=0.15,
@@ -67,7 +67,7 @@ def test_no_mean_branch_preserves_every_shared_initial_parameter():
     )
 
     torch.manual_seed(17)
-    no_branch = SingleRetrievalPredictor(
+    no_branch = EfficientSingleAttentionPredictor(
         48,
         _config(),
         final_regressor_dropout=0.15,
@@ -95,9 +95,9 @@ def test_no_mean_branch_preserves_every_shared_initial_parameter():
 
 def test_no_mean_supervision_keeps_exact_full_model_capacity():
     torch.manual_seed(17)
-    full = SingleRetrievalPredictor(48, _config())
+    full = EfficientSingleAttentionPredictor(48, _config())
     torch.manual_seed(17)
-    no_supervision = SingleRetrievalPredictor(48, _config())
+    no_supervision = EfficientSingleAttentionPredictor(48, _config())
 
     assert sum(p.numel() for p in full.parameters()) == sum(
         p.numel() for p in no_supervision.parameters()

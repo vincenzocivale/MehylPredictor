@@ -1,63 +1,61 @@
 schema_version: 1
-
 policy:
   destructive_actions_allowed: false
   require_architecture_selected_for_run_cleanup: true
   require_fresh_paper_runs_verified_for_run_cleanup: true
   final_keep_source: standardized paper/record.json files
   default_unmatched_classification: REVIEW
-
 always_keep:
-  - path: datasets/methylprophet_repro_v1
-    reason: immutable canonical TCGA bundle and frozen protocol definitions
-  - path: reference/hg38
-    reason: hg38 reference asset required to reproduce benchmark/data preparation
-
+- path: datasets/methylprophet_repro_v1
+  reason: immutable canonical TCGA bundle and frozen protocol definitions
+- path: reference/hg38
+  reason: hg38 reference asset required to reproduce benchmark/data preparation
 paper_runtime_keep:
-  - path: derived/methylprophet_table5_tcga_chr1/rna
-    reason: canonical normalized RNA cache for matched chr1
-  - path: derived/cpg_statistics/chr1
-    reason: split-safe CpG mean targets
-  - path: derived/ntv3_functional_peak_atlas_chr1_all_sources
-    reason: functional regulatory atlas
-  - path: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
-    reason: static and regulatory-breadth annotation cache
-  - path: derived/methylprophet_table5_tcga_chr1/features
-    reason: transitional metric-only prior cache
-  - path: derived/methylprophet_table5_tcga_chr1
-    reason: matched Table-5 protocol preparation
-
+- path: derived/methylprophet_table5_tcga_chr1/rna
+  reason: canonical normalized RNA cache for matched chr1
+- path: derived/cpg_statistics/chr1
+  reason: split-safe CpG mean targets
+- path: derived/ntv3_functional_peak_atlas_chr1_all_sources
+  reason: functional regulatory atlas
+- path: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
+  reason: static and regulatory-breadth annotation cache
+- path: derived/methylprophet_table5_tcga_chr1/features
+  reason: transitional metric-only prior cache
+- path: derived/methylprophet_table5_tcga_chr1
+  reason: matched Table-5 protocol preparation
+- path: derived/bulkformer_embeddings/tcga_147m
+  reason: frozen BulkFormer RNA comparator cache
+- path: derived/bulkrnabert_embeddings/tcga
+  reason: frozen BulkRNABert RNA comparator cache
 candidate_name_patterns:
   scratch:
-    - ".eval_runs"
-    - "smoke"
-    - "scratch"
-    - "tmp"
+  - .eval_runs
+  - smoke
+  - scratch
+  - tmp
   historical_experiment:
-    - "shared-backbone"
-    - "query"
-    - "router"
-    - "program-projection"
-    - "program_projection"
-    - "ntv3-pre"
-    - "ntv3-post"
-    - "pretrain_ablation"
+  - shared-backbone
+  - query
+  - router
+  - program-projection
+  - program_projection
+  - ntv3-pre
+  - ntv3-post
+  - pretrain_ablation
   historical_cache:
-    - "ntv3_pre"
-    - "ntv3_post"
-    - "pretrain_ablation"
-    - "gena_chr1"
-
+  - ntv3_pre
+  - ntv3_post
+  - pretrain_ablation
+  - gena_chr1
 run_policy:
   before_architecture_selection: PROTECT
   after_architecture_selection_before_fresh_paper_verification: PROTECT
   after_fresh_paper_verification:
     referenced_by_paper_record: KEEP
     unreferenced: REVIEW
-
 scan_roots:
-  - derived
-  - experiments/runs
-  - experiments/searches
-  - model_weights_cache
-  - reference
+- derived
+- experiments/runs
+- experiments/searches
+- model_weights_cache
+- reference

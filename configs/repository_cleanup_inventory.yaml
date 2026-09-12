@@ -51,13 +51,15 @@ keep_now:
   tests:
   - tests/
 protect_until_architecture_selection:
-  source:
-  - src/methylation_predictor/modeling/ablation.py
-  - src/methylation_predictor/modeling/factory.py
+  source: []
   recipes: []
   launchers: []
-  rule: architecture selection complete; J-series recipes/launchers removed in Phase
-    6c; source/runtime compatibility deferred to Phase 6d
+  rule: architecture selection complete and locked (see configs/experiment_surface.yaml
+    architecture_selection); J-series recipes/launchers removed in Phase 6c and
+    the retired architecture-search source (modeling/ablation.py) removed in Phase
+    6d1. All live architecture selectors now live in modeling/factory.py. This
+    section is retained only as a historical record and must stay empty -- do not
+    repopulate it with J-series paths.
 remove_after_architecture_selection:
   compatibility_runtime:
   - src/methylation_predictor/rna_training/locus_cls_trainer.py
@@ -188,3 +190,9 @@ data_results_v2:
   documentation: docs/DATA_RESULTS_V2.md
   destructive_changes_in_this_phase: false
   next: inventory exact dependencies for all frozen paper studies
+paper_dependency_inventory:
+  status: installed
+  registry: configs/data/paper_dependencies_v2.yaml
+  scanner: scripts/inventory_paper_dependencies.py
+  destructive_actions_allowed: false
+  next: run dependency inventory against real METHYL_DATA_ROOT

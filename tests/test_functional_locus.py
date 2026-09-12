@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from methylation_predictor.config import EncoderConfig, ModelConfig
-from methylation_predictor.modeling import SingleRetrievalPredictor
+from methylation_predictor.modeling import EfficientSingleAttentionPredictor
 from methylation_predictor.storage import FunctionalLocusCache
 
 
@@ -95,7 +95,7 @@ def test_cache_output_feeds_paper_candidate_without_dense_track_matrix(tmp_path)
             dropout=0.0,
         ),
     )
-    model = SingleRetrievalPredictor(
+    model = EfficientSingleAttentionPredictor(
         48,
         cfg,
         final_regressor_dropout=0.15,

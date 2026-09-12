@@ -24,6 +24,8 @@ from typing import Any
 
 import yaml
 
+from methylation_predictor.artifact_uri import to_uri
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENT_SURFACE = REPO_ROOT / "configs" / "experiment_surface.yaml"
@@ -369,6 +371,13 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _uri_or_none(path: Path, data_root: Path) -> str | None:
+    try:
+        return to_uri(path, data_root=data_root)
+    except ValueError:
+        return None
+
+
 def build_record(
     *,
     profile_path: Path,
@@ -377,6 +386,7 @@ def build_record(
     recipe_relative: str,
     model_kind: str,
     run_id: str,
+    data_root: Path,
     seed: int | None,
     study: str | None,
     arm: str | None,
@@ -461,6 +471,13 @@ def build_record(
             "headline_metrics": headline,
             "views": actual_views,
         },
+        "artifact_uris": {
+            "run": _uri_or_none(run_dir, data_root),
+            "checkpoint": None,
+            "resolved_config": None,
+            "training_summary": None,
+            "evaluation": _uri_or_none(ev_path, data_root),
+        },
     }
 
     if training_summary_path.is_file():
@@ -469,6 +486,9 @@ def build_record(
             "sha256": _sha256(training_summary_path),
             "summary": _read_json(training_summary_path),
         }
+        record["artifact_uris"]["training_summary"] = _uri_or_none(
+            training_summary_path, data_root
+        )
 
     if checkpoint.is_file():
         record["checkpoint"] = {
@@ -476,12 +496,16 @@ def build_record(
             "sha256": _sha256(checkpoint),
             "epoch": evaluation.get("checkpoint_epoch"),
         }
+        record["artifact_uris"]["checkpoint"] = _uri_or_none(checkpoint, data_root)
 
     if resolved_config.is_file():
         record["resolved_config"] = {
             "path": str(resolved_config.resolve()),
             "sha256": _sha256(resolved_config),
         }
+        record["artifact_uris"]["resolved_config"] = _uri_or_none(
+            resolved_config, data_root
+        )
     else:
         record["resolved_config"] = None
 
@@ -624,6 +648,7 @@ def main() -> int:
             arm=args.arm,
             run_dir=run_dir,
             rna_cache_override=rna_override,
+            data_root=data_root,
         )
         target = paper_record_path(run_dir)
         _write_json(target, record)

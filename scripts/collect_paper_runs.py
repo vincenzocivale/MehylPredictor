@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from methylation_predictor.artifact_uri import is_uri
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = REPO_ROOT / "configs" / "data" / "paper_chr1.yaml"
@@ -77,29 +79,86 @@ def validate_record(record: dict[str, Any], path: Path) -> None:
         )
 
 
-def flatten_record(record: dict[str, Any]) -> dict[str, Any]:
-    metrics = (record.get("evaluation") or {}).get("headline_metrics") or {}
+def curate_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Strip machine-specific absolute local paths, keeping only portable
+    ``methyl-data://`` artifact URIs and content hashes.
+
+    This is the schema written into ``results/paper/**`` (Git-curated). The
+    full record (with local absolute paths) stays only under
+    ``METHYL_DATA_ROOT`` as ``paper/record.json``.
+    """
+    uris = record.get("artifact_uris") or {}
+    evaluation = record.get("evaluation") or {}
+    training = record.get("training") or {}
+    checkpoint = record.get("checkpoint") or {}
+    resolved_config = record.get("resolved_config") or {}
     return {
+        "schema_version": record.get("schema_version"),
+        "kind": record.get("kind"),
         "study": record.get("study"),
         "arm": record.get("arm"),
         "model": record.get("model"),
         "scope": record.get("scope"),
         "seed": record.get("seed"),
         "run_id": record.get("run_id"),
-        "git_commit": (record.get("git") or {}).get("commit"),
-        "git_dirty": (record.get("git") or {}).get("dirty"),
-        "recipe": (record.get("recipe") or {}).get("path"),
-        "recipe_sha256": (record.get("recipe") or {}).get("sha256"),
-        "checkpoint_sha256": (
-            (record.get("checkpoint") or {}).get("sha256")
-            if record.get("checkpoint")
-            else None
-        ),
-        "checkpoint_epoch": (
-            (record.get("checkpoint") or {}).get("epoch")
-            if record.get("checkpoint")
-            else None
-        ),
+        "git": record.get("git"),
+        "recipe": record.get("recipe"),
+        "data_profile": {
+            "path": (record.get("data_profile") or {}).get("path"),
+            "sha256": (record.get("data_profile") or {}).get("sha256"),
+        },
+        "best_epoch": checkpoint.get("epoch"),
+        "headline_view": evaluation.get("headline_view"),
+        "headline_metrics": evaluation.get("headline_metrics"),
+        "evaluation_views": evaluation.get("views"),
+        "checkpoint_sha256": checkpoint.get("sha256"),
+        "training_summary_sha256": training.get("sha256"),
+        "resolved_config_sha256": resolved_config.get("sha256"),
+        "artifact_uris": {
+            "run": uris.get("run"),
+            "checkpoint": uris.get("checkpoint"),
+            "resolved_config": uris.get("resolved_config"),
+            "training_summary": uris.get("training_summary"),
+            "evaluation": uris.get("evaluation"),
+        },
+    }
+
+
+def assert_no_forbidden_local_paths(curated: dict[str, Any], path_hint: str) -> None:
+    """Curated repo results must never carry machine-specific absolute
+    filesystem paths (e.g. /dune/..., /data2/..., /raid/...)."""
+
+    def _walk(value: Any, where: str) -> None:
+        if isinstance(value, dict):
+            for k, v in value.items():
+                _walk(v, f"{where}.{k}")
+        elif isinstance(value, list):
+            for i, v in enumerate(value):
+                _walk(v, f"{where}[{i}]")
+        elif isinstance(value, str):
+            if value.startswith("/") and not is_uri(value):
+                raise ValueError(
+                    f"{path_hint}: forbidden absolute local path at {where}: {value!r}"
+                )
+
+    _walk(curated, "record")
+
+
+def flatten_record(curated: dict[str, Any]) -> dict[str, Any]:
+    metrics = curated.get("headline_metrics") or {}
+    return {
+        "study": curated.get("study"),
+        "arm": curated.get("arm"),
+        "model": curated.get("model"),
+        "scope": curated.get("scope"),
+        "seed": curated.get("seed"),
+        "run_id": curated.get("run_id"),
+        "git_commit": (curated.get("git") or {}).get("commit"),
+        "git_dirty": (curated.get("git") or {}).get("dirty"),
+        "recipe": (curated.get("recipe") or {}).get("path"),
+        "recipe_sha256": (curated.get("recipe") or {}).get("sha256"),
+        "checkpoint_sha256": curated.get("checkpoint_sha256"),
+        "checkpoint_epoch": curated.get("best_epoch"),
         "mas_pcc": metrics.get("mas_pcc"),
         "mac_pcc": metrics.get("mac_pcc"),
         "mse": metrics.get("mse"),
@@ -165,7 +224,10 @@ def main() -> int:
             str(r.get("run_id") or ""),
         )
     )
-    rows = [flatten_record(r) for r in records]
+    curated_records = [curate_record(r) for r in records]
+    for curated, source in zip(curated_records, sources):
+        assert_no_forbidden_local_paths(curated, source)
+    rows = [flatten_record(r) for r in curated_records]
 
     output_dir = (REPO_ROOT / args.output_dir).resolve()
     try:
@@ -176,7 +238,7 @@ def main() -> int:
 
     jsonl = output_dir / "runs.jsonl"
     jsonl.write_text(
-        "".join(json.dumps(r, sort_keys=False) + "\n" for r in records)
+        "".join(json.dumps(r, sort_keys=False) + "\n" for r in curated_records)
     )
 
     csv_path = output_dir / "runs.csv"
@@ -185,17 +247,52 @@ def main() -> int:
         writer.writeheader()
         writer.writerows(rows)
 
+    per_run_paths = []
+    for curated in curated_records:
+        study = curated.get("study") or "unknown_study"
+        arm = curated.get("arm") or "unknown_arm"
+        seed = curated.get("seed")
+        seed_name = f"seed{seed}" if seed is not None else "seed_none"
+        per_run_path = output_dir / study / arm / f"{seed_name}.json"
+        per_run_path.parent.mkdir(parents=True, exist_ok=True)
+        per_run_path.write_text(json.dumps(curated, indent=2, sort_keys=False) + "\n")
+        per_run_paths.append(str(per_run_path.relative_to(REPO_ROOT)))
+
+    registry = {
+        "schema_version": 1,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_from_git_commit": _git_head(),
+        "scope": scope,
+        "study_filter": args.study,
+        "n_runs": len(curated_records),
+        "runs": [
+            {
+                "study": c.get("study"),
+                "arm": c.get("arm"),
+                "seed": c.get("seed"),
+                "run_id": c.get("run_id"),
+                "path": p,
+            }
+            for c, p in zip(curated_records, per_run_paths)
+        ],
+    }
+    (output_dir / "registry.json").write_text(
+        json.dumps(registry, indent=2) + "\n"
+    )
+
     manifest = {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "generated_from_git_commit": _git_head(),
         "scope": scope,
         "study_filter": args.study,
-        "n_runs": len(records),
+        "n_runs": len(curated_records),
         "sources": sources,
         "outputs": {
             "jsonl": str(jsonl.relative_to(REPO_ROOT)),
             "csv": str(csv_path.relative_to(REPO_ROOT)),
+            "registry": str((output_dir / "registry.json").relative_to(REPO_ROOT)),
+            "per_run": per_run_paths,
         },
     }
     (output_dir / "manifest.json").write_text(
@@ -203,7 +300,7 @@ def main() -> int:
     )
 
     print(
-        f"[paper-collect] {len(records)} run(s) -> "
+        f"[paper-collect] {len(curated_records)} run(s) -> "
         f"{output_dir.relative_to(REPO_ROOT)}"
     )
     return 0

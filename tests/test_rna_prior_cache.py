@@ -85,6 +85,14 @@ def test_rna_train_cli_no_longer_exposes_feature_cache():
     assert "--prior-cache" in text
 
 
+def test_cpg_prior_evaluator_uses_locus_prior_cache_not_feature_cache():
+    text = (ROOT / "src/methylation_predictor/rna_training/evaluator.py").read_text()
+    assert "LocusFeatureCache" not in text
+    assert "LocusPriorCache" in text
+    assert "embeddings.f16" not in text
+    assert "sigma.npy" not in text
+
+
 def test_active_experiment_scripts_do_not_pass_feature_cache():
     stale = []
     for path in (ROOT / "scripts/experiments").iterdir():
