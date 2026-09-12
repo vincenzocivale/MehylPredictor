@@ -1,0 +1,133 @@
+schema_version: 1
+name: methylpredictor_data_results_v2
+status: frozen
+frozen_on: 2026-09-12
+
+roots:
+  data_env: METHYL_DATA_ROOT
+  optional_work_env: METHYL_WORK_ROOT
+  artifact_uri_scheme: methyl-data
+
+principles:
+  - Git stores code, recipes, compact JSON/JSONL/CSV result ledgers, and manifests.
+  - METHYL_DATA_ROOT stores datasets, derived caches, checkpoints, logs, and heavy artifacts.
+  - Machine-specific absolute paths must not be written into curated repo results.
+  - All durable artifact references use methyl-data:// URIs relative to METHYL_DATA_ROOT.
+  - A run is complete only when paper/record.json exists.
+  - Historical runs are never moved implicitly; cleanup is explicit and separately gated.
+
+paper_inputs:
+  canonical:
+    canonical_root: datasets/methylprophet_repro_v1
+    hg38_reference: reference/hg38
+  chr1_runtime:
+    prepared_root: derived/methylprophet_table5_tcga_chr1
+    registry: datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
+    rna_cache: derived/methylprophet_table5_tcga_chr1/rna
+    prior_cache: derived/methylprophet_table5_tcga_chr1/features
+    cpg_targets_dir: derived/cpg_statistics/chr1
+    functional_atlas: derived/ntv3_functional_peak_atlas_chr1_all_sources
+    annotation_cache: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
+  comparator_inputs:
+    bulkformer_147m: derived/bulkformer_embeddings/tcga_147m
+    bulkrnabert: derived/bulkrnabert_embeddings/tcga
+  repo_inputs:
+    gene_pathway_membership: resources/pathways/survpath_combine_tcga.npz
+
+final_storage:
+  output_root: experiments
+  rna_key: rna_methylation
+  cpg_prior_key: cpg_prior
+  run_layout: experiments/runs/{storage_key}/{scope}/{run_id}
+  analysis_layout: experiments/analysis/{study}
+  record_index_layout: experiments/records/{study}/{arm}/{seed}.json
+  manifests_root: manifests
+  complete_marker: paper/record.json
+
+run_contract:
+  required_files:
+    - metadata.json
+    - config.resolved.yaml
+    - checkpoints/best.pt
+    - training/summary.json
+    - evaluation/{scope}/metrics.json
+    - paper/record.json
+  optional_files:
+    - checkpoints/last.pt
+    - training/history.json
+    - logs
+  official_views:
+    - train_cpg_x_val_sample
+    - val_cpg_x_train_sample
+    - val_cpg_x_val_sample
+  headline_view: val_cpg_x_val_sample
+
+artifact_uri:
+  scheme: methyl-data
+  example_run: methyl-data://experiments/runs/rna_methylation/chr1/main-seed17
+  example_checkpoint: methyl-data://experiments/runs/rna_methylation/chr1/main-seed17/checkpoints/best.pt
+  resolution_rule: strip methyl-data:// and join the remainder to METHYL_DATA_ROOT
+  absolute_paths_in_curated_results: forbidden
+
+repo_results:
+  root: results/paper
+  aggregate_files:
+    - results/paper/registry.json
+    - results/paper/runs.jsonl
+    - results/paper/runs.csv
+  per_run_layout: results/paper/{study}/{arm}/seed{seed}.json
+  heavy_artifacts_in_git: forbidden
+
+paper_studies:
+  main:
+    arms: [main]
+    seeds: [17, 29, 43]
+  functional_baselines:
+    arms: [global_rna_shift, mlp_rna_cpg, bilinear_rna_cpg]
+    seeds: [17, 29, 43]
+  mean_proxy:
+    arms: [full, no_supervision, no_branch]
+    seeds: [17, 29, 43]
+  rna_encoder:
+    arms:
+      - ours_program_tokens
+      - bottleneck_mlp
+      - gene_pathway
+      - bulkformer_147m
+      - bulkrnabert
+    seeds: [17, 29, 43]
+  cpg_prior:
+    arms: [cpg_prior]
+    seeds: []
+
+historical_policy:
+  preserve_metadata_before_deletion: true
+  archive_metadata_root: experiments/archive/historical_run_metadata
+  preserve_selected_architecture_checkpoint: optional
+  move_existing_runs: false
+  destructive_cleanup_requires:
+    - frozen_data_results_v2_contract
+    - dependency_inventory
+    - dry_run_review
+    - input_smoke_test_after_cleanup_plan
+
+cleanup_target:
+  keep_derived_roots:
+    - derived/methylprophet_table5_tcga_chr1
+    - derived/cpg_statistics
+    - derived/ntv3_functional_peak_atlas_chr1_all_sources
+    - derived/ntv3_probe_targets
+    - derived/bulkformer_embeddings
+    - derived/bulkrnabert_embeddings
+  review_then_delete_if_unreferenced:
+    - derived/genomic_prior_v2
+    - derived/hyenadna_expansion
+    - derived/methylprophet_compact_chr123
+    - derived/methylprophet_table5_tcga_chr1_pretrain_ablation
+    - derived/ntv3_expansion
+    - derived/ntv3_functional_peak_atlas_chr1
+    - derived/ntv3_post_track_manifest
+    - derived/ntv3_pretrain_expansion
+    - derived/rna_feature_cache
+    - derived/rna_feature_cache_ntv3_pre
+    - derived/tcga_canonical

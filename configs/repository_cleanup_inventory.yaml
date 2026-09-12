@@ -182,3 +182,9 @@ runtime_config_prune:
   - locus_centered_mse_weight
   deferred:
   - locus_cls_joint run-storage key (Phase 6e)
+data_results_v2:
+  status: frozen
+  contract: configs/data/storage_v2.yaml
+  documentation: docs/DATA_RESULTS_V2.md
+  destructive_changes_in_this_phase: false
+  next: inventory exact dependencies for all frozen paper studies
