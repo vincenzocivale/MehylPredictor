@@ -15,5 +15,6 @@ configs/models/main.yaml
 ```
 
 Historical shared-backbone, FeatureFusion, query-representation and earlier
-two-stage residual implementations are intentionally not maintained as live
-APIs. Their code remains available in Git history and frozen result ledgers.
+two-stage residual implementations are not paper-facing APIs. Minimal compatibility
+scaffolding may remain in the current branch until the protected J-series experiments finish;
+the full research history remains available through Git history and frozen result ledgers.

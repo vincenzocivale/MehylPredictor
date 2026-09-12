@@ -1,11 +1,16 @@
 # TCGA canonical data bundle
 
-The MethylProphet-compatible training/evaluation source data lives outside
-this repository, at (default, overridable -- see [Path resolution](#path-resolution)):
+The MethylProphet-compatible training/evaluation source data lives outside this
+repository. The canonical bundle root is supplied explicitly with `--canonical-root` or
+through `TCGA_CANONICAL_ROOT`; a typical project layout is:
 
+```text
+MethylPredictionData/
+  datasets/
+    methylprophet_repro_v1/
 ```
-/raid/DATASETS/MethylPredictionData/methylprophet_official/official_training_data
-```
+
+No machine-specific absolute path is part of the public data contract.
 
 Everything under this root is **read-only** from this repository's point of
 view: nothing in `src/methylation_predictor/tcga_canonical/` or
@@ -27,10 +32,9 @@ how the released splits are used without being regenerated.
 | WGBS CpG registry | `registries/wgbs_cpg_map.parquet` | 23,047,052 rows | same columns |
 
 RNA uses **all 25,017 genes** from `gene_ids`, in that exact column order.
-This is the canonical gene set for this repo going forward -- the older
-21,792-gene RNA artifact referenced by `docs/data.md` (the pre-existing,
-unrelated chr1-only training path) is legacy and must not be reintroduced
-here.
+This is the canonical gene set for this repository. Older reduced-gene,
+chr1-only RNA artifacts are legacy and must not be reintroduced into the
+paper-facing workflow.
 
 ## CpG namespace
 

@@ -7,9 +7,15 @@
 ## 1. Project objective
 
 MethylPredictor predicts a patient's DNA-methylation profile from bulk RNA expression and
-the reference-genome sequence context of each CpG locus. The scientific problem is
+a patient-independent functional representation of each CpG locus. The scientific problem is
 patient-by-locus prediction: the model must generalize both to unseen patients and to unseen
 CpGs, rather than merely reconstructing a population-average methylation profile.
+
+The paper-facing RNA model does not require a genomic foundation-model embedding as a model
+input. CpG loci are represented from a sparse functional regulatory atlas and dense static /
+regulatory-breadth annotations. Genomic-FM artifacts retained elsewhere in the repository are
+historical, benchmark, metric-only, or compatibility assets rather than dependencies of the
+current RNA predictor.
 
 The repository must make three things independently reproducible:
 
@@ -46,38 +52,45 @@ small manifests, and frozen aggregate results that are legally redistributable.
 
 ### 3.1 Current reference model
 
-As of 2026-09-05, the evidence-supported reference is the single-stage shared-backbone
-model in `configs/models/rna_methylation_locus_attention.yaml`:
+The paper-facing RNA runtime is functional-locus only. Its public trainer is
+`RNAMethylationTrainer`; the reference recipe is `configs/models/main.yaml`.
+
+The model has two information streams:
 
 ```text
-CpG reference context
-  -> frozen 1,536-D NTv3 embedding e_l
-  -> CpGTrunk -> h_mean_l
-  -> auxiliary mean head predicting logit(mu_l) during training
+CpG locus
+  -> sparse regulatory-track atlas
+  -> dense static + regulatory-breadth annotations
+  -> functional locus representation h_c
+  -> training-only mean-proxy head
 
-patient RNA x_s (25,017 genes)
-  -> normalized 256-D bottleneck
-  -> 64 learned RNA tokens
-e_l -> query -> 4-head cross-attention over RNA tokens -> r_s,l
+patient RNA x_p
+  -> RNA encoder
+  -> K learned program tokens R_p
 
-[r_s,l, e_l]
-  -> raw interaction branch h_raw_s,l
+h_c
+  -> locus-conditioned cross-attention over R_p
+  -> patient/locus RNA context r_p,c
 
-[h_mean_l, h_raw_s,l]
-  -> linear fusion -> prediction logit -> sigmoid -> beta_hat_s,l
+[h_c ; r_p,c]
+  -> final regressor
+  -> beta_hat_p,c
 ```
 
-The locus mean varies across patients, so the motivating observation must be worded as:
-“many CpGs have low **inter-patient variability**”, not “low intra-patient variability”.
-The mean auxiliary task encourages the DNA branch to encode a useful locus baseline, but in
-the current reference model the auxiliary mean-head scalar is not inserted directly into
-the final prediction; its hidden representation `h_mean` is fused with the RNA branch.
+The functional locus representation is patient-independent. Patient specificity enters through
+the RNA representation and locus-conditioned retrieval.
 
-Both branches are optimized jointly, end to end, by one optimizer. “Parallel branches”
-describes the forward topology, not two independent training stages. The auxiliary head is
-not needed for deployment after training in this reference topology, but removing it from a
-checkpoint is optional and must not be confused with removing `h_mean` or `CpGTrunk`, which
-are required for inference.
+The mean-proxy auxiliary head reads only the functional locus representation. It supervises
+locus-level methylation tendency during training but its scalar prediction is not inserted into
+the final beta prediction.
+
+The RNA workflow does not load genomic/FM embeddings. `--prior-cache`, when supplied, is
+metric-only and is used for `prior_mse` and `skill_vs_prior`. The minimal prior-cache contract is
+`cpg_idx.npy + prior.npy`.
+
+The historical storage identifier `locus_cls_joint` and temporary trainer/evaluator aliases are
+retained only for active-checkpoint resume compatibility until the architecture-search J-series
+has finished. They are not part of the intended final public API.
 
 ### 3.2 Claims that must remain separate
 
@@ -118,13 +131,14 @@ read-only and must never alter, regenerate, deduplicate, or silently filter its 
 | Array beta | `methylation/tcga_array_official_full.h5` | `9,178 x 408,399`, float32 | primary train/evaluation source |
 | EPIC beta | `methylation/epic_full.h5` | `1,706 x 740,296`, float32 | auxiliary training source |
 | WGBS beta | `methylation/wgbs_full.h5` | `32 x 23,047,052`, float32 | auxiliary training source |
-| NTv3 atlas | `cpg/ntv3/ntv3_cpg_atlas_v1.h5` | `5,723,092 x 1,536`, float16 | frozen reference-DNA embeddings |
+| NTv3 atlas | `cpg/ntv3/ntv3_cpg_atlas_v1.h5` | `5,723,092 x 1,536`, float16 | historical/benchmark FM asset; not an RNA-model input |
 | registries | `cpg/registries/*_cpg_map.parquet` | source-specific | CpG ID/coordinate mapping |
 | protocols | `protocols/<name>/` | JSON + NumPy ID arrays | immutable splits of record |
 
-The NTv3 atlas was generated with `InstaDeepAI/NTv3_650M_post`, hg38, a 32,768-bp
-forward-orientation window, and central-C/G mean pooling. These choices are part of the data
-contract, not incidental preprocessing defaults.
+The retained NTv3 atlas was generated with `InstaDeepAI/NTv3_650M_post`, hg38, a
+32,768-bp forward-orientation window, and central-C/G mean pooling. These choices remain part
+of the provenance of experiments that used the atlas, but the paper-facing RNA runtime no
+longer consumes these embeddings.
 
 Identifiers MUST retain their exact meanings:
 
@@ -219,7 +233,7 @@ Its relevant live contents are:
 
 - compact Array/EPIC methylation subsets;
 - normalized RNA cache (`rna_zscore.f16.npy`) and fitted normalization statistics;
-- protocol-aligned CpG feature cache;
+- metric-only prior information when prior-relative metrics are requested;
 - protocol IDs and manifests;
 - evaluation adapter only if a maintained evaluation path still consumes it.
 
@@ -261,17 +275,26 @@ The builder is restartable and validates completed source caches before reuse. A
 test must compare representative Array, EPIC, and WGBS blocks to canonical values with exact
 equality, including NaN masks.
 
-### 5.4 NTv3 feature caches
+### 5.4 Legacy genomic/FM feature caches
 
-Protocol feature caches contain ordered `cpg_idx`, float16 1,536-D embeddings, and a
-manifest. They may additionally contain legacy `prior`/`sigma` arrays. For the current
-single-stage model, embeddings are required; legacy prior/sigma arrays are removable only
-after a code-reference and checkpoint-reproduction audit.
+Historical protocol caches may contain ordered `cpg_idx`, 1,536-D NTv3 embeddings,
+`prior`, and `sigma` arrays.
 
-Do not retain multiple copies merely because they have different directory names. Retain a
-single atlas plus the smallest protocol-indexed cache that materially improves training, or
-make the loader index the atlas efficiently. Any deduplication decision must be based on
-axis hashes and exact value comparison, not filenames.
+They are not inputs to the paper-facing RNA predictor.
+
+During the transition, an old feature-cache directory may still be passed as `--prior-cache`
+when it contains the two metric-only arrays required by evaluation:
+
+```text
+cpg_idx.npy
+prior.npy
+```
+
+Embedding and sigma arrays in that directory are not opened by the current RNA workflow.
+
+These historical caches must not be deleted until active J-series checkpoints no longer need
+resume/evaluation compatibility. After final architecture selection, external-cache cleanup is
+performed from a dry-run dependency inventory rather than directory names alone.
 
 ### 5.5 Reproducible data-creation sequence
 
@@ -280,13 +303,13 @@ manifests and artifacts produced by an earlier stage; it must not rediscover spl
 statistics implicitly during training.
 
 ```text
-authorized TCGA inputs + hg38 + frozen protocol definitions
+authorized TCGA inputs + frozen protocol definitions
   -> canonical bundle validation
-  -> NTv3 atlas
   -> split-safe CpG mean targets
-  -> protocol-aligned RNA/embedding caches
+  -> normalized RNA cache
+  -> functional regulatory atlas + annotation cache
   -> optional protocol-ordered compact methylation cache
-  -> training
+  -> RNA training
 ```
 
 #### Canonical bundle
@@ -305,8 +328,10 @@ raw-to-canonical pipeline is not. This limitation must not be hidden by a README
 
 #### NTv3 atlas
 
-The existing atlas is frozen and should normally be validated and reused. Extending it to a
-new protocol uses three explicit phases:
+The existing atlas is frozen historical/benchmark infrastructure and should normally be
+validated rather than regenerated. It is not required by the paper-facing RNA model. For
+reproduction of experiments that explicitly use NTv3, extending it to a new protocol uses
+three explicit phases:
 
 ```bash
 python scripts/build_ntv3_atlas.py prepare-universe-tcga \
@@ -344,11 +369,10 @@ python scripts/prepare.py --model cpg_statistics \
 ```
 
 Use `--scope chr1` and a distinct output directory for chr1. The resulting `target_mu.npy`
-is the supervision used by the current model's mean proxy task. A trained
-`CpGStatisticsPredictor` and exported predicted `mu/sigma` cache are required by the older
-two-stage model, but are not prerequisites for the current direct shared-backbone model when
-its protocol embedding cache already exists. The release documentation must keep these two
-workflows separate.
+is the supervision used by the current model's mean-proxy task. A trained
+`CpGStatisticsPredictor` and exported predicted `mu/sigma` cache belong to older/static
+workflows and are not prerequisites for the current functional-locus RNA model. The release
+documentation must keep these workflows separate.
 
 #### Matched chr1 caches
 
@@ -702,7 +726,8 @@ This specification summarizes policy. Detailed live contracts remain in:
 
 - `docs/DATA.md`: canonical bundle schema and loader invariants;
 - `docs/data/METHYLPROPHET_PROTOCOLS.md`: protocol provenance and source-revision caveats;
-- `docs/CHR123_TRAINING_OPTIMIZATIONS.md`: compact-cache and performance measurements;
+- chr123 compact-cache and performance measurements retained in repository history and
+  relevant provenance records;
 - `docs/RNA_METHYLATION.md`: current architecture selection and open questions;
 - `docs/CPG_STATISTICS.md`: mean/sigma target construction;
 - `docs/BENCHMARK_METHYLPROPHET.md`: benchmark comparability.

@@ -44,8 +44,9 @@ See [`docs/MODEL.md`](docs/MODEL.md) for the exact equations and architecture.
 This branch is being reduced from the original research-history repository into
 the paper reproducibility repository. The core model, internal baselines, and
 retained RNA-encoder comparators now all use the paper-facing functional-locus
-path. The retired FeatureFusion/shared-backbone model family has been removed;
-remaining cleanup is limited to transitional trainer/config/data plumbing.
+path. The retired FeatureFusion/shared-backbone family is no longer part of the
+paper-facing API. Some compatibility trainer/config/data plumbing remains temporarily so
+active architecture-search checkpoints can still resume and be evaluated.
 
 The historical experiment names remain available through Git history and the
 original research branch, not as the primary public interface.
