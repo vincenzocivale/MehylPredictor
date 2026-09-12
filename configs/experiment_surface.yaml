@@ -8,7 +8,7 @@ policy:
   protected_research: Architecture-selection experiments. Keep byte-stable until the
     final architecture decision is explicitly locked; then promote the selected arm
     and delete the rest from the paper branch.
-  run_storage_compatibility_key: locus_cls_joint
+  run_storage_compatibility_key: rna_methylation
 models:
   paper_facing:
   - path: configs/models/main.yaml

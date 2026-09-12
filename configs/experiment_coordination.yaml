@@ -1,0 +1,43 @@
+schema_version: 1
+campaign: paper_chr1_v1
+
+shared_state:
+  relative_root: experiments/coordination/paper_chr1_v1
+  registry_file: experiments.json
+  campaign_file: campaign.json
+  jobs_dir: jobs
+  claims_dir: claims
+  logs_dir: logs
+  locks_dir: locks
+
+queue:
+  study_order:
+    - main
+    - functional_baselines
+    - mean_proxy
+    - rna_encoder
+    - cpg_prior
+  seed_order: [17, 29, 43]
+
+lease:
+  heartbeat_seconds: 60
+  stale_after_seconds: 900
+
+git_publish:
+  enabled: true
+  remote: origin
+  branch: refactor/repo-v2-2026-09
+  lock_name: git-push
+  lock_wait_seconds: 600
+  stale_after_seconds: 1800
+  result_root: results/paper
+
+telegram:
+  enabled: true
+  bot_token_env:
+    - METHYLPREDICTOR_TELEGRAM_BOT_TOKEN
+    - TELEGRAM_BOT_TOKEN
+  chat_id_env:
+    - METHYLPREDICTOR_TELEGRAM_CHAT_ID
+    - TELEGRAM_CHAT_ID
+  timeout_seconds: 10

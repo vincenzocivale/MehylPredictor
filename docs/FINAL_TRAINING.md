@@ -77,3 +77,14 @@ results/paper/
 
 Heavy artifacts remain in `METHYL_DATA_ROOT` and are referenced through
 `methyl-data://` URIs.
+
+## Dynamic distributed workers
+
+For shared-dune execution, use the atomic dynamic worker instead of fixed sharding:
+
+```bash
+python scripts/paper_worker.py --gpu 0 --loop
+```
+
+See `docs/DISTRIBUTED_PAPER_WORKERS.md`.
+

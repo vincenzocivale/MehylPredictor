@@ -446,9 +446,10 @@ def build_record(
         "seed": seed,
         "run_id": run_id,
         "git": {
-            "commit": _git_head(),
+            "commit": os.environ.get("METHYLPREDICTOR_CODE_COMMIT") or _git_head(),
             "dirty": _git_dirty(),
         },
+        "campaign": os.environ.get("METHYLPREDICTOR_CAMPAIGN"),
         "recipe": {
             "path": recipe_relative,
             "sha256": _sha256(recipe),

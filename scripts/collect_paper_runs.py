@@ -101,6 +101,7 @@ def curate_record(record: dict[str, Any]) -> dict[str, Any]:
         "scope": record.get("scope"),
         "seed": record.get("seed"),
         "run_id": record.get("run_id"),
+        "campaign": record.get("campaign"),
         "git": record.get("git"),
         "recipe": record.get("recipe"),
         "data_profile": {
