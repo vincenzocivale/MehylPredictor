@@ -26,9 +26,9 @@ models:
   - path: configs/models/mean_contribution/no_mean_branch.yaml
     sha256: d67acbb4c6151fb88b7fc4ea007dbf67ffc15ed584e9a92bdb2a9e855dcb0448
   - path: configs/models/rna_encoder_comparison/functional_ours_program_tokens.yaml
-    sha256: fc137821f6668d63968f244fe58464b05ac3e57bb5ae53898bc6ca70186e8530
+    sha256: 7c720b954ba1540842560ec037d999a6c5a4473ed05364f72ab530ef829640dc
   - path: configs/models/rna_encoder_comparison/functional_bottleneck_mlp.yaml
-    sha256: f79be5b61402fb021ef0d672d47b9e21858a9ad1c766ca9bec9b0e4b21e209a3
+    sha256: 9a0630d194373ac1716edb286fc77343540e5ff6dfcf7999f976a2c44d1b27a6
   - path: configs/models/rna_encoder_comparison/functional_gene_pathway.yaml
     sha256: e904e3d5bc482c49ca2170b5d8c6e36856505fd291143c4393546e5ed08ddc8c
   - path: configs/models/rna_encoder_comparison/functional_bulkformer_147m.yaml

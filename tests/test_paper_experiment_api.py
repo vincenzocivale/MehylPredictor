@@ -37,9 +37,9 @@ def test_paper_profile_has_exact_official_views():
     ]
 
 
-def test_final_api_keeps_storage_compatibility_behind_profile():
+def test_final_api_uses_final_storage_namespace():
     payload = yaml.safe_load(PROFILE.read_text())
-    assert payload["storage"]["rna_key"] == "locus_cls_joint"
+    assert payload["storage"]["rna_key"] == "rna_methylation"
 
     text = SCRIPT.read_text()
     assert '"locus_cls_joint"' not in text

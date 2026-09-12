@@ -58,10 +58,11 @@ def test_public_rna_clis_have_no_legacy_engine_switch():
         assert "--functional-only" not in text
 
 
-def test_storage_identifier_is_deferred_to_phase6e():
+def test_final_storage_identifier_is_rna_methylation():
     text = (
         ROOT
         / "src/methylation_predictor/rna_training/"
         "rna_methylation_trainer.py"
     ).read_text()
-    assert 'model="locus_cls_joint"' in text
+    assert 'model="rna_methylation"' in text
+    assert 'model="locus_cls_joint"' not in text

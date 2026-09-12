@@ -244,7 +244,7 @@ class RNAMethylationTrainer:
         self.inner_views = None
         self.pools = self._build_pools()
         self.store = RunStore.create(
-            output_root, model="locus_cls_joint", train_scope=scope, seed=self.seed,
+            output_root, model="rna_methylation", train_scope=scope, seed=self.seed,
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
             resume=resume,
         )
@@ -648,7 +648,7 @@ class RNAMethylationTrainer:
 
     def _save_checkpoint(self, path, optimizer, scheduler, epoch, history):
         payload = {
-            "schema_version": 2, "model": "locus_cls_joint", "scope": self.scope, "mode": self.mode,
+            "schema_version": 3, "model": "rna_methylation", "scope": self.scope, "mode": self.mode,
             "epoch": epoch, "epochs_planned": self.epochs, "architecture": self.architecture_label,
             "model_state": self.model.state_dict(),
             "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(),
@@ -656,26 +656,15 @@ class RNAMethylationTrainer:
             "loss_config": asdict(self.recipe.loss), "training": asdict(self.recipe.training), "history": history,
             "locus_cls": {
                 "use_mean_branch": self.use_mean_branch,
-                "use_fusion_product": False,
-                "use_raw_product": True,
-                "product_mlp": False,
-                "include_raw_rna": True,
-                "include_raw_cpg": True,
-                "query_source": "ntv3",
-                "fusion_init_std": 0.01,
                 "aux_weight": self.aux_weight,
-                "residual_aux_weight": 0.0,
-                "raw_lr_multiplier": 1.0,
-                "trunk_hidden_dim": 256,
-                "bottleneck_dim": 64,
                 **({"functional_locus": {
                     "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
                     "annotation_cache": str(self.functional.annotation_cache_root.resolve()),
                     **({"bigwig_cache": str(self.functional.bigwig_cache_root.resolve())} if self.functional.bigwig_cache_root is not None else {}),
-                    "n_tracks": 4165, "dense_dim": self.functional.DENSE_DIM,
-                    "encoder_dim": 256 if self.functional_fusion_variant else 64,
-                    **({"fusion_variant": self.functional_fusion_variant} if self.functional_fusion_variant else {}),
-                    "residual_policy": "random_initialized_functional_projection",
+                    "n_tracks": 4165,
+                    "dense_dim": self.functional.DENSE_DIM,
+                    "encoder_dim": 256,
+                    "fusion_variant": self.functional_fusion_variant,
                     "mode": "functional_only",
                 }} if self.functional is not None else {}),
             },
@@ -712,7 +701,7 @@ class RNAMethylationTrainer:
             plan_hasher.update(np.asarray(cpg_slots, np.int64).tobytes())
         self.first_epoch_plan_sha256 = plan_hasher.hexdigest()
         self.trainable_parameter_count = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        print(f"[locus-cls-joint] params={self.trainable_parameter_count} epoch1_plan_sha256={self.first_epoch_plan_sha256}", flush=True)
+        print(f"[rna-methylation] params={self.trainable_parameter_count} epoch1_plan_sha256={self.first_epoch_plan_sha256}", flush=True)
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats(self.device)
         steps_per_epoch = len(plan0)
@@ -1020,7 +1009,7 @@ def evaluate_rna_checkpoint(
             }
         result = view_results["val_cpg_x_val_sample"]
         summary = {
-            "model": "feature_fusion_locus_cls", "checkpoint": str(checkpoint), "checkpoint_epoch": ckpt.get("epoch"),
+            "model": "rna_methylation", "checkpoint": str(checkpoint), "checkpoint_epoch": ckpt.get("epoch"),
             "eval_scope": scope, "view": "val_cpg_x_val_sample", "metrics": result,
             "views": view_results,
         }

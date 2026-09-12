@@ -14,10 +14,9 @@ paths:
   annotation_cache: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
   output_root: experiments
 
-# Historical runtime storage key. This can be migrated centrally after the
-# protected J-series is finished without changing the public paper API.
+# Final Data/Results V2 run namespace.
 storage:
-  rna_key: locus_cls_joint
+  rna_key: rna_methylation
   cpg_prior_key: cpg_prior
 
 official_evaluation:

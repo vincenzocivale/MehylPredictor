@@ -1,6 +1,6 @@
 # Functional-matched RNA encoder comparison: MethylProphet-style B_6-Wi_1024.
 # The global 256-D output is lifted to the same 64x256 token contract before
-# the unchanged J0 locus-conditioned retrieval.
+# the unchanged final locus-conditioned retrieval.
 extends: ../main.yaml
 
 model:

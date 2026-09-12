@@ -1,12 +1,4 @@
-# Single source of truth for the frozen paper study/arm/seed job matrix.
-#
-# Every paper-facing job (used by scripts/paper_experiment.py and
-# scripts/run_paper_jobs.py) resolves from this file. Do not hardcode a
-# duplicate study/arm/recipe table in another runner script.
-#
-# Seeds/arms here must match configs/data/storage_v2.yaml (`paper_studies`)
-# and docs/PAPER_EXPERIMENTS.md. Do not add or remove studies/arms/seeds --
-# that would change the frozen paper protocol.
+# Single source of truth for the frozen final paper job matrix.
 schema_version: 1
 
 studies:
@@ -15,6 +7,7 @@ studies:
     arms:
       main:
         recipe: configs/models/main.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
 
   functional_baselines:
@@ -22,12 +15,15 @@ studies:
     arms:
       global_rna_shift:
         recipe: configs/models/baselines/functional_global_rna_shift.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
       mlp_rna_cpg:
         recipe: configs/models/baselines/functional_mlp_rna_cpg.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
       bilinear_rna_cpg:
         recipe: configs/models/baselines/functional_bilinear_rna_cpg.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
 
   mean_proxy:
@@ -35,12 +31,15 @@ studies:
     arms:
       full:
         recipe: configs/models/main.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
       no_supervision:
         recipe: configs/models/mean_contribution/no_mean_supervision.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
       no_branch:
         recipe: configs/models/mean_contribution/no_mean_branch.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
 
   rna_encoder:
@@ -48,18 +47,23 @@ studies:
     arms:
       ours_program_tokens:
         recipe: configs/models/rna_encoder_comparison/functional_ours_program_tokens.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
       bottleneck_mlp:
         recipe: configs/models/rna_encoder_comparison/functional_bottleneck_mlp.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime]
       gene_pathway:
         recipe: configs/models/rna_encoder_comparison/functional_gene_pathway.yaml
+        rna_cache: canonical
         required_dependencies: [chr1_runtime, gene_pathway_membership]
       bulkformer_147m:
         recipe: configs/models/rna_encoder_comparison/functional_bulkformer_147m.yaml
+        rna_cache: bulkformer_147m
         required_dependencies: [chr1_runtime, bulkformer_147m]
       bulkrnabert:
         recipe: configs/models/rna_encoder_comparison/functional_bulkrnabert.yaml
+        rna_cache: bulkrnabert
         required_dependencies: [chr1_runtime, bulkrnabert]
 
   cpg_prior:

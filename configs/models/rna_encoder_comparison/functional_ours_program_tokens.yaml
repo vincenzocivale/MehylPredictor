@@ -1,4 +1,4 @@
-# Functional-matched RNA encoder comparison: production J0 RNA token encoder.
+# Functional-matched RNA encoder comparison: final RNA program-token encoder.
 extends: ../main.yaml
 
 model:
