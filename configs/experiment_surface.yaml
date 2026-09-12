@@ -12,7 +12,7 @@ policy:
 models:
   paper_facing:
   - path: configs/models/main.yaml
-    sha256: 314ecf5cc546a533b5105645afb09d44e9d266ffeb00cf977d478f3f97cdbf8d
+    sha256: d6f1b435ab5087584e0950a2d130b027579743e2b87070f6fe37a7b879684be8
   - path: configs/models/baselines/baseline_cpg_prior.yaml
     sha256: 1ae20000d4231839328a0d1161e52c24e81d1d8e44a9f826f19b56bf1c30ae8e
   - path: configs/models/baselines/functional_global_rna_shift.yaml
@@ -166,8 +166,8 @@ architecture_selection:
   - kind: launcher
     path: scripts/experiments/wait_and_run_iterative_retrieval.sh
     sha256: 50053f6555462b70065424abf1ff0b64b9ccd79f83dff4dd0582fec188cee7c9
-  cleanup_gate: Phase 6d1 modeling prune complete. Trainer/config compatibility remains
-    for Phase 6d2; storage-key migration remains Phase 6e.
+  cleanup_gate: Phase 6d complete. Only optional run-storage key migration remains
+    before fresh paper reruns.
   modeling_prune_status: complete
   modeling_prune_removed:
   - src/methylation_predictor/modeling/ablation.py
@@ -179,3 +179,4 @@ architecture_selection:
   - tests/test_efficient_single_attn.py
   - configs/models/functional_fusion/base.yaml
   - configs/models/functional_fusion/j0_final.yaml
+  runtime_config_prune_status: complete

@@ -166,3 +166,19 @@ modeling_prune:
   - configs/models/functional_fusion/base.yaml
   - configs/models/functional_fusion/j0_final.yaml
   next: Phase 6d2 trainer/config compatibility pruning
+runtime_config_prune:
+  status: complete
+  removed:
+  - LocusCLSJointTrainer alias
+  - evaluate_official_split alias
+  - rna_training/locus_cls_trainer.py
+  - _retired_locus_compat
+  - legacy ModelConfig architecture fields
+  - legacy residual/Beta-NLL LossConfig fields
+  - retired locus_cls recipe controls
+  - J0/J1 public API contracts
+  retained_live_loss_options:
+  - sample_pearson_weight
+  - locus_centered_mse_weight
+  deferred:
+  - locus_cls_joint run-storage key (Phase 6e)

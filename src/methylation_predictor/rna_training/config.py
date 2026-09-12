@@ -1,4 +1,4 @@
-"""Compact recipe loader for the refactored RNA training workflow."""
+"""Recipe loader for the paper-facing RNA methylation workflow."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,14 +8,11 @@ from typing import Any
 import yaml
 
 from ..config import (
-    AxialConfig,
     EncoderConfig,
-    InteractionConfig,
     LossConfig,
     ModelConfig,
     TrackingConfig,
     TrainingConfig,
-    TrunkConfig,
 )
 
 
@@ -35,13 +32,17 @@ class RNARecipe:
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     result = dict(base)
     for key, value in override.items():
-        result[key] = _deep_merge(result[key], value) if isinstance(value, dict) and isinstance(result.get(key), dict) else value
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
     return result
 
 
 def load_rna_recipe(path: str | Path) -> RNARecipe:
     path = Path(path)
     raw = yaml.safe_load(path.read_text()) or {}
+
     parent = raw.pop("extends", None)
     if parent:
         parent_path = Path(parent)
@@ -51,48 +52,60 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         if parent_raw.get("extends"):
             raise ValueError("nested recipe extends is not supported")
         raw = _deep_merge(parent_raw, raw)
+
     model_raw = dict(raw.get("model", {}))
-    interaction_raw = dict(model_raw.get("interaction", {}))
-    # Historical architecture fields are still parsed during the
-    # compatibility window so existing recipes/resolved configs remain readable.
-    # Live model selection is centralized in modeling.factory.
     model = ModelConfig(
         encoder=EncoderConfig(**model_raw.get("encoder", {})),
-        interaction=InteractionConfig(**interaction_raw),
-        trunk=TrunkConfig(**model_raw.get("trunk", {})),
-        axial=AxialConfig(**model_raw.get("axial", {})),
-        functional_fusion_variant=str(model_raw.get("functional_fusion_variant", "")),
-        beta_likelihood_head=bool(model_raw.get("beta_likelihood_head", False)),
-        zero_init_residual=bool(model_raw.get("zero_init_residual", True)),
-        variance_normalized_residual=bool(model_raw.get("variance_normalized_residual", True)),
+        functional_fusion_variant=str(
+            model_raw.get("functional_fusion_variant", "")
+        ),
     )
-    if not model.variance_normalized_residual:
-        raise ValueError("refactored RNA workflow requires variance_normalized_residual=true")
+
     training = TrainingConfig(**raw.get("training", {}))
+
     batching = raw.get("batching", {})
     defaults = {
         "array": {"sample_size": 512, "cpg_size": 512},
         "epic": {"sample_size": 128, "cpg_size": 4096},
         "wgbs": {"sample_size": 32, "cpg_size": 16384},
     }
-    resolved_batching = {name: {**defaults[name], **dict(batching.get(name, {}))} for name in defaults}
+    resolved_batching = {
+        name: {
+            **defaults[name],
+            **dict(batching.get(name, {})),
+        }
+        for name in defaults
+    }
+
     schedule_policy = str(raw.get("schedule_policy", "axis_full_coverage"))
     if schedule_policy not in {"pair_complete", "axis_full_coverage"}:
-        raise ValueError("schedule_policy must be pair_complete or axis_full_coverage")
-    if training.schedule_layout not in {"legacy_scattered", "contiguous_blocks"}:
-        raise ValueError("training.schedule_layout must be legacy_scattered or contiguous_blocks")
+        raise ValueError(
+            "schedule_policy must be pair_complete or axis_full_coverage"
+        )
+
+    if training.schedule_layout not in {
+        "legacy_scattered",
+        "contiguous_blocks",
+    }:
+        raise ValueError(
+            "training.schedule_layout must be legacy_scattered or "
+            "contiguous_blocks"
+        )
     if training.prefetch_depth < 1:
         raise ValueError("training.prefetch_depth must be positive")
     if training.prefetch_workers < 1:
         raise ValueError("training.prefetch_workers must be positive")
     if training.prefetch_workers > training.prefetch_depth:
-        raise ValueError("training.prefetch_workers cannot exceed training.prefetch_depth")
+        raise ValueError(
+            "training.prefetch_workers cannot exceed training.prefetch_depth"
+        )
     if training.hdf5_cache_mb < 1:
         raise ValueError("training.hdf5_cache_mb must be positive")
     if training.checkpoint_every < 1:
         raise ValueError("training.checkpoint_every must be positive")
     if training.validation_every < 1:
         raise ValueError("training.validation_every must be positive")
+
     return RNARecipe(
         raw=raw,
         model=model,
@@ -101,6 +114,13 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         tracking=TrackingConfig(**raw.get("tracking", {})),
         batching=resolved_batching,
         schedule_policy=schedule_policy,
-        structured_loss_sources=set(raw.get("structured_loss_sources", ["array", "epic", "wgbs"])),
-        exclude_official_val_from_auxiliary=bool(raw.get("exclude_official_val_from_auxiliary", True)),
+        structured_loss_sources=set(
+            raw.get(
+                "structured_loss_sources",
+                ["array", "epic", "wgbs"],
+            )
+        ),
+        exclude_official_val_from_auxiliary=bool(
+            raw.get("exclude_official_val_from_auxiliary", True)
+        ),
     )

@@ -73,54 +73,6 @@ def ordered_bounded_prefetch(executor, function, items, depth):
         yield result, wait_seconds
 
 
-_RETIRED_LOCUS_DEFAULTS = {
-    "use_fusion_product": False,
-    "use_raw_product": False,
-    "product_mlp": False,
-    "include_raw_rna": True,
-    "include_raw_cpg": True,
-    "fusion_init_std": 0.01,
-    "query_source": "ntv3",
-    "residual_aux_weight": 0.0,
-    "raw_lr_multiplier": 1.0,
-    "trunk_hidden_dim": 256,
-    "bottleneck_dim": 64,
-    "trunk_dropout": 0.1,
-}
-
-
-def _retired_locus_compat(recipe_raw: dict) -> dict:
-    # Resolve retired shared-backbone controls from a recipe.
-    #
-    # These keys are no longer runtime model controls. They are retained only
-    # long enough to reproduce the exact resolved-config metadata of active
-    # functional runs created before phase 4b2b. Non-default values fail
-    # loudly so historical architecture recipes cannot silently run through
-    # the functional model family with ignored settings.
-    locus = dict(recipe_raw.get("locus_cls", {}))
-    resolved = {
-        key: locus.get(key, default)
-        for key, default in _RETIRED_LOCUS_DEFAULTS.items()
-    }
-
-    for key, default in _RETIRED_LOCUS_DEFAULTS.items():
-        value = resolved[key]
-        if isinstance(default, float):
-            matches = float(value) == default
-        elif isinstance(default, bool):
-            matches = bool(value) is default
-        elif isinstance(default, int):
-            matches = int(value) == default
-        else:
-            matches = str(value) == default
-        if not matches:
-            raise ValueError(
-                f"retired locus_cls field {key!r} must remain at its "
-                f"compatibility value {default!r}, got {value!r}"
-            )
-    return resolved
-
-
 class RNAMethylationTrainer:
     """Single-stage trainer for the functional-locus RNA model family."""
 
@@ -250,7 +202,6 @@ class RNAMethylationTrainer:
                     raise ValueError(f"functional cache does not cover {axis_name}") from exc
 
         self.aux_weight = float(aux_weight)
-        self.retired_locus_compat = _retired_locus_compat(self.recipe.raw)
         cpg_targets_dir = Path(cpg_targets_dir)
         self.cpg_target_ids = np.load(cpg_targets_dir / "cpg_idx.npy")
         self.cpg_target_mu = np.load(cpg_targets_dir / "target_mu.npy")
@@ -297,24 +248,16 @@ class RNAMethylationTrainer:
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
             resume=resume,
         )
-        compat = self.retired_locus_compat
         locus_resolved = {
             "use_mean_branch": use_mean_branch,
-            "use_fusion_product": compat["use_fusion_product"],
-            "use_raw_product": compat["use_raw_product"],
-            "product_mlp": compat["product_mlp"],
-            "include_raw_rna": compat["include_raw_rna"],
-            "include_raw_cpg": compat["include_raw_cpg"],
-            "fusion_init_std": compat["fusion_init_std"],
             "aux_weight": self.aux_weight,
-            "residual_aux_weight": compat["residual_aux_weight"],
-            "raw_lr_multiplier": compat["raw_lr_multiplier"],
-            "trunk_hidden_dim": compat["trunk_hidden_dim"],
-            "bottleneck_dim": compat["bottleneck_dim"],
+            "final_regressor_dropout": final_regressor_dropout,
         }
-        if compat["query_source"] != "ntv3":
-            locus_resolved["query_source"] = compat["query_source"]
-        resolved_config = {**self.recipe.raw, "training": asdict(cfg), "locus_cls": locus_resolved}
+        resolved_config = {
+            **self.recipe.raw,
+            "training": asdict(cfg),
+            "locus_cls": locus_resolved,
+        }
         if self.functional is not None:
             resolved_config["functional_locus"] = {
                 "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
@@ -377,16 +320,8 @@ class RNAMethylationTrainer:
                     "training": asdict(self.recipe.training), "schedule_policy": self.recipe.schedule_policy,
                     "locus_cls": {
                         "use_mean_branch": use_mean_branch,
-                        "use_fusion_product": compat["use_fusion_product"],
-                        "use_raw_product": compat["use_raw_product"],
-                        "product_mlp": compat["product_mlp"],
-                        "include_raw_rna": compat["include_raw_rna"],
-                        "include_raw_cpg": compat["include_raw_cpg"],
-                        "query_source": compat["query_source"],
-                        "fusion_init_std": compat["fusion_init_std"],
                         "aux_weight": self.aux_weight,
-                        "residual_aux_weight": compat["residual_aux_weight"],
-                        "raw_lr_multiplier": compat["raw_lr_multiplier"],
+                        "final_regressor_dropout": final_regressor_dropout,
                         "development_split_seed": self.development_split_seed,
                     },
                     "scope": scope, "mode": mode, "seed": self.seed, "architecture": self.architecture_label,

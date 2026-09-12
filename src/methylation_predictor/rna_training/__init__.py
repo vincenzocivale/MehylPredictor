@@ -15,12 +15,7 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    if name in {
-        "RNAMethylationTrainer",
-        "evaluate_rna_checkpoint",
-        "LocusCLSJointTrainer",
-        "evaluate_official_split",
-    }:
+    if name in __all__:
         from .rna_methylation_trainer import (
             RNAMethylationTrainer,
             evaluate_rna_checkpoint,
@@ -28,8 +23,6 @@ def __getattr__(name: str):
         mapping = {
             "RNAMethylationTrainer": RNAMethylationTrainer,
             "evaluate_rna_checkpoint": evaluate_rna_checkpoint,
-            "LocusCLSJointTrainer": RNAMethylationTrainer,
-            "evaluate_official_split": evaluate_rna_checkpoint,
         }
         return mapping[name]
     raise AttributeError(name)

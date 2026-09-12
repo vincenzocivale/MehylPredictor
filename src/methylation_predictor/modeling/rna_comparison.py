@@ -4,22 +4,12 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..config import ModelConfig
-from .reference import SingleRetrievalPredictor
+from .final import EfficientSingleAttentionPredictor
 from .rna_comparators import build_comparison_program_encoder
 
 
-class RNAEncoderComparisonPredictor(SingleRetrievalPredictor):
-    """J0 with only the upstream patient RNA encoder replaced.
-
-    The functional CpG encoder, retrieval attention, mean-proxy head and final
-    beta regressor are constructed by ``SingleRetrievalPredictor`` and retain
-    its exact same-seed initialization.
-
-    The canonical RNA axis used by ``main.yaml`` has 25,017 columns.  We build
-    that reference J0 first even for frozen-embedding arms, then replace only
-    ``rna_encoder``.  This decouples downstream initialization from comparator
-    input width/capacity.
-    """
+class RNAEncoderComparisonPredictor(EfficientSingleAttentionPredictor):
+    """Final architecture with only the upstream RNA encoder replaced."""
 
     REFERENCE_RNA_INPUT_DIM = 25017
 
@@ -45,13 +35,14 @@ class RNAEncoderComparisonPredictor(SingleRetrievalPredictor):
         super().__init__(
             self.REFERENCE_RNA_INPUT_DIM,
             reference_config,
+            n_ffn_blocks=8,
+            n_functional_ffn_blocks=8,
+            deep_query=False,
+            n_head_ffn_blocks=2,
             final_regressor_dropout=final_regressor_dropout,
             use_mean_proxy=use_mean_proxy,
         )
 
-        # For the reference arm on the canonical 25,017-gene cache, the
-        # encoder created by super() already is exactly the production J0
-        # ProgramTokenEncoder, so retain it bit-for-bit.
         if not (
             comparison_encoder.kind == "locus_attention"
             and input_dim == self.REFERENCE_RNA_INPUT_DIM

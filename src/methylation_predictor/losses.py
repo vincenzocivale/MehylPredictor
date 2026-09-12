@@ -1,11 +1,6 @@
 """Shared loss building blocks for the RNA-methylation pipeline.
 
-``masked_mean``, ``masked_locus_pearson``/``locus_correlation_loss`` (the
-MAS-PCC term, opt-in via ``locus_pearson_weight``), and ``beta_nll_term`` are
-reused by ``rna_training.rna_methylation_trainer._direct_beta_loss``, the sole
-RNA-methylation loss function. The earlier prior-anchored two-stage loss
-(``residual_loss``) that used to live here has been retired alongside that
-architecture generation.
+Live loss primitives for direct beta prediction.
 """
 from __future__ import annotations
 
@@ -180,37 +175,3 @@ def locus_correlation_loss(
         zero = prediction.sum() * 0.0
         return zero, 0
     return 1.0 - valid_values.mean(), int(valid_values.numel())
-
-
-def beta_nll_term(
-    outputs: dict[str, torch.Tensor],
-    safe_target: torch.Tensor,
-    mask: torch.Tensor,
-    config: LossConfig,
-) -> torch.Tensor:
-    """Beta log-likelihood term, shared by every model family's loss function.
-
-    Methylation beta values live in [0, 1] with variance that collapses towards
-    both boundaries, which a plain MSE treats as homoscedastic. Parameterized by
-    the model's own prediction (``outputs["beta"]``) as the mean, and a
-    predicted concentration (``outputs["concentration"]``, absent unless the
-    model built a concentration head): mu*phi and (1-mu)*phi are the two Beta
-    shape parameters. A no-op (returns 0) whenever the weight is zero or no
-    concentration was produced, so it is always safe to add unconditionally.
-    """
-    if config.beta_nll_weight == 0.0 or outputs.get("concentration") is None:
-        return outputs["beta"].sum() * 0.0
-    concentration = outputs["concentration"].float().clamp_min(config.concentration_min)
-    mu = outputs["beta"].float().clamp(config.beta_nll_epsilon, 1.0 - config.beta_nll_epsilon)
-    # WGBS beta values hit exactly 0 and 1, where the density diverges.
-    observation = safe_target.float().clamp(config.beta_nll_epsilon, 1.0 - config.beta_nll_epsilon)
-    alpha = mu * concentration
-    beta_shape = (1.0 - mu) * concentration
-    log_likelihood = (
-        torch.lgamma(concentration)
-        - torch.lgamma(alpha)
-        - torch.lgamma(beta_shape)
-        + (alpha - 1.0) * torch.log(observation)
-        + (beta_shape - 1.0) * torch.log1p(-observation)
-    )
-    return masked_mean(-log_likelihood, mask)

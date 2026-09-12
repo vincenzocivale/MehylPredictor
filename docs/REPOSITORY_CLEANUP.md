@@ -77,3 +77,7 @@ removed after their exact SHA-256 hashes were recorded in
 canonical final architecture recipe. Predictor/factory/config compatibility
 cleanup is intentionally deferred to Phase 6d.
 
+## Phase 6d2 runtime/config prune
+
+The live RNA runtime exposes only `RNAMethylationTrainer` and `evaluate_rna_checkpoint`. Legacy trainer aliases/shims and retired RNA config controls have been removed. RNA-encoder comparisons now retain the full final downstream architecture. The historical `locus_cls_joint` storage key is deferred to Phase 6e.
+

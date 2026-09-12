@@ -1,7 +1,4 @@
-# Paper-facing final architecture.
-#
-# J9b functional-depth model + two residual FFN blocks in the final head.
-# Historical J9b is kept unchanged for checkpoint compatibility.
+# Canonical paper-facing MethylPredictor recipe.
 model:
   encoder:
     kind: locus_attention
@@ -11,23 +8,13 @@ model:
     n_heads: 4
     dropout: 0.1
     layer_norm: true
-  interaction:
-    kind: concat
-    hidden_dim: 128
-    dropout: 0.1
-  zero_init_residual: true
-  variance_normalized_residual: true
   functional_fusion_variant: efficient_single_attn_8ffn_residual_functional8_head2
+
 loss:
   beta_mse_weight: 1.0
-  residual_huber_weight: 0.0
-  shrinkage_weight: 0.0
-  standardized_residual_huber_weight: 0.0
-  standardized_shrinkage_weight: 0.0
   locus_pearson_weight: 0.15
   locus_min_observed_samples: 8
-  sample_pearson_weight: 0.0
-  locus_centered_mse_weight: 0.0
+
 training:
   seed: 17
   device: auto
@@ -51,21 +38,19 @@ training:
   checkpoint_every: 1
   validation_every: 1
   compile: false
+
 schedule_policy: pair_complete
 exclude_official_val_from_auxiliary: true
 structured_loss_sources:
   - array
   - epic
   - wgbs
+
 locus_cls:
   use_mean_branch: true
-  use_fusion_product: false
-  use_raw_product: false
-  fusion_init_std: 0.01
   aux_weight: 0.15
-  residual_aux_weight: 0.0
-  raw_lr_multiplier: 1.0
   final_regressor_dropout: 0.15
+
 batching:
   array:
     sample_size: 320
@@ -76,10 +61,12 @@ batching:
   wgbs:
     sample_size: 32
     cpg_size: 20480
+
 development:
   fraction: 0.1
   block_bp: 5000000
   split_seed: 17
+
 tracking:
   backend: wandb
   project: MethylPredictor
