@@ -264,3 +264,7 @@ selection is locked. They are not part of the public paper model surface.
 
 No architecture, loss, batching, optimizer, run ID, checkpoint, or result
 semantics changed in this phase.
+
+## Phase 5b: configuration-field audit
+
+The remaining RNA architecture/loss config fields are classified in `configs/config_field_audit.yaml`. No fields are removed in this phase because protected J-series runs remain resumable. Compatibility-only ModelConfig, LossConfig and `locus_cls` keys now have an explicit deletion gate tied to final architecture selection.

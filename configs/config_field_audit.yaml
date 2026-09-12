@@ -1,0 +1,82 @@
+schema_version: 1
+scope: RNA architecture/loss configuration only
+deferred:
+- TrainingConfig
+- TrackingConfig
+encoder_config:
+  keep:
+  - kind
+  - latent_dim
+  - layer_norm
+  - hidden_dim
+  - dropout
+  - n_programs
+  - program_dim
+  - n_heads
+  - n_blocks
+  - mlp_ratio
+  - frozen_embedding_source
+  - pathway_membership_path
+  - pathway_dim1
+  - pathway_dim2
+model_config:
+  keep:
+  - encoder
+  - functional_fusion_variant
+  compatibility_only:
+  - interaction
+  - trunk
+  - axial
+  - beta_likelihood_head
+  - zero_init_residual
+  - variance_normalized_residual
+  - use_prior_anchor
+loss_config:
+  paper_live:
+  - beta_mse_weight
+  - locus_pearson_weight
+  - locus_min_observed_samples
+  - locus_pearson_epsilon
+  - locus_pearson_min_target_std
+  runtime_supported_not_selected_by_frozen_surface:
+  - sample_pearson_weight
+  - sample_pearson_min_observed_cpgs
+  - sample_pearson_epsilon
+  - locus_centered_mse_weight
+  legacy_not_consumed_by_live_trainer:
+  - residual_huber_weight
+  - residual_huber_delta
+  - shrinkage_weight
+  - standardized_residual_huber_weight
+  - standardized_residual_huber_delta
+  - standardized_shrinkage_weight
+  - sigma_min
+  - beta_nll_weight
+  - beta_nll_epsilon
+  - concentration_min
+locus_cls:
+  keep:
+  - use_mean_branch
+  - aux_weight
+  - final_regressor_dropout
+  compatibility_only:
+  - use_fusion_product
+  - use_raw_product
+  - product_mlp
+  - include_raw_rna
+  - include_raw_cpg
+  - fusion_init_std
+  - query_source
+  - residual_aux_weight
+  - raw_lr_multiplier
+  - trunk_hidden_dim
+  - bottleneck_dim
+  - trunk_dropout
+next_prune_gate:
+  required_condition: final architecture selected and protected J-series surface released from resume
+    compatibility
+  then_remove:
+  - ModelConfig compatibility_only fields/classes
+  - LossConfig legacy fields
+  - runtime-only loss fields if not promoted into retained paper recipes
+  - _retired_locus_compat and compatibility-only locus_cls keys
