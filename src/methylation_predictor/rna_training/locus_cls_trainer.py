@@ -87,6 +87,54 @@ def ordered_bounded_prefetch(executor, function, items, depth):
         yield result, wait_seconds
 
 
+_RETIRED_LOCUS_DEFAULTS = {
+    "use_fusion_product": False,
+    "use_raw_product": False,
+    "product_mlp": False,
+    "include_raw_rna": True,
+    "include_raw_cpg": True,
+    "fusion_init_std": 0.01,
+    "query_source": "ntv3",
+    "residual_aux_weight": 0.0,
+    "raw_lr_multiplier": 1.0,
+    "trunk_hidden_dim": 256,
+    "bottleneck_dim": 64,
+    "trunk_dropout": 0.1,
+}
+
+
+def _retired_locus_compat(recipe_raw: dict) -> dict:
+    # Resolve retired shared-backbone controls from a recipe.
+    #
+    # These keys are no longer runtime model controls. They are retained only
+    # long enough to reproduce the exact resolved-config metadata of active
+    # functional runs created before phase 4b2b. Non-default values fail
+    # loudly so historical architecture recipes cannot silently run through
+    # the functional model family with ignored settings.
+    locus = dict(recipe_raw.get("locus_cls", {}))
+    resolved = {
+        key: locus.get(key, default)
+        for key, default in _RETIRED_LOCUS_DEFAULTS.items()
+    }
+
+    for key, default in _RETIRED_LOCUS_DEFAULTS.items():
+        value = resolved[key]
+        if isinstance(default, float):
+            matches = float(value) == default
+        elif isinstance(default, bool):
+            matches = bool(value) is default
+        elif isinstance(default, int):
+            matches = int(value) == default
+        else:
+            matches = str(value) == default
+        if not matches:
+            raise ValueError(
+                f"retired locus_cls field {key!r} must remain at its "
+                f"compatibility value {default!r}, got {value!r}"
+            )
+    return resolved
+
+
 class LocusCLSJointTrainer:
     """Single model, single optimizer, single training phase. Pool/schedule/
     read_block logic mirrors JointRNAMethylationTrainer's (duplicated rather
@@ -104,20 +152,8 @@ class LocusCLSJointTrainer:
         cpg_targets_dir: str | Path,
         output_root: str | Path,
         matched_chr1_root: str | Path | None = None,
-        trunk_hidden_dim: int = 256,
-        bottleneck_dim: int = 64,
-        trunk_dropout: float = 0.1,
         use_mean_branch: bool = True,
-        use_fusion_product: bool = False,
-        use_raw_product: bool = True,
-        include_raw_rna: bool = True,
-        include_raw_cpg: bool = True,
-        product_mlp: bool = False,
-        fusion_init_std: float = 0.01,
-        query_source: str = "ntv3",
         aux_weight: float = 0.15,
-        residual_aux_weight: float = 0.15,
-        raw_lr_multiplier: float = 1.0,
         mode: str = "final",
         early_stop_patience: int | None = None,
         run_id: str | None = None,
@@ -131,14 +167,11 @@ class LocusCLSJointTrainer:
         bigwig_cache: str | Path | None = None,
         functional_only: bool = False,
     ):
-        # >1.0 gives the raw/RNA branch (raw_branch, fusion, residual_head --
-        # everything that only ever gets gradient through the fusion layer,
-        # unlike the trunk which also gets a direct auxiliary-loss gradient
-        # into h_mean) a higher effective LR to compensate for that branch
-        # imbalance -- measured empirically (chr1 pair_complete, 2026-09-02).
-        self.raw_lr_multiplier = float(raw_lr_multiplier)
-        self.query_source = str(query_source)
-        self.development_split_seed = None if development_split_seed is None else int(development_split_seed)
+        self.development_split_seed = (
+            None
+            if development_split_seed is None
+            else int(development_split_seed)
+        )
         if mode not in {"development", "final"}:
             raise ValueError("mode must be development or final")
         self.mode = mode
@@ -228,22 +261,13 @@ class LocusCLSJointTrainer:
                     raise ValueError(f"functional cache does not cover {axis_name}") from exc
 
         self.aux_weight = float(aux_weight)
-        self.residual_aux_weight = float(residual_aux_weight)
-        # Stashed as attributes (not just forwarded to the model constructor below)
-        # so _save_checkpoint can persist them into the checkpoint's own "locus_cls"
-        # dict -- evaluate_official_split rebuilds the model from that dict alone,
-        # and previously silently fell back to the constructor defaults (256/64)
-        # for any checkpoint trained with a non-default trunk_hidden_dim/
-        # bottleneck_dim, causing a state_dict shape-mismatch load failure.
-        self.trunk_hidden_dim = int(trunk_hidden_dim)
-        self.bottleneck_dim = int(bottleneck_dim)
+        self.retired_locus_compat = _retired_locus_compat(self.recipe.raw)
         cpg_targets_dir = Path(cpg_targets_dir)
         self.cpg_target_ids = np.load(cpg_targets_dir / "cpg_idx.npy")
         self.cpg_target_mu = np.load(cpg_targets_dir / "target_mu.npy")
         self.cpg_target_index = SortedIndex(self.cpg_target_ids, "cpg_statistics targets")
 
         self.use_mean_branch = bool(use_mean_branch)
-        self._fusion_init_std = float(fusion_init_std)
         # Experiment-specific architecture kwargs live in
         # modeling.factory; the trainer only enforces shared harness invariants.
         if not self.functional_only or self.functional is None:
@@ -257,26 +281,12 @@ class LocusCLSJointTrainer:
                 f"{self.functional_fusion_variant!r}; expected one of "
                 f"{sorted(SUPPORTED_FUNCTIONAL_VARIANTS)}"
             )
-        if residual_aux_weight != 0.0:
-            raise ValueError(
-                f"{self.functional_fusion_variant} requires residual_aux_weight=0"
-            )
         if self.aux_weight < 0.0:
             raise ValueError("aux_weight must be non-negative")
         if self.aux_weight != 0.0 and not use_mean_branch:
             raise ValueError(
                 f"{self.functional_fusion_variant} cannot use a nonzero "
                 "aux_weight when use_mean_branch=false"
-            )
-        if self.query_source != "ntv3":
-            raise ValueError(
-                "legacy query_source variants were removed with the "
-                "shared-backbone model family"
-            )
-        if self.raw_lr_multiplier != 1.0:
-            raise ValueError(
-                "raw_lr_multiplier was a shared-backbone ablation and is "
-                "not supported by paper-facing functional models"
             )
 
         final_regressor_dropout = float(
@@ -305,18 +315,23 @@ class LocusCLSJointTrainer:
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
             resume=resume,
         )
+        compat = self.retired_locus_compat
         locus_resolved = {
-            "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
-            "use_raw_product": use_raw_product, "product_mlp": product_mlp,
-            "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
-            "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
-            "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
-            "trunk_hidden_dim": trunk_hidden_dim, "bottleneck_dim": bottleneck_dim,
+            "use_mean_branch": use_mean_branch,
+            "use_fusion_product": compat["use_fusion_product"],
+            "use_raw_product": compat["use_raw_product"],
+            "product_mlp": compat["product_mlp"],
+            "include_raw_rna": compat["include_raw_rna"],
+            "include_raw_cpg": compat["include_raw_cpg"],
+            "fusion_init_std": compat["fusion_init_std"],
+            "aux_weight": self.aux_weight,
+            "residual_aux_weight": compat["residual_aux_weight"],
+            "raw_lr_multiplier": compat["raw_lr_multiplier"],
+            "trunk_hidden_dim": compat["trunk_hidden_dim"],
+            "bottleneck_dim": compat["bottleneck_dim"],
         }
-        # Preserve exact resolved-config compatibility for every pre-patch run:
-        # the default NTv3 query is implicit, just as it was before this patch.
-        if self.query_source != "ntv3":
-            locus_resolved["query_source"] = self.query_source
+        if compat["query_source"] != "ntv3":
+            locus_resolved["query_source"] = compat["query_source"]
         resolved_config = {**self.recipe.raw, "training": asdict(cfg), "locus_cls": locus_resolved}
         if not self.functional_only and self.features.regulatory_provenance is not None:
             resolved_config["regulatory_feature_cache"] = self.features.regulatory_provenance
@@ -352,7 +367,7 @@ class LocusCLSJointTrainer:
             existing = _yaml.safe_load((self.store.path / "config.resolved.yaml").read_text()) or {}
             existing = {**existing, "training": asdict(TrainingConfig(**existing.get("training", {})))}
             if existing != resolved_config:
-                raise RuntimeError("resume requested with a different resolved shared-backbone recipe")
+                raise RuntimeError("resume requested with a different resolved RNA recipe")
             if not self.store.checkpoint("last.pt").is_file():
                 raise RuntimeError("resume requested but checkpoints/last.pt is missing")
 
@@ -384,12 +399,17 @@ class LocusCLSJointTrainer:
                     "model": asdict(self.recipe.model), "loss": asdict(self.recipe.loss),
                     "training": asdict(self.recipe.training), "schedule_policy": self.recipe.schedule_policy,
                     "locus_cls": {
-                        "use_mean_branch": use_mean_branch, "use_fusion_product": use_fusion_product,
-                        "use_raw_product": use_raw_product, "product_mlp": product_mlp,
-                        "include_raw_rna": include_raw_rna, "include_raw_cpg": include_raw_cpg,
-                        "query_source": self.query_source,
-                        "fusion_init_std": fusion_init_std, "aux_weight": self.aux_weight,
-                        "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
+                        "use_mean_branch": use_mean_branch,
+                        "use_fusion_product": compat["use_fusion_product"],
+                        "use_raw_product": compat["use_raw_product"],
+                        "product_mlp": compat["product_mlp"],
+                        "include_raw_rna": compat["include_raw_rna"],
+                        "include_raw_cpg": compat["include_raw_cpg"],
+                        "query_source": compat["query_source"],
+                        "fusion_init_std": compat["fusion_init_std"],
+                        "aux_weight": self.aux_weight,
+                        "residual_aux_weight": compat["residual_aux_weight"],
+                        "raw_lr_multiplier": compat["raw_lr_multiplier"],
                         "development_split_seed": self.development_split_seed,
                     },
                     "scope": scope, "mode": mode, "seed": self.seed, "architecture": self.architecture_label,
@@ -725,15 +745,19 @@ class LocusCLSJointTrainer:
             "model_config": asdict(self.recipe.model),
             "loss_config": asdict(self.recipe.loss), "training": asdict(self.recipe.training), "history": history,
             "locus_cls": {
-                "use_mean_branch": self.use_mean_branch, "use_fusion_product": getattr(self.model, "use_fusion_product", False),
-                "use_raw_product": getattr(self.model, "use_raw_product", True),
-                "product_mlp": getattr(self.model, "product_mlp", False),
-                "include_raw_rna": getattr(self.model, "include_raw_rna", True),
-                "include_raw_cpg": getattr(self.model, "include_raw_cpg", True),
-                "query_source": self.query_source,
-                "fusion_init_std": self._fusion_init_std, "aux_weight": self.aux_weight,
-                "residual_aux_weight": self.residual_aux_weight, "raw_lr_multiplier": self.raw_lr_multiplier,
-                "trunk_hidden_dim": self.trunk_hidden_dim, "bottleneck_dim": self.bottleneck_dim,
+                "use_mean_branch": self.use_mean_branch,
+                "use_fusion_product": False,
+                "use_raw_product": True,
+                "product_mlp": False,
+                "include_raw_rna": True,
+                "include_raw_cpg": True,
+                "query_source": "ntv3",
+                "fusion_init_std": 0.01,
+                "aux_weight": self.aux_weight,
+                "residual_aux_weight": 0.0,
+                "raw_lr_multiplier": 1.0,
+                "trunk_hidden_dim": 256,
+                "bottleneck_dim": 64,
                 **({"functional_locus": {
                     "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
                     "annotation_cache": str(self.functional.annotation_cache_root.resolve()),
@@ -1059,14 +1083,10 @@ def evaluate_official_split(
         canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
         feature_cache=feature_cache, rna_cache=rna_cache, registry=registry,
         cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
-        output_root=scratch_root, mode="final", run_id=f"eval-{Path(checkpoint).stem}-{os.getpid()}",
-        use_mean_branch=lc.get("use_mean_branch", True), use_fusion_product=lc.get("use_fusion_product", False),
-        use_raw_product=lc.get("use_raw_product", True), product_mlp=lc.get("product_mlp", False),
-        include_raw_rna=lc.get("include_raw_rna", True), include_raw_cpg=lc.get("include_raw_cpg", True),
-        query_source=lc.get("query_source", "ntv3"),
-        trunk_hidden_dim=lc.get("trunk_hidden_dim", 256), bottleneck_dim=lc.get("bottleneck_dim", 64),
-        fusion_init_std=lc.get("fusion_init_std", 0.01), aux_weight=lc.get("aux_weight", 0.15),
-        residual_aux_weight=lc.get("residual_aux_weight", 0.0), raw_lr_multiplier=lc.get("raw_lr_multiplier", 1.0),
+        output_root=scratch_root, mode="final",
+        run_id=f"eval-{Path(checkpoint).stem}-{os.getpid()}",
+        use_mean_branch=lc.get("use_mean_branch", True),
+        aux_weight=lc.get("aux_weight", 0.15),
         functional_atlas=functional_atlas, annotation_cache=annotation_cache,
         functional_only=functional_only,
         track=False,

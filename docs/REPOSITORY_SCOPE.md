@@ -206,3 +206,18 @@ harness no longer embeds J-number-specific architecture dictionaries.
 This phase intentionally changes no recipe, checkpoint schema, model math,
 optimizer, batching, loss, run ID, or result path. Configuration-schema
 pruning is deferred until the active experiment recipes are frozen.
+
+## Phase 4b2b: retired trainer controls removed from the runtime API
+
+Shared-backbone-only locus controls are no longer constructor or CLI
+arguments of the paper-facing RNA trainer. Active J0/J1/J4-J10 model
+construction remains isolated in `modeling/factory.py`.
+
+For experiment safety, the current recipe files and legacy resolved-config
+shape are intentionally unchanged in this phase. A narrow compatibility
+parser validates that retired recipe keys remain at their canonical no-op
+values and reproduces the same resolved metadata, so in-flight functional
+runs remain resumable.
+
+The actual recipe/config-schema deletion is deferred until the active
+architecture experiments are frozen.
