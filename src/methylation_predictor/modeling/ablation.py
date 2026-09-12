@@ -556,6 +556,219 @@ class GatedResidualPredictor(nn.Module):
         return {
             "beta": beta,
             "delta_logit": logit,
+            "prediction_logit": logit,
+            "mu_logit": None,
+            "mu_hat": mu_hat,
+            "residual_logit": logit,
+            "h_cpg": h_c,
+        }
+
+
+class FunctionalGeneFFNFusionPredictor(nn.Module):
+    """J9: 2 extra FFN residual blocks on each branch, then a chosen final
+    recombination mechanism -- concat vs. FiLM vs. two-stream residual mixing.
+
+    Motivated by the FFN-depth findings above (J5/J7/J8: more FFN residual
+    depth on the RNA-attention branch keeps helping) -- this asks a
+    narrower, orthogonal question: given the SAME extra representational
+    capacity applied symmetrically to BOTH branches before fusion, does an
+    explicit fusion mechanism do better than plain concatenation?
+
+    Structurally: the functional branch (``h_c``, from ``track_embedding`` +
+    ``dense_encoder``) gets ``functional_ffn`` (2 ``FeedForwardResidual``
+    blocks, applied per-locus before per-patient expansion -- cheap, same
+    cost regardless of batch size). The gene-expression branch runs ONE
+    locus<-RNA cross-attention (as in J4/``EfficientSingleAttentionPredictor``)
+    then ``gene_expr_ffn`` (2 ``FeedForwardResidual`` blocks, applied on the
+    patient-expanded state -- same cost class as J4's FFN stack). The two
+    refined branches are then combined by ``fusion_mode``:
+
+      "concat" (baseline, matches J0/J4's mechanism): z = [h_c, state],
+          projected down to W by ``fusion_proj``.
+
+      "film": the gene-expression branch (patient/locus-specific) generates
+          a per-element (gamma, beta) that modulates the functional branch
+          (static/prior-like): h_mod = gamma * h_c + beta. Only h_mod feeds
+          the head -- FiLM's point is to REPLACE concatenation with
+          conditioning, not add to it.
+
+      "two_stream_residual": each branch is refined by a residual
+          projection of the OTHER (cross-injection), then summed:
+          h_mix = h_c + W_gf(state); s_mix = state + W_fg(h_c);
+          z = h_mix + s_mix.
+
+    2026-09-12 revision (user diagnosis): the first version of this class
+    fed the fused W-dim (or 2W for concat) vector straight into the same
+    shallow 3-linear-layer ``final_regressor`` J0/J4 already used
+    (~100-165K params) -- tiny next to the ~2.1M params the two branch FFN
+    stacks add. That head could bottleneck ALL THREE fusion mechanisms
+    equally, masking any real difference between them. ``head_ffn``
+    (``n_head_ffn_blocks`` ``FeedForwardResidual`` blocks, default 2, run on
+    the W-dim fused vector -- ``fusion_proj`` brings concat's 2W down to W
+    first so all three modes share an identical head) adds ~1.05M params to
+    the head before the final Linear(W->128)->GELU->Linear(128->1)
+    projection, closing most of that capacity gap while keeping the head
+    IDENTICAL across concat/film/two_stream_residual so the three cells stay
+    a controlled comparison of fusion mechanism alone.
+
+    Everything else (functional encoder, mean head, RNA encoder, chunking)
+    is identical to J4/J0.
+    """
+
+    N_TRACKS = 4165
+    DENSE_DIM = 23
+    WIDTH = 256
+    LOCUS_CHUNK = 1024
+    FUSION_MODES = ("concat", "film", "two_stream_residual")
+
+    def __init__(
+        self,
+        input_dim: int,
+        config: ModelConfig,
+        *,
+        fusion_mode: str,
+        n_functional_ffn_blocks: int = 2,
+        n_gene_expr_ffn_blocks: int = 2,
+        n_head_ffn_blocks: int = 2,
+        final_regressor_dropout: float = 0.15,
+        use_mean_proxy: bool = True,
+    ):
+        super().__init__()
+        if fusion_mode not in self.FUSION_MODES:
+            raise ValueError(
+                f"fusion_mode must be one of {self.FUSION_MODES}, got {fusion_mode!r}"
+            )
+        self.fusion_mode = fusion_mode
+        enc = config.encoder
+        if enc.kind != "locus_attention" or enc.program_dim != self.WIDTH:
+            raise ValueError(
+                "FunctionalGeneFFNFusionPredictor requires locus_attention "
+                "RNA tokens with program_dim=256"
+            )
+
+        self.rna_encoder = ProgramTokenEncoder(
+            input_dim=input_dim,
+            n_programs=enc.n_programs,
+            program_dim=enc.program_dim,
+            bottleneck_dim=enc.latent_dim,
+            layer_norm=enc.layer_norm,
+        )
+        consume_legacy_attention_initialization(self.WIDTH)
+
+        self.track_embedding = nn.EmbeddingBag(
+            self.N_TRACKS, self.WIDTH, mode="mean", include_last_offset=True,
+        )
+        self.dense_encoder = nn.Sequential(
+            nn.LayerNorm(self.DENSE_DIM), nn.Linear(self.DENSE_DIM, self.WIDTH), nn.GELU(),
+        )
+        self.locus_norm = nn.LayerNorm(self.WIDTH)
+        self.functional_ffn = nn.ModuleList([
+            FeedForwardResidual(self.WIDTH, enc.dropout) for _ in range(n_functional_ffn_blocks)
+        ])
+        mean_head = nn.Sequential(
+            nn.LayerNorm(self.WIDTH), nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Linear(128, 1),
+        )
+        self.mean_head = mean_head if use_mean_proxy else None
+        self.retrieval_attn = BatchedLocusToRNAAttention(self.WIDTH, enc.n_heads, enc.dropout)
+        self.gene_expr_ffn = nn.ModuleList([
+            FeedForwardResidual(self.WIDTH, enc.dropout) for _ in range(n_gene_expr_ffn_blocks)
+        ])
+        self.h_c_concat_norm = nn.LayerNorm(self.WIDTH)
+        self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
+        self.final_regressor_dropout = float(final_regressor_dropout)
+
+        if fusion_mode == "concat":
+            # Bring concat's 2W-dim vector down to W BEFORE the shared head,
+            # so head_ffn/final_regressor are byte-for-byte identical across
+            # all three fusion_modes -- only this one projection differs.
+            self.fusion_proj = nn.Linear(2 * self.WIDTH, self.WIDTH)
+        elif fusion_mode == "film":
+            self.film_generator = nn.Linear(self.WIDTH, 2 * self.WIDTH)
+        else:  # two_stream_residual
+            self.gene_to_functional = nn.Linear(self.WIDTH, self.WIDTH)
+            self.functional_to_gene = nn.Linear(self.WIDTH, self.WIDTH)
+
+        self.head_ffn = nn.ModuleList([
+            FeedForwardResidual(self.WIDTH, enc.dropout) for _ in range(n_head_ffn_blocks)
+        ])
+        self.final_regressor = nn.Sequential(
+            nn.Linear(self.WIDTH, 128), nn.GELU(), nn.Dropout(self.final_regressor_dropout),
+            nn.Linear(128, 1),
+        )
+
+    @property
+    def requires_cpg_positions(self) -> bool:
+        return False
+
+    def _fuse(self, h_for_concat: torch.Tensor, r_for_concat: torch.Tensor, batch: int) -> torch.Tensor:
+        h_expanded = h_for_concat[None, :, :].expand(batch, -1, -1)
+        if self.fusion_mode == "concat":
+            return self.fusion_proj(torch.cat([h_expanded, r_for_concat], dim=-1))
+        if self.fusion_mode == "film":
+            gamma, beta = self.film_generator(r_for_concat).chunk(2, dim=-1)
+            return gamma * h_expanded + beta
+        # two_stream_residual
+        h_mix = h_expanded + self.gene_to_functional(r_for_concat)
+        s_mix = r_for_concat + self.functional_to_gene(h_expanded)
+        return h_mix + s_mix
+
+    def _retrieve_and_predict(self, h_c_chunk: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+        batch = tokens.shape[0]
+        state = h_c_chunk[None, :, :].expand(batch, -1, -1)
+        a = self.retrieval_attn(state, tokens)
+        state = state + a
+        for ffn in self.gene_expr_ffn:
+            state = ffn(state)  # FeedForwardResidual: always has its own internal residual
+
+        h_for_concat = self.h_c_concat_norm(h_c_chunk)
+        r_for_concat = self.r_pc_concat_norm(state)
+        z = self._fuse(h_for_concat, r_for_concat, batch)
+        for ffn in self.head_ffn:
+            z = ffn(z)  # FeedForwardResidual: always has its own internal residual
+        return self.final_regressor(z).squeeze(-1)
+
+    def forward(
+        self,
+        rna: torch.Tensor,
+        cpg_embedding: torch.Tensor | None = None,
+        cpg_positions: torch.Tensor | None = None,
+        *,
+        functional_track_indices: torch.Tensor,
+        functional_offsets: torch.Tensor,
+        functional_dense: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        del cpg_embedding, cpg_positions
+        tokens = self.rna_encoder(rna)
+
+        peak = self.track_embedding(functional_track_indices, functional_offsets)
+        dense = self.dense_encoder(functional_dense)
+        h_c = self.locus_norm(peak + dense)
+        for ffn in self.functional_ffn:
+            h_c = ffn(h_c)  # FeedForwardResidual: always has its own internal residual
+        mu_hat = (
+            None if self.mean_head is None
+            else torch.sigmoid(self.mean_head(h_c).squeeze(-1))
+        )
+
+        n_loci = h_c.shape[0]
+        if n_loci <= self.LOCUS_CHUNK:
+            logit = self._retrieve_and_predict(h_c, tokens)
+        else:
+            chunks = []
+            for start in range(0, n_loci, self.LOCUS_CHUNK):
+                chunk = h_c[start:start + self.LOCUS_CHUNK]
+                if self.training and torch.is_grad_enabled():
+                    chunks.append(
+                        checkpoint(self._retrieve_and_predict, chunk, tokens, use_reentrant=False)
+                    )
+                else:
+                    chunks.append(self._retrieve_and_predict(chunk, tokens))
+            logit = torch.cat(chunks, dim=1)
+
+        beta = torch.sigmoid(logit)
+        return {
+            "beta": beta,
+            "delta_logit": logit,
             "raw_delta": logit,
             "prediction_logit": logit,
             "mu_logit": None,

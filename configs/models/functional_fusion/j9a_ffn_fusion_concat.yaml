@@ -1,0 +1,63 @@
+extends: base.yaml
+# 2026-09-12 revision: default n_head_ffn_blocks=2 now widens the
+# post-fusion head (~1.05M added params, was a ~100-165K 3-linear-layer
+# head next to ~2.1M params of branch FFNs) -- same head shape across
+# all three fusion_mode cells, addressing the hypothesis that a narrow
+# head was bottlenecking all three equally. See
+# FunctionalGeneFFNFusionPredictor's docstring.
+# FFN-fusion ladder, concat cell (2026-09-12, J9a): 2 extra FFN residual
+# blocks on the functional branch (h_c, applied per-locus before per-patient
+# expansion) AND 2 extra FFN residual blocks on the gene-expression/
+# RNA-attention branch (applied on the patient-expanded state after J4's
+# single locus<-RNA cross-attention), then fused with plain concatenation --
+# the SAME mechanism J0/J4/J5/J7/J8 already use. This cell is the control
+# for j9b_ffn_fusion_film.yaml/j9c_ffn_fusion_two_stream_residual.yaml: same
+# extra branch capacity, only the final recombination mechanism varies
+# across the three. See
+# src/methylation_predictor/modeling/ablation.py's
+# FunctionalGeneFFNFusionPredictor docstring. Otherwise byte-for-byte
+# identical to j0_final.yaml/j4_efficient_single_attn.yaml: functional
+# encoder, mean head, RNA encoder, loss, optimizer, LR, batching, data
+# pools, seed, epochs, TRUE chr1 mode=final protocol.
+model: {functional_fusion_variant: ffn_fusion_concat}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  # Same cost class as J4 (1x cross-attention + 4 total FFN-residual
+  # blocks, here split 2 on the functional branch + 2 on the gene-expression
+  # branch instead of 4 sequential on one) -- reuse J0-J6's batching
+  # unchanged; revisit if VRAM pressure differs in practice.
+  array: {sample_size: 640, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, ffn-fusion, concat, chr1-final]

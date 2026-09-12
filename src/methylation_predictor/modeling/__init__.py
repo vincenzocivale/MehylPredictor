@@ -1,6 +1,11 @@
 """Paper-facing model API."""
 
-from .ablation import DepthResidualAblationPredictor, EfficientSingleAttentionPredictor, GatedResidualPredictor
+from .ablation import (
+    DepthResidualAblationPredictor,
+    EfficientSingleAttentionPredictor,
+    FunctionalGeneFFNFusionPredictor,
+    GatedResidualPredictor,
+)
 from .baselines import FunctionalBaselinePredictor
 from .reference import IterativeRetrievalPredictor, SingleRetrievalPredictor
 from .rna_comparison import RNAEncoderComparisonPredictor
@@ -13,4 +18,5 @@ __all__ = [
     "DepthResidualAblationPredictor",
     "EfficientSingleAttentionPredictor",
     "GatedResidualPredictor",
+    "FunctionalGeneFFNFusionPredictor",
 ]

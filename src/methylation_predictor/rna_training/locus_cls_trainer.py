@@ -45,6 +45,7 @@ from ..modeling import (
     DepthResidualAblationPredictor,
     EfficientSingleAttentionPredictor,
     FunctionalBaselinePredictor,
+    FunctionalGeneFFNFusionPredictor,
     GatedResidualPredictor,
     IterativeRetrievalPredictor,
     RNAEncoderComparisonPredictor,
@@ -323,6 +324,17 @@ class LocusCLSJointTrainer:
         self.gated_variants = {
             "ablation_depth1_gated_residual": {"n_blocks": 1},
         }
+        # ffn_fusion_*: J9 (2026-09-12), 2 extra FFN residual blocks on EACH
+        # branch (functional locus branch + gene-expression/RNA-attention
+        # branch) before fusion, testing the final recombination mechanism
+        # itself -- concat (baseline) vs. FiLM vs. two-stream residual
+        # mixing -- as the sole varying axis. See
+        # modeling/ablation.py's FunctionalGeneFFNFusionPredictor docstring.
+        self.ffn_fusion_variants = {
+            "ffn_fusion_concat": {"fusion_mode": "concat"},
+            "ffn_fusion_film": {"fusion_mode": "film"},
+            "ffn_fusion_two_stream_residual": {"fusion_mode": "two_stream_residual"},
+        }
         allowed_variants = {
             "mas_concat_v3_purecontext",
             "mas_concat_v4_iterative",
@@ -331,6 +343,7 @@ class LocusCLSJointTrainer:
             *self.ablation_variants,
             *self.efficient_variants,
             *self.gated_variants,
+            *self.ffn_fusion_variants,
         }
         if not self.functional_only or self.functional is None:
             raise ValueError(
@@ -426,6 +439,15 @@ class LocusCLSJointTrainer:
                 final_regressor_dropout=final_regressor_dropout,
                 use_mean_proxy=use_mean_branch,
                 **self.gated_variants[self.functional_fusion_variant],
+            ).to(self.device)
+        elif self.functional_fusion_variant in self.ffn_fusion_variants:
+            self.architecture_label = f"functional_concat_{self.functional_fusion_variant}"
+            self.model = FunctionalGeneFFNFusionPredictor(
+                self.rna.values.shape[1],
+                self.recipe.model,
+                final_regressor_dropout=final_regressor_dropout,
+                use_mean_proxy=use_mean_branch,
+                **self.ffn_fusion_variants[self.functional_fusion_variant],
             ).to(self.device)
         else:
             candidate_cls = (
