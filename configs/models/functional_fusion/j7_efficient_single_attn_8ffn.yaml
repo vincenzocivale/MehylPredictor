@@ -1,0 +1,61 @@
+extends: base.yaml
+# Efficient single-attention, 8-FFN candidate (2026-09-12, J7): single
+# locus<-RNA cross-attention + residual add, followed by 8 FFN-only
+# residual blocks (n_ffn_blocks=8, matching ablation_depth8_residual/J5's
+# depth) instead of J4's 4. Motivated by J5 (depth=8, full attention+FFN
+# per block) outperforming J1 (depth=4) -- if it's the FFN/residual depth
+# that matters and not the repeated cross-attention (the expensive op),
+# this should recover most of J5's gain while paying for cross-attention
+# only ONCE instead of 8x. See
+# src/methylation_predictor/modeling/ablation.py's module docstring
+# (EfficientSingleAttentionPredictor). Otherwise byte-for-byte identical
+# to j0_final.yaml/j1_iterative.yaml: functional encoder, mean head, RNA
+# encoder, final MLP, loss, optimizer, LR, batching, data pools, seed,
+# epochs, TRUE chr1 mode=final protocol.
+model: {functional_fusion_variant: efficient_single_attn_8ffn_residual}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  # array sample_size halved vs J0-J6 (640->320): the 8-FFN-block stack
+  # OOM'd on this shared GPU at 640 (needed ~18GB alone, another user's
+  # process was at 28.6GB at the time). array is the only pool NOT
+  # gradient-checkpointed (cpg_size < LOCUS_CHUNK=1024), so its batch is
+  # the direct lever on peak memory. Per the earlier finding on this same
+  # machine (j4_efficient_single_attn.yaml's batching comment), batch size
+  # here does not affect wall-clock (HDF5-I/O-bound, not compute-bound),
+  # so this trades protocol-matching with J0-J6 for VRAM headroom at
+  # ~zero expected speed cost -- treat cross-cell comparisons accordingly.
+  array: {sample_size: 320, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, efficient-single-attn, 8ffn, chr1-final]

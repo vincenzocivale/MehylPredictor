@@ -275,6 +275,22 @@ class LocusCLSJointTrainer:
         # modeling/ablation.py's module docstring.
         self.efficient_variants = {
             "efficient_single_attn_residual_ffn": {"n_ffn_blocks": 4},
+            # J7 (2026-09-12): ablation_depth8_residual (J5) is outperforming
+            # J1 (depth 4) -- if it's the FFN/residual depth that matters and
+            # not the repeated cross-attention (the expensive op this whole
+            # family is testing), 1x attention + 8 cheap FFN blocks should
+            # recover most of depth8's gain without paying for 8x
+            # cross-attention. See modeling/ablation.py's module docstring.
+            "efficient_single_attn_8ffn_residual": {"n_ffn_blocks": 8},
+            # J8 (2026-09-12): pushes the same efficient-depth question
+            # further -- does the FFN-depth benefit continue past 8, or
+            # plateau/reverse? A FULL 16-block (attn+ffn each) variant like
+            # ablation_depth8_residual's family would need ~72GB alone
+            # (measured VRAM-vs-n_blocks scaling in modeling/ablation.py's
+            # module docstring), impractical on a single consumer/prosumer
+            # GPU -- 1x attention + 16 cheap FFN blocks is the only
+            # feasible way to test this depth at all here.
+            "efficient_single_attn_16ffn_residual": {"n_ffn_blocks": 16},
         }
         # ablation_depth1_gated_residual: J6, Flamingo-style learned scalar
         # gate on J1's per-block residual add instead of an unconditional
