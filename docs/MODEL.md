@@ -187,3 +187,53 @@ configs/models/main.yaml
 
 Historical architecture-search implementations are not part of the
 paper-facing model API.
+
+## Status update (2026-09-12): the depth-ablation family is currently ahead of this reference, not settled history
+
+The line above was accurate when written but is now stale and should not be read as a closed
+question. `src/methylation_predictor/modeling/ablation.py` holds an active depth-ablation family
+(`EfficientSingleAttentionPredictor`, informally "J4"/"J7"/"J8"/"J9b"/"J10" in run IDs and W&B
+tags) built directly on `IterativeRetrievalPredictor`'s mechanism, and its leading arm currently
+**beats both `SingleRetrievalPredictor` and this doc's own reference number** on chr1's official
+double-OOD view (`val_cpg_x_val_sample`, MAS-PCC, seed 17, re-verified 2026-09-12 by reloading each
+checkpoint and recomputing all three official views rather than trusting older cached summaries,
+one of which turned out to be stale):
+
+| arm | retrieval FFN blocks | functional-branch FFN blocks | MAS-PCC (val_cpg_x_val_sample) |
+| --- | --- | --- | --- |
+| `cross_attention` reference (`results/reference/ours/01_final_chr1_model.yaml`, prior codebase generation) | n/a | n/a | 0.5838 |
+| J4 (`efficient_single_attn_residual_ffn`) | 4 | 0 | 0.5644 |
+| J7 (`efficient_single_attn_8ffn_residual`) | 8 | 0 | 0.5641 |
+| **J9b (`efficient_single_attn_8ffn_residual_functional8`)** | 8 | **8** | **0.5871** |
+
+Two things this table already tells us, both worth carrying into any future revision of this
+document:
+
+- **Retrieval-branch depth alone plateaus early.** J4 and J7 are statistically indistinguishable
+  (0.5644 vs 0.5641) despite doubling the FFN-only blocks after the single cross-attention call --
+  depth on the RNA-conditioned side stops helping past ~4 blocks at this data scale.
+- **The functional-annotation branch (`h_c`, from `track_embedding`+`dense_encoder`) had never been
+  given comparable depth until J9b**, and doing so is the single largest lever found in this family
+  so far (+4.1% relative over J7, and it also beats the older `cross_attention` reference).
+  `n_functional_ffn_blocks`/`deep_query` on `EfficientSingleAttentionPredictor` are the relevant
+  knobs; see that class's docstring for the isolation rationale (the cross-attention query stays
+  the shallow `h_c` unless `deep_query=True`, so the gain above is attributable to richer
+  downstream features, not a changed retrieval query).
+
+**This is not yet a promotion decision, only a documentation correction against stale claims.**
+Before treating J9b (or any deeper variant) as the new paper-facing reference:
+
+- J10 (`efficient_single_attn_4ffn_residual_functional4`, a symmetric 4/4-depth control) is running
+  as of this writing and has not been evaluated yet.
+- Every number above is a single seed (17); no confirmation-seed run exists for any arm in this
+  table.
+- A separate, concurrently-run FFN-fusion ladder (`configs/models/functional_fusion/j9a_ffn_fusion_concat.yaml`
+  through `j9e_ffn_fusion_two_stream_residual_4_4.yaml`, a different mechanism -- fusing RNA and
+  functional information rather than deepening them separately) exists on this same branch and has
+  not been cross-compared against the table above.
+- Everything here is chr1 only; per `docs/PAPER_EXPERIMENTS.md`, a paper-facing architecture choice
+  needs independent validation on the chr1-3 and ENCODE settings too, not a chr1-only decision
+  reused elsewhere.
+
+Do not edit the "reference implementation" language above to name a new winner until those four
+points are resolved -- update this section instead as each one closes.
