@@ -19,7 +19,7 @@
 #     > logs/functional_concat_final/j9b_orchestrator_stdout.log 2>&1 &
 #   disown
 set -euo pipefail
-source /home/vcivale/miniconda3/etc/profile.d/conda.sh
+source /home/vcivale/miniconda/etc/profile.d/conda.sh
 conda activate methyl-predictor
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -45,18 +45,19 @@ while true; do
   sleep 60
 done
 
+DATAROOT="${DATAROOT:-/dune/DATASETS/MethylPredictionData}"
 DATA_ARGS=(
-  --canonical-root /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1
-  --feature-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/features
-  --rna-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/rna
-  --registry /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
-  --prepared-root /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1
-  --cpg-targets-dir /home/vcivale/MethylPredictorData/derived/cpg_statistics/chr1
-  --functional-atlas /home/vcivale/MethylPredictorData/derived/ntv3_functional_peak_atlas_chr1_all_sources
-  --annotation-cache /home/vcivale/MethylPredictorData/derived/ntv3_probe_targets/chr1_annotation_features_all_sources
+  --canonical-root "$DATAROOT/datasets/methylprophet_repro_v1"
+  --feature-cache "$DATAROOT/derived/methylprophet_table5_tcga_chr1/features"
+  --rna-cache "$DATAROOT/derived/methylprophet_table5_tcga_chr1/rna"
+  --registry "$DATAROOT/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet"
+  --prepared-root "$DATAROOT/derived/methylprophet_table5_tcga_chr1"
+  --cpg-targets-dir "$DATAROOT/derived/cpg_statistics/chr1"
+  --functional-atlas "$DATAROOT/derived/ntv3_functional_peak_atlas_chr1_all_sources"
+  --annotation-cache "$DATAROOT/derived/ntv3_probe_targets/chr1_annotation_features_all_sources"
   --functional-only
 )
-OUTROOT="/home/vcivale/MethylPredictorData/experiments/runs"
+OUTROOT="$DATAROOT/experiments/runs"
 RUN_ID="functional-branch-depth-8ffn-final-chr1-seed17"
 RECIPE="configs/models/functional_fusion/j9b_functional_branch_depth.yaml"
 

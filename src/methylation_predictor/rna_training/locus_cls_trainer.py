@@ -304,6 +304,17 @@ class LocusCLSJointTrainer:
             "efficient_single_attn_8ffn_residual_functional8": {
                 "n_ffn_blocks": 8, "n_functional_ffn_blocks": 8, "deep_query": False,
             },
+            # J10 (2026-09-12): symmetric-depth control -- 4 FFN blocks on
+            # EACH branch (retrieval matching J4's depth exactly, functional
+            # matching it too) instead of J9b's asymmetric 8/8 (retrieval
+            # held at J7's depth). Answers a different question than J9b:
+            # not "does functional depth help on top of J7's already-deep
+            # retrieval", but "at matched, moderate depth on both branches,
+            # is functional-branch depth still worth it over J4 alone".
+            # deep_query stays False, same isolation rationale as J9b.
+            "efficient_single_attn_4ffn_residual_functional4": {
+                "n_ffn_blocks": 4, "n_functional_ffn_blocks": 4, "deep_query": False,
+            },
         }
         # ablation_depth1_gated_residual: J6, Flamingo-style learned scalar
         # gate on J1's per-block residual add instead of an unconditional
