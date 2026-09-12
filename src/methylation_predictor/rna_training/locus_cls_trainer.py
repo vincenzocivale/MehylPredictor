@@ -48,7 +48,7 @@ from ..modeling.factory import (
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
-from ..storage import FunctionalLocusCache, LocusFeatureCache, RNACache, SortedIndex
+from ..storage import FunctionalLocusCache, LocusPriorCache, RNACache, SortedIndex
 from ..tcga_canonical import TCGACanonicalBundle
 from .config import load_rna_recipe
 from .matched_chr1_data import load_compact_scope_sources, load_matched_chr1_protocol_and_sources
@@ -146,8 +146,8 @@ class LocusCLSJointTrainer:
         canonical_root: str | Path,
         scope: str,
         recipe_path: str | Path,
-        feature_cache: str | Path,
         rna_cache: str | Path,
+        prior_cache: str | Path | None = None,
         registry: str | Path,
         cpg_targets_dir: str | Path,
         output_root: str | Path,
@@ -228,13 +228,18 @@ class LocusCLSJointTrainer:
             self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
             self.protocol = scope_protocol(scope, self.bundle, canonical_root=self.root)
             self._sources = self.bundle.sources
-        self.features = LocusFeatureCache(feature_cache)
         self.rna = RNACache(rna_cache)
-        required = np.unique(np.concatenate([
-            self.protocol.array_train_cpg_idx, self.protocol.array_val_cpg_idx,
-            *self.protocol.auxiliary_cpg_idx.values(),
-        ]))
-        self.features.index.positions_of(required)
+        self.prior_cache = (
+            LocusPriorCache(prior_cache)
+            if prior_cache is not None
+            else None
+        )
+        if self.prior_cache is not None:
+            evaluation_cpgs = np.unique(np.concatenate([
+                self.protocol.array_train_cpg_idx,
+                self.protocol.array_val_cpg_idx,
+            ]))
+            self.prior_cache.index.positions_of(evaluation_cpgs)
         if (functional_atlas is None) != (annotation_cache is None):
             raise ValueError("--functional-atlas and --annotation-cache must be provided together")
         self.functional = (
@@ -308,8 +313,6 @@ class LocusCLSJointTrainer:
 
         self.inner_views = None
         self.pools = self._build_pools()
-        if track and not self.functional_only:
-            self.features.validate_training_split(self.pools[0].cpg_idx)
         self.store = RunStore.create(
             output_root, model="locus_cls_joint", train_scope=scope, seed=self.seed,
             learning_rate=cfg.learning_rate, scheduler=cfg.scheduler, epochs=self.epochs, run_id=run_id,
@@ -333,8 +336,6 @@ class LocusCLSJointTrainer:
         if compat["query_source"] != "ntv3":
             locus_resolved["query_source"] = compat["query_source"]
         resolved_config = {**self.recipe.raw, "training": asdict(cfg), "locus_cls": locus_resolved}
-        if not self.functional_only and self.features.regulatory_provenance is not None:
-            resolved_config["regulatory_feature_cache"] = self.features.regulatory_provenance
         if self.functional is not None:
             resolved_config["functional_locus"] = {
                 "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
@@ -534,18 +535,14 @@ class LocusCLSJointTrainer:
         finite_count = int(np.isfinite(beta_np).sum())
         pair_slots = int(beta_np.size)
         if finite_count == 0:
-            return source_i, sample_ids, cpg_ids, None, None, None, None, finite_count, pair_slots, time.perf_counter() - started
+            return source_i, sample_ids, cpg_ids, None, None, None, finite_count, pair_slots, time.perf_counter() - started
         rna = self._pinned(self.rna.rows(sample_ids, dtype=np.float16))
-        emb_np = (
-            np.empty((len(cpg_ids), 0), dtype=np.float16)
-            if self.functional_only else self.features.get(cpg_ids, embedding_dtype=np.float16)[0]
-        )
-        emb = self._pinned(emb_np)
         beta = self._pinned(beta_np)
-        functional = None
-        if self.functional is not None:
-            functional = {key: self._pinned(value) for key, value in self.functional.get(cpg_ids).items()}
-        return source_i, sample_ids, cpg_ids, rna, emb, beta, functional, finite_count, pair_slots, time.perf_counter() - started
+        functional = {
+            key: self._pinned(value)
+            for key, value in self.functional.get(cpg_ids).items()
+        }
+        return source_i, sample_ids, cpg_ids, rna, beta, functional, finite_count, pair_slots, time.perf_counter() - started
 
     def _mean_aux_loss_raw_beta(self, cpg_ids: np.ndarray, mu_hat: torch.Tensor) -> torch.Tensor:
         """Raw-probability-space counterpart of ``_mean_aux_loss`` (which is
@@ -617,7 +614,6 @@ class LocusCLSJointTrainer:
         sample_ids,
         cpg_ids,
         rna_cpu,
-        emb_cpu,
         beta_cpu,
         functional_cpu,
         finite_count,
@@ -633,9 +629,6 @@ class LocusCLSJointTrainer:
         rna_x = rna_cpu.to(
             self.device, non_blocking=True
         ).float()
-        emb = emb_cpu.to(
-            self.device, non_blocking=True
-        ).float()
         beta = beta_cpu.to(
             self.device, non_blocking=True
         )
@@ -646,7 +639,6 @@ class LocusCLSJointTrainer:
         with self._autocast():
             out = self.train_model(
                 rna_x,
-                emb,
                 **functional_kwargs,
             )
             loss_cfg = loss_config_for_source(
@@ -700,7 +692,11 @@ class LocusCLSJointTrainer:
         self.model.eval()
         source = self._sources["array"]
         rows = source.rows_of_samples(sample_ids)
-        metrics = ArrayMomentMetrics(len(sample_ids), len(cpg_ids))
+        metrics = ArrayMomentMetrics(
+            len(sample_ids),
+            len(cpg_ids),
+            track_prior=self.prior_cache is not None,
+        )
         for s0 in range(0, len(sample_ids), sample_chunk):
             s1 = min(s0 + sample_chunk, len(sample_ids))
             local_s = sample_ids[s0:s1]
@@ -708,26 +704,29 @@ class LocusCLSJointTrainer:
             for c0 in range(0, len(cpg_ids), cpg_chunk):
                 c1 = min(c0 + cpg_chunk, len(cpg_ids))
                 local_c = cpg_ids[c0:c1]
-                if self.functional_only:
-                    feature_rows = self.features.index.positions_of(local_c)
-                    emb_np = np.empty((len(local_c), 0), dtype=np.float32)
-                    prior_np = np.asarray(self.features.prior[feature_rows], dtype=np.float32)
-                else:
-                    emb_np, prior_np, _ = self.features.get(local_c)
-                emb = torch.from_numpy(emb_np).to(self.device)
-                functional_cpu = None
-                if self.functional is not None:
-                    functional_cpu = {
-                        key: torch.from_numpy(np.ascontiguousarray(value))
-                        for key, value in self.functional.get(local_c).items()
-                    }
+                prior_np = (
+                    self.prior_cache.get(local_c)
+                    if self.prior_cache is not None
+                    else None
+                )
+                functional_cpu = {
+                    key: torch.from_numpy(np.ascontiguousarray(value))
+                    for key, value in self.functional.get(local_c).items()
+                }
                 with self._autocast():
                     pred = self.model(
-                        rna_x, emb, **self._position_kwargs(local_c),
+                        rna_x,
+                        **self._position_kwargs(local_c),
                         **self._functional_kwargs(functional_cpu),
                     )["beta"]
                 target = source.block(rows[s0:s1], local_c)
-                metrics.add(s0, c0, target, pred.float().cpu().numpy(), prior_np)
+                metrics.add(
+                    s0,
+                    c0,
+                    target,
+                    pred.float().cpu().numpy(),
+                    prior_np,
+                )
         self.model.train()
         return metrics.finalize()
 
@@ -780,8 +779,6 @@ class LocusCLSJointTrainer:
                 "torch_cuda": torch.cuda.get_rng_state_all(),
             },
         }
-        if not self.functional_only and self.features.regulatory_provenance is not None:
-            payload["regulatory_feature_cache"] = self.features.regulatory_provenance
         tmp = Path(str(path) + ".tmp")
         torch.save(payload, tmp)
         os.replace(tmp, path)
@@ -887,7 +884,7 @@ class LocusCLSJointTrainer:
                 ):
                     data_wait_seconds += wait_seconds
                     (
-                        source_i, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu,
+                        source_i, sample_ids, cpg_ids, rna_cpu, beta_cpu,
                         functional_cpu, finite_count, batch_pair_slots, prepare_seconds,
                     ) = block
                     cpu_prepare_seconds += prepare_seconds
@@ -895,7 +892,7 @@ class LocusCLSJointTrainer:
                     pair_slots += batch_pair_slots
                     pool = self.pools[source_i]
                     result = self._step(
-                        pool, sample_ids, cpg_ids, rna_cpu, emb_cpu, beta_cpu, functional_cpu, finite_count,
+                        pool, sample_ids, cpg_ids, rna_cpu, beta_cpu, functional_cpu, finite_count,
                     )
                     if result is None:
                         continue
@@ -1029,8 +1026,8 @@ def evaluate_official_split(
     checkpoint: str | Path,
     canonical_root: str | Path,
     recipe_path: str | Path,
-    feature_cache: str | Path,
     rna_cache: str | Path,
+    prior_cache: str | Path,
     registry: str | Path,
     matched_chr1_root: str | Path | None,
     cpg_targets_dir: str | Path,
@@ -1051,9 +1048,10 @@ def evaluate_official_split(
     """
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     if ckpt.get("regulatory_feature_cache") is not None:
-        supplied_cache = LocusFeatureCache(feature_cache)
-        if supplied_cache.regulatory_provenance != ckpt["regulatory_feature_cache"]:
-            raise ValueError("evaluation regulatory feature cache differs from the trained checkpoint")
+        raise ValueError(
+            "legacy non-functional checkpoints with regulatory feature "
+            "provenance are not supported by the paper-facing evaluator"
+        )
     lc = ckpt.get("locus_cls") or {}
     checkpoint_functional = lc.get("functional_locus")
     if checkpoint_functional is not None and (functional_atlas is None or annotation_cache is None):
@@ -1081,7 +1079,7 @@ def evaluate_official_split(
     scratch_root = Path(output).parent / ".eval_runs"
     trainer = LocusCLSJointTrainer(
         canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
-        feature_cache=feature_cache, rna_cache=rna_cache, registry=registry,
+        rna_cache=rna_cache, prior_cache=prior_cache, registry=registry,
         cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
         output_root=scratch_root, mode="final",
         run_id=f"eval-{Path(checkpoint).stem}-{os.getpid()}",

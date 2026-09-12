@@ -13,8 +13,9 @@ from .locus_cls_trainer import LocusCLSJointTrainer
 
 
 def run_search(
-    *, canonical_root, scope, recipe_path, feature_cache, rna_cache, registry, cpg_targets_dir,
-    output_root, learning_rates, schedulers, max_epochs, matched_chr1_root=None, seed=17, search_id=None,
+    *, canonical_root, scope, recipe_path, rna_cache, registry, cpg_targets_dir,
+    functional_atlas, annotation_cache, output_root, learning_rates, schedulers, max_epochs,
+    prior_cache=None, bigwig_cache=None, matched_chr1_root=None, seed=17, search_id=None,
 ):
     store = SearchStore.create(output_root, model="rna_methylation", scope=scope, search_id=search_id)
     write_yaml(store.path / "search_config.yaml", {
@@ -27,8 +28,10 @@ def run_search(
         started = time.time()
         trainer = LocusCLSJointTrainer(
             canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
-            feature_cache=feature_cache, rna_cache=rna_cache, registry=registry,
+            rna_cache=rna_cache, prior_cache=prior_cache, registry=registry,
             cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
+            functional_atlas=functional_atlas, annotation_cache=annotation_cache,
+            bigwig_cache=bigwig_cache, functional_only=True,
             output_root=store.path / "runs", mode="development", run_id=candidate_id,
             overrides={"learning_rate": float(lr), "scheduler": scheduler, "epochs": int(max_epochs), "seed": int(seed)},
             track=False,

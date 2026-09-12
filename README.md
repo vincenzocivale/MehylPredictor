@@ -88,8 +88,7 @@ beta MSE + 0.15 * locus-PCC loss + 0.15 * mean-proxy loss
 
 ## Data inputs
 
-RNA training currently consumes the canonical TCGA data preparation together
-with:
+RNA training consumes the canonical TCGA data preparation together with:
 
 ```text
 --functional-atlas   sparse ENCODE regulatory-track atlas
@@ -98,10 +97,12 @@ with:
 --cpg-targets-dir    training-locus mean targets for the auxiliary mean proxy
 ```
 
-The current trainer still accepts some legacy cache arguments for compatibility
-with benchmark/evaluation infrastructure.  Those legacy arguments are not part
-of the J0/J1 locus representation and will be removed as the data/trainer
-refactor proceeds.
+RNA training no longer loads the historical 1,536-D genomic/FM feature cache.
+`--prior-cache` is optional during training and is used only to report
+`prior_mse` / `skill_vs_prior`; it contains just `cpg_idx.npy` and `prior.npy`.
+A legacy feature-cache directory is accepted as a prior-cache location because
+those two files are present there, but its embedding and sigma arrays are never
+opened by the RNA workflow.
 
 The sparse functional input is provided by:
 

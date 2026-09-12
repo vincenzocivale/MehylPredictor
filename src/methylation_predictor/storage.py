@@ -63,6 +63,35 @@ class RNACache:
         rows = self.index.positions_of(np.asarray(sample_idx, np.int64))
         return np.asarray(self.values[rows], dtype=dtype)
 
+class LocusPriorCache:
+    """Minimal locus prior used only for evaluation metrics.
+
+    Contract:
+      * ``cpg_idx.npy`` global CpG IDs
+      * ``prior.npy`` beta-space locus prior in (0, 1)
+
+    A historical feature-cache directory is valid because it contains these
+    two files, but RNA training/evaluation never opens ``embeddings.f16.npy``
+    or ``sigma.npy`` through this class.
+    """
+
+    def __init__(self, root: str | Path):
+        root = Path(root)
+        self.root = root
+        self.ids = np.load(root / "cpg_idx.npy", mmap_mode="r")
+        self.prior = np.load(root / "prior.npy", mmap_mode="r")
+        if self.prior.shape != (len(self.ids),):
+            raise ValueError("prior.npy does not align with cpg_idx.npy")
+        if not np.isfinite(self.prior).all():
+            raise ValueError("prior cache contains non-finite values")
+        if np.any(self.prior <= 0) or np.any(self.prior >= 1):
+            raise ValueError("prior cache requires prior values in (0, 1)")
+        self.index = SortedIndex(self.ids, "locus prior cache")
+
+    def get(self, cpg_idx: np.ndarray) -> np.ndarray:
+        rows = self.index.positions_of(np.asarray(cpg_idx, np.int64))
+        return np.asarray(self.prior[rows], dtype=np.float32)
+
 
 class LocusFeatureCache:
     """Frozen CpG embeddings plus prior mean/sigma used by the RNA model.

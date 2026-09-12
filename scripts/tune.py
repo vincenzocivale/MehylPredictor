@@ -17,7 +17,7 @@ def _parse_strings(text): return [x.strip() for x in text.split(",") if x.strip(
 
 def _rna(args):
     from methylation_predictor.rna_training.tuning import run_search
-    return run_search(canonical_root=args.canonical_root,scope=args.scope,recipe_path=args.recipe,feature_cache=args.feature_cache,rna_cache=args.rna_cache,registry=args.registry,cpg_targets_dir=args.cpg_targets_dir,matched_chr1_root=args.prepared_root,output_root=args.output_root,learning_rates=_parse_floats(args.lrs),schedulers=_parse_strings(args.schedulers),max_epochs=args.max_epochs,seed=args.seed,search_id=args.search_id)
+    return run_search(canonical_root=args.canonical_root,scope=args.scope,recipe_path=args.recipe,rna_cache=args.rna_cache,prior_cache=args.prior_cache,registry=args.registry,cpg_targets_dir=args.cpg_targets_dir,functional_atlas=args.functional_atlas,annotation_cache=args.annotation_cache,bigwig_cache=args.bigwig_cache,matched_chr1_root=args.prepared_root,output_root=args.output_root,learning_rates=_parse_floats(args.lrs),schedulers=_parse_strings(args.schedulers),max_epochs=args.max_epochs,seed=args.seed,search_id=args.search_id)
 
 
 def _stats(args):
@@ -34,9 +34,9 @@ def _stats(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--registry",required=True); p.add_argument("--output-root",required=True); p.add_argument("--lrs",required=True,help="comma-separated learning rates"); p.add_argument("--schedulers",default="constant",help="comma-separated scheduler names"); p.add_argument("--max-epochs",type=int,required=True); p.add_argument("--seed",type=int,default=17); p.add_argument("--search-id",default=None); p.add_argument("--canonical-root"); p.add_argument("--feature-cache"); p.add_argument("--rna-cache"); p.add_argument("--cpg-targets-dir",help="RNA tuning: cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--prepared-root",help="RNA tuning: matched chr1 data root; omit for canonical chr123/genomewide"); p.add_argument("--targets"); p.add_argument("--embeddings"); args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--model",choices=["rna_methylation","cpg_statistics"],required=True); p.add_argument("--scope",choices=["chr1","chr123","genomewide"],required=True); p.add_argument("--recipe",required=True); p.add_argument("--registry",required=True); p.add_argument("--output-root",required=True); p.add_argument("--lrs",required=True,help="comma-separated learning rates"); p.add_argument("--schedulers",default="constant",help="comma-separated scheduler names"); p.add_argument("--max-epochs",type=int,required=True); p.add_argument("--seed",type=int,default=17); p.add_argument("--search-id",default=None); p.add_argument("--canonical-root"); p.add_argument("--prior-cache"); p.add_argument("--rna-cache"); p.add_argument("--functional-atlas"); p.add_argument("--annotation-cache"); p.add_argument("--bigwig-cache"); p.add_argument("--cpg-targets-dir",help="RNA tuning: cpg_statistics targets dir for the mean-branch proxy task"); p.add_argument("--prepared-root",help="RNA tuning: matched chr1 data root; omit for canonical chr123/genomewide"); p.add_argument("--targets"); p.add_argument("--embeddings"); args=p.parse_args()
     if args.model=="rna_methylation":
-        for name in ("canonical_root","feature_cache","rna_cache","cpg_targets_dir"):
+        for name in ("canonical_root","rna_cache","cpg_targets_dir","functional_atlas","annotation_cache"):
             if getattr(args,name) is None: p.error(f"--{name.replace('_','-')} is required for RNA tuning")
         result=_rna(args)
     else:

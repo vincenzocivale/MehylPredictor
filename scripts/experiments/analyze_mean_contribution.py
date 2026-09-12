@@ -237,8 +237,8 @@ def checkpoint_mode(args) -> int:
         canonical_root=args.canonical_root,
         scope=args.scope,
         recipe_path=args.recipe,
-        feature_cache=args.feature_cache,
         rna_cache=args.rna_cache,
+        prior_cache=args.prior_cache,
         registry=args.registry,
         cpg_targets_dir=args.cpg_targets_dir,
         matched_chr1_root=args.prepared_root,
@@ -403,7 +403,7 @@ def main() -> int:
     ck.add_argument("--scope", default="chr1", choices=["chr1", "chr123"])
     ck.add_argument("--canonical-root", required=True)
     ck.add_argument("--prepared-root", required=True)
-    ck.add_argument("--feature-cache", required=True)
+    ck.add_argument("--prior-cache", required=True)
     ck.add_argument("--rna-cache", required=True)
     ck.add_argument("--registry", required=True)
     ck.add_argument("--cpg-targets-dir", required=True)
