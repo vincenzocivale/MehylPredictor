@@ -1,0 +1,125 @@
+schema_version: 1
+frozen_at_commit: ac49c76f5dbb20678d709c68f9597e6f2b484593
+policy:
+  paper_facing: Retained for the paper/reproducibility surface.
+  support: Infrastructure required by the retained workflows.
+  compatibility: Temporary migration aliases; do not present as the primary public interface.
+  protected_research: Architecture-selection experiments. Keep byte-stable until the final architecture
+    decision is explicitly locked; then promote the selected arm and delete the rest from the paper branch.
+  run_storage_compatibility_key: locus_cls_joint
+models:
+  paper_facing:
+  - path: configs/models/main.yaml
+    sha256: 58149e0767de5e21fe205ea5fcc073c3f1ec2899e0361af4ad8a3413823326de
+  - path: configs/models/baselines/baseline_cpg_prior.yaml
+    sha256: 1ae20000d4231839328a0d1161e52c24e81d1d8e44a9f826f19b56bf1c30ae8e
+  - path: configs/models/baselines/functional_global_rna_shift.yaml
+    sha256: 3748c62adfc2f2cd57fe96b6b331388a1ee6deffc5d7280cb0493b4407de67ad
+  - path: configs/models/baselines/functional_mlp_rna_cpg.yaml
+    sha256: fa73d60101113300d9088c3fcdaa711d6717bcbb6b4aacce51ef9490e8d94a3a
+  - path: configs/models/baselines/functional_bilinear_rna_cpg.yaml
+    sha256: 6652f2aa431c014eacc59533063d98f0e97d216e2592b108616a83caacb1dd73
+  - path: configs/models/mean_contribution/no_mean_supervision.yaml
+    sha256: 20b5b12f1fdd219b49a45176b247a279838b99a478b4180c59a20e56b8bf2991
+  - path: configs/models/mean_contribution/no_mean_branch.yaml
+    sha256: d67acbb4c6151fb88b7fc4ea007dbf67ffc15ed584e9a92bdb2a9e855dcb0448
+  - path: configs/models/rna_encoder_comparison/functional_ours_program_tokens.yaml
+    sha256: fc137821f6668d63968f244fe58464b05ac3e57bb5ae53898bc6ca70186e8530
+  - path: configs/models/rna_encoder_comparison/functional_bottleneck_mlp.yaml
+    sha256: f79be5b61402fb021ef0d672d47b9e21858a9ad1c766ca9bec9b0e4b21e209a3
+  - path: configs/models/rna_encoder_comparison/functional_gene_pathway.yaml
+    sha256: e904e3d5bc482c49ca2170b5d8c6e36856505fd291143c4393546e5ed08ddc8c
+  - path: configs/models/rna_encoder_comparison/functional_bulkformer_147m.yaml
+    sha256: ad6c3a5fb8daf7e089dfe0d7adb09d1d6248460d6d27d642c5f2f91f869abc09
+  - path: configs/models/rna_encoder_comparison/functional_bulkrnabert.yaml
+    sha256: 326760849e3075f8ccf44060207cb5ad2d295770f8b27e73c549e22f8aef0f85
+  support:
+  - path: configs/models/cpg_statistics.yaml
+    sha256: 0d769bd204b200ef827afe4754601f7f4c2cbab2a98df695129f99165227141c
+  compatibility:
+  - path: configs/models/functional_fusion/base.yaml
+    sha256: 19e22027118e6aba2b5243375294af5c0d6507ee0f7b3125424aaf508389bae7
+  - path: configs/models/functional_fusion/j0_final.yaml
+    sha256: f03c7edeab62e6adba94d65951ed526166ddc2241e96570c1d4211265cb54a80
+  protected_research:
+  - path: configs/models/functional_fusion/j1_iterative.yaml
+    sha256: 01ca0f8b693b905d703278309477d288e3e0626c8f42bf53e7e0d75a55344a82
+  - path: configs/models/functional_fusion/j2_ablation_depth1_residual.yaml
+    sha256: 7cd8f53d8dcbff44b660f2e63f2f999ef1af2c12453da4393077b3713c986707
+  - path: configs/models/functional_fusion/j3_ablation_depth4_noresidual.yaml
+    sha256: 1b1318466383bbc674aa3c5c89ee92b4b6c31ff66fbe78bcdc3953cce6bf433f
+  - path: configs/models/functional_fusion/j4_efficient_single_attn.yaml
+    sha256: c69d7bcdfb3a05953d04173242fd01d205a16ad6f05f8d0d49f589a5731a83d4
+  - path: configs/models/functional_fusion/j5_ablation_depth8_residual.yaml
+    sha256: 6d00dc735ed8e2af4e903c140353f9e5cf43d18721ce847d0724932c5925c655
+  - path: configs/models/functional_fusion/j5_ablation_depth10_residual.yaml
+    sha256: 3c7fa93c7753786c2c1a3d0763ff9bbff9cbd4b9998cf55545d178f0aeca148d
+  - path: configs/models/functional_fusion/j5_ablation_depth12_residual.yaml
+    sha256: bdfe23b254b8c8a820efb3eb169c6807419e83614e40f837c571e54ffe2e3995
+  - path: configs/models/functional_fusion/j6_gated_residual.yaml
+    sha256: f24d95e5d21d73fadcc8849748cc3ae768652f328cc85f94c605abd80fe050eb
+  - path: configs/models/functional_fusion/j7_efficient_single_attn_8ffn.yaml
+    sha256: 644a6d20925faa3a8ce081c8625a1f3ff6d2ad94c975471f067422d92ad83499
+  - path: configs/models/functional_fusion/j9a_ffn_fusion_concat.yaml
+    sha256: c9e28692e831cb4eb7cb31617aa263b0fff8e65151a2515bd2881c9a32a40934
+  - path: configs/models/functional_fusion/j9b_ffn_fusion_film.yaml
+    sha256: 11d44c756c6b1f16e8ecba38782873bb7b68c77c573ed299996e1a531f87ade3
+  - path: configs/models/functional_fusion/j9b_functional_branch_depth.yaml
+    sha256: e82ea254f2afadb666ea4555a2cd8505103d664e16fac362e95c2c517906c255
+  - path: configs/models/functional_fusion/j9c_ffn_fusion_two_stream_residual.yaml
+    sha256: c7020f0a5c786e314be2c8df942d5a53fe7302bd4d478bf672228f9588804a8c
+  - path: configs/models/functional_fusion/j9d_ffn_fusion_two_stream_residual_8_8.yaml
+    sha256: a8f1c07180a16ac94b784b0324dbb5fe7177c63330fac59066c6b49ebe72af1f
+  - path: configs/models/functional_fusion/j9e_ffn_fusion_two_stream_residual_4_4.yaml
+    sha256: 79710bff61f9ef77ecb519660965c070b5f8d6471e713a850f32f874f2e21f4e
+  - path: configs/models/functional_fusion/j10_symmetric_4ffn_both_branches.yaml
+    sha256: 0668420029db3c97539fb824762029193dbc1bdb23af06aa2f61f4f4273be610
+experiment_scripts:
+  paper_facing:
+  - path: scripts/experiments/analyze_mean_contribution.py
+    sha256: 2a0828ce141d2b0c06660cfa21ae335d110fa081113d2c5cd9d495819e56c94b
+  - path: scripts/experiments/collect_mean_contribution.py
+    sha256: 5eff5a6a63fb4afad7af59cd70ca388f101a46cc2da5af0799b6f6241c9fb3fd
+  - path: scripts/experiments/collect_rna_encoder_comparison.py
+    sha256: 93a08b80ea5adeb220bfd6f439cb6eeb12f54797b8c71b977734c02e9eae07c0
+  - path: scripts/experiments/functional_baseline_suite.py
+    sha256: c154fa1dcc6e75f6852195997c4a303553cd2f646df094a80d12759ce37c578a
+  - path: scripts/experiments/functional_rna_encoder_suite.py
+    sha256: 0c7de8b1ca8a0971bf1d042fecb9533bee4e0731de88bbbfeb85200dac1d4dde
+  - path: scripts/experiments/mean_contribution_suite.py
+    sha256: b9e0f3571c9e7ef5d103fdedbb8df0ee8fa40c1feb5a4dd1162c71fa40ee88b0
+  - path: scripts/experiments/run_mean_contribution.py
+    sha256: 12af239e5ba6ed2842b33617e74c69abc6c035237c20f1dc7ea6c3f89dab87e6
+  - path: scripts/experiments/run_rna_encoder_comparison.py
+    sha256: e223d261271bc098c8b21531fef7aa3a893e417fa20a32364c092035f2770faa
+  protected_research:
+  - path: scripts/experiments/run_depth_residual_ablation.sh
+    sha256: 024332d87b4320135267810f6668a0baf1d00885dea5118cd3500f4102c3132d
+  - path: scripts/experiments/run_efficient_8ffn_ablation.sh
+    sha256: 4b02d129d401b024bd142a3056942bf832fa0e50984cb94e0bcfae836d10c323
+  - path: scripts/experiments/run_efficient_single_attn_ablation.sh
+    sha256: 3cc01a5eb6103dca310602f2868b19871da7228a849ef45b8a770152e41c1e88
+  - path: scripts/experiments/run_ffn_fusion_concat_godzilla.sh
+    sha256: 02dbf2f058dd67729d6149c2850d8e4aab0894d25a1627209723bac33dd236a2
+  - path: scripts/experiments/run_ffn_fusion_ladder.sh
+    sha256: bda5ff899688e62cbd1e3941077432b8a9acb918a50811f16b402bdc3b8df6f1
+  - path: scripts/experiments/run_functional_branch_depth_ablation.sh
+    sha256: eef9227eefd86c87d05a45b4d4a49c11637adccb276508189c94b80746b8abd1
+  - path: scripts/experiments/run_gated_residual_ablation.sh
+    sha256: 5c89eaeec7457ff29e234574c72cf5d7e35a3f90671205907c30cab7fe6c4f2c
+  - path: scripts/experiments/run_symmetric_4ffn_ablation.sh
+    sha256: e185580bf71db1a329f592b2a5264db3556f85e70f5989015e581a49cfd13521
+  - path: scripts/experiments/wait_and_evaluate_j4.sh
+    sha256: afc88881755448cdaa1df0e47b1e5f41a29daee0931b725c42033f8a1d973ac8
+  - path: scripts/experiments/wait_and_evaluate_j6.sh
+    sha256: 23dd211e0ed5265c5f781eae2344f551cc913787e008cf859106d48ec7bd49be
+  - path: scripts/experiments/wait_and_evaluate_j7.sh
+    sha256: 1ae72068ac2426bd399c949240d963a46b90c8ae5a71477c9e59b82bb95e0a8a
+  - path: scripts/experiments/wait_and_run_iterative_retrieval.sh
+    sha256: 50053f6555462b70065424abf1ff0b64b9ccd79f83dff4dd0582fec188cee7c9
+known_reproducibility_gaps:
+- id: functional_baseline_runner
+  status: open
+  detail: The functional baseline registry is retained, but there is no dedicated run/collect wrapper
+    alongside the mean-proxy and RNA-encoder studies. Add one in the reproducibility phase rather than
+    reviving historical baseline machinery.

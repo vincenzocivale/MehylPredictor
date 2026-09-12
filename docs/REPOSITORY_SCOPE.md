@@ -250,3 +250,17 @@ The live RNA implementation now resides in `rna_training/rna_methylation_trainer
 The public evaluator name is `evaluate_rna_checkpoint`; the historical `evaluate_official_split` name remains available only through compatibility imports.
 
 Operational docs and agent guidance now describe the functional-locus runtime that actually exists. The historical `locus_cls_joint` run/checkpoint identifier remains unchanged for resume/evaluation compatibility.
+
+## Phase 5a: experiment surface inventory and freeze
+
+All `configs/models/**/*.yaml` recipes and all current
+`scripts/experiments/*.{py,sh}` files are now classified in
+`configs/experiment_surface.yaml` as paper-facing, support, compatibility, or
+protected research.
+
+J1/J2-J10 remain protected and content-hashed until the final architecture
+selection is locked. They are not part of the public paper model surface.
+`configs/models/main.yaml` remains the sole primary reference recipe.
+
+No architecture, loss, batching, optimizer, run ID, checkpoint, or result
+semantics changed in this phase.

@@ -197,7 +197,10 @@ final repository boundary is documented in
 
 Current priorities after the functional/core cutover are:
 
-1. simplify historical trainer/CLI naming and remove redundant functional-mode flags;
-2. freeze the active architecture-experiment surface;
+1. lock the final architecture decision from the protected J-series experiments;
+2. prune research-only recipes/config fields after that decision;
 3. consolidate data preparation and paper-table reproduction commands;
 4. perform the final repository and reproducibility audit.
+
+The frozen experiment inventory is documented in
+[`docs/EXPERIMENT_SURFACE.md`](docs/EXPERIMENT_SURFACE.md).
