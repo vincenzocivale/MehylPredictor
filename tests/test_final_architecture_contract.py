@@ -58,3 +58,23 @@ def test_main_keeps_selected_training_contract():
     assert recipe.raw["batching"]["array"] == {"sample_size": 320, "cpg_size": 640}
     assert recipe.raw["batching"]["epic"] == {"sample_size": 160, "cpg_size": 5120}
     assert recipe.raw["batching"]["wgbs"] == {"sample_size": 32, "cpg_size": 20480}
+
+
+def test_final_factory_materializes_two_head_ffns():
+    from methylation_predictor.modeling.factory import build_functional_predictor
+
+    recipe = load_rna_recipe(MAIN)
+    model, _ = build_functional_predictor(
+        variant=FINAL,
+        input_dim=48,
+        config=recipe.model,
+        final_regressor_dropout=recipe.raw["locus_cls"]["final_regressor_dropout"],
+        use_mean_proxy=recipe.raw["locus_cls"]["use_mean_branch"],
+    )
+
+    assert model.__class__.__name__ == "EfficientSingleAttentionPredictor"
+    assert model.n_ffn_blocks == 8
+    assert model.n_functional_ffn_blocks == 8
+    assert model.deep_query is False
+    assert model.n_head_ffn_blocks == 2
+    assert len(model.head_ffn) == 2

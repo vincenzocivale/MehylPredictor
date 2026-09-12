@@ -117,3 +117,41 @@ def test_rejects_invalid_n_ffn_blocks():
     import pytest
     with pytest.raises(ValueError):
         EfficientSingleAttentionPredictor(48, _config(), n_ffn_blocks=0)
+
+
+def test_head2_is_materialized_and_used():
+    model = EfficientSingleAttentionPredictor(
+        48,
+        _config(),
+        n_ffn_blocks=8,
+        n_functional_ffn_blocks=8,
+        deep_query=False,
+        n_head_ffn_blocks=2,
+        final_regressor_dropout=0.15,
+    ).train()
+
+    assert model.n_head_ffn_blocks == 2
+    assert len(model.head_ffn) == 2
+
+    out = model(torch.randn(3, 48), **_functional_inputs())
+    target = torch.rand_like(out["beta"])
+    model.zero_grad(set_to_none=True)
+    ((out["beta"] - target) ** 2).mean().backward()
+
+    for block in model.head_ffn:
+        assert any(
+            p.grad is not None and torch.any(p.grad != 0)
+            for p in block.parameters()
+        )
+
+
+def test_zero_head_blocks_preserve_legacy_path():
+    model = EfficientSingleAttentionPredictor(
+        48,
+        _config(),
+        n_ffn_blocks=4,
+        n_head_ffn_blocks=0,
+    )
+    assert model.n_head_ffn_blocks == 0
+    assert len(model.head_ffn) == 0
+    assert not any(k.startswith("head_ffn.") for k in model.state_dict())
