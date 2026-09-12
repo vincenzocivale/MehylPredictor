@@ -1,0 +1,58 @@
+extends: base.yaml
+# FFN-fusion ladder, two-stream residual, DEEPER branches (2026-09-12, J9d):
+# candidate "definitive model" scale-up of j9c_ffn_fusion_two_stream_residual.yaml
+# -- same single cross-attention + two_stream_residual fusion + 2-block
+# post-fusion head, but n_functional_ffn_blocks/n_gene_expr_ffn_blocks raised
+# from the ladder's 2/2 to 8/8 (heavier candidate; see the paired _4_4 recipe
+# for the lighter one). fusion_dropout=0.1 added given the extra branch
+# capacity -- see FunctionalGeneFFNFusionPredictor's docstring and
+# LocusCLSJointTrainer.ffn_fusion_variants's "ffn_fusion_two_stream_residual_8_8"
+# entry for the full rationale. Otherwise byte-for-byte identical to
+# j9c_ffn_fusion_two_stream_residual.yaml.
+model: {functional_fusion_variant: ffn_fusion_two_stream_residual_8_8}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  # Ladder cells (2/2 depth) use the full protocol batch (640/160/32) since
+  # the fusion mechanism itself is cheap. At 8/8 branch depth the
+  # gene-expression branch (batch-expanded, like J4/J7's FFN stack) is the
+  # dominant cost -- this machine's own J4-family measurements (n_ffn_blocks
+  # scaling roughly linear in VRAM) suggest full batch 640 will not fit an
+  # 8-block gene-expression branch plus an 8-block functional branch plus a
+  # 2-block head on this 40GB card. Placeholder cut pending this machine's
+  # own smoke test -- see run_j9d_8_8_local.sh, which tunes this before the
+  # full 80-epoch launch.
+  array: {sample_size: 320, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, ffn-fusion, two-stream-residual, depth8, chr1-final]

@@ -613,6 +613,15 @@ class FunctionalGeneFFNFusionPredictor(nn.Module):
 
     Everything else (functional encoder, mean head, RNA encoder, chunking)
     is identical to J4/J0.
+
+    ``fusion_dropout`` (2026-09-12, default 0.0 = no-op, unchanged from the
+    2/2-depth ladder cells): dropout on the fusion-mechanism's own bare
+    ``nn.Linear`` projections (``fusion_proj``/``film_generator``/
+    ``gene_to_functional``+``functional_to_gene``), which unlike the branch
+    FFN blocks have no dropout of their own. Meant for deeper branch-depth
+    follow-ups (see ``ffn_fusion_two_stream_residual_8_8``/``_4_4`` in
+    ``LocusCLSJointTrainer.ffn_fusion_variants``) where the extra branch
+    capacity makes overfitting at the fusion point more of a risk.
     """
 
     N_TRACKS = 4165
@@ -630,6 +639,7 @@ class FunctionalGeneFFNFusionPredictor(nn.Module):
         n_functional_ffn_blocks: int = 2,
         n_gene_expr_ffn_blocks: int = 2,
         n_head_ffn_blocks: int = 2,
+        fusion_dropout: float = 0.0,
         final_regressor_dropout: float = 0.15,
         use_mean_proxy: bool = True,
     ):
@@ -677,6 +687,16 @@ class FunctionalGeneFFNFusionPredictor(nn.Module):
         self.r_pc_concat_norm = nn.LayerNorm(self.WIDTH)
         self.final_regressor_dropout = float(final_regressor_dropout)
 
+        # 2026-09-12: unlike the branch FFN blocks (FeedForwardResidual bakes
+        # its own internal dropout in), fusion_proj/film_generator/
+        # gene_to_functional/functional_to_gene are bare nn.Linear with no
+        # dropout of their own. Default 0.0 (a no-op -- nn.Dropout(0.0) is
+        # the identity) so the existing 2/2-depth ladder cells (concat/film/
+        # two_stream_residual, in flight on other machines) are byte-for-byte
+        # unaffected; deeper follow-up variants can opt in via
+        # fusion_dropout > 0 where the extra branch capacity makes
+        # overfitting at the fusion point more of a risk.
+        self.fusion_dropout = nn.Dropout(float(fusion_dropout))
         if fusion_mode == "concat":
             # Bring concat's 2W-dim vector down to W BEFORE the shared head,
             # so head_ffn/final_regressor are byte-for-byte identical across
@@ -703,13 +723,13 @@ class FunctionalGeneFFNFusionPredictor(nn.Module):
     def _fuse(self, h_for_concat: torch.Tensor, r_for_concat: torch.Tensor, batch: int) -> torch.Tensor:
         h_expanded = h_for_concat[None, :, :].expand(batch, -1, -1)
         if self.fusion_mode == "concat":
-            return self.fusion_proj(torch.cat([h_expanded, r_for_concat], dim=-1))
+            return self.fusion_dropout(self.fusion_proj(torch.cat([h_expanded, r_for_concat], dim=-1)))
         if self.fusion_mode == "film":
-            gamma, beta = self.film_generator(r_for_concat).chunk(2, dim=-1)
+            gamma, beta = self.fusion_dropout(self.film_generator(r_for_concat)).chunk(2, dim=-1)
             return gamma * h_expanded + beta
         # two_stream_residual
-        h_mix = h_expanded + self.gene_to_functional(r_for_concat)
-        s_mix = r_for_concat + self.functional_to_gene(h_expanded)
+        h_mix = h_expanded + self.fusion_dropout(self.gene_to_functional(r_for_concat))
+        s_mix = r_for_concat + self.fusion_dropout(self.functional_to_gene(h_expanded))
         return h_mix + s_mix
 
     def _retrieve_and_predict(self, h_c_chunk: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:

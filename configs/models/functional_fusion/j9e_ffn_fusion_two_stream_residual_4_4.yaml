@@ -1,0 +1,47 @@
+extends: base.yaml
+# FFN-fusion ladder, two-stream residual, DEEPER branches (2026-09-12, J9e):
+# lighter sibling of j9d_ffn_fusion_two_stream_residual_8_8.yaml -- same
+# architecture, n_functional_ffn_blocks/n_gene_expr_ffn_blocks at 4/4 instead
+# of 8/8 (still above the ladder's 2/2 baseline). See j9d's header comment
+# and FunctionalGeneFFNFusionPredictor's docstring for the shared rationale.
+model: {functional_fusion_variant: ffn_fusion_two_stream_residual_4_4}
+loss:
+  beta_mse_weight: 1.0
+  residual_huber_weight: 0.0
+  shrinkage_weight: 0.0
+  standardized_residual_huber_weight: 0.0
+  standardized_shrinkage_weight: 0.0
+  locus_pearson_weight: 0.15   # lambda_locus_PCC (L_locus_PCC)
+  locus_min_observed_samples: 8
+  sample_pearson_weight: 0.0
+  locus_centered_mse_weight: 0.0
+training:
+  seed: 17
+  epochs: 80
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  learning_rate: 2.0e-4
+  weight_decay: 1.0e-4
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15             # lambda_mean (L_mean)
+  residual_aux_weight: 0.0
+  final_regressor_dropout: 0.15
+batching:
+  # Lighter than the 8/8 sibling (half the gene-expression branch depth) --
+  # started closer to the full protocol batch given the lower expected cost,
+  # still smoke-tested (run_j9e_4_4_local.sh) before committing to 80 epochs.
+  array: {sample_size: 480, cpg_size: 640}
+  epic: {sample_size: 160, cpg_size: 5120}
+  wgbs: {sample_size: 32, cpg_size: 20480}
+tracking:
+  backend: wandb
+  project: MethylPredictor
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags: [functional-only, mas-concat, ablation, ffn-fusion, two-stream-residual, depth4, chr1-final]

@@ -333,6 +333,30 @@ class LocusCLSJointTrainer:
             "ffn_fusion_concat": {"fusion_mode": "concat"},
             "ffn_fusion_film": {"fusion_mode": "film"},
             "ffn_fusion_two_stream_residual": {"fusion_mode": "two_stream_residual"},
+            # ffn_fusion_two_stream_residual_{8_8,4_4} (2026-09-12): candidate
+            # "definitive model" scale-up of the two_stream_residual ladder
+            # cell above, once it's judged the winning fusion mechanism --
+            # depth raised symmetrically on both branches from the ladder's
+            # 2/2 to 8/8 (heavier) and 4/4 (lighter), n_head_ffn_blocks left
+            # at the default 2 ("due FFN" before beta prediction, unchanged).
+            # fusion_dropout=0.1 (matching this recipe family's usual
+            # enc.dropout/final_regressor_dropout scale) on the two
+            # cross-injection projections, which the ladder cells leave at
+            # the safe (no-op) default -- see FunctionalGeneFFNFusionPredictor's
+            # docstring for why the extra branch depth here makes that a
+            # sensible place to add regularization.
+            "ffn_fusion_two_stream_residual_8_8": {
+                "fusion_mode": "two_stream_residual",
+                "n_functional_ffn_blocks": 8,
+                "n_gene_expr_ffn_blocks": 8,
+                "fusion_dropout": 0.1,
+            },
+            "ffn_fusion_two_stream_residual_4_4": {
+                "fusion_mode": "two_stream_residual",
+                "n_functional_ffn_blocks": 4,
+                "n_gene_expr_ffn_blocks": 4,
+                "fusion_dropout": 0.1,
+            },
         }
         allowed_variants = {
             "mas_concat_v3_purecontext",
