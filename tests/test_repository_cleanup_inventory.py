@@ -50,13 +50,17 @@ def test_removed_doc_names_are_not_linked_from_current_docs():
         "PAPER_EXPERIMENTS.md",
         "CHR123_TRAINING_OPTIMIZATIONS.md",
     }
+    historical_inventory_docs = {
+        ROOT / "docs" / "REPOSITORY_CLEANUP.md",
+    }
+
     offenders = []
     for path in list((ROOT / "docs").rglob("*.md")) + [
         ROOT / "README.md",
         ROOT / "CLAUDE.md",
         ROOT / "scripts/README.md",
     ]:
-        if not path.is_file():
+        if not path.is_file() or path in historical_inventory_docs:
             continue
         text = path.read_text()
         for needle in needles:
