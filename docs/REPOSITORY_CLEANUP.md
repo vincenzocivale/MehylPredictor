@@ -56,3 +56,16 @@ After the fresh paper runs exist, a separate dry-run dependency scanner should
 classify external artifacts as KEEP / DELETE / REVIEW from the actual final
 run manifests. This prevents accidental deletion of a cache still required for
 reproduction.
+
+## Phase 5e external inventory
+
+External cache/run cleanup is prepared by the read-only dependency scanner
+documented in
+[`EXTERNAL_CLEANUP_INVENTORY.md`](EXTERNAL_CLEANUP_INVENTORY.md).
+
+The scanner classifies artifacts as `KEEP`, `PROTECT`, `REVIEW`, or
+`DELETE_CANDIDATE`. It has no deletion operation. Architecture-search runs
+remain protected until architecture selection is locked, and historical
+artifacts cannot become deletion candidates until fresh standardized paper
+runs have also been verified.
+
