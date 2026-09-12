@@ -1,8 +1,8 @@
 # Exact TCGA benchmark corresponding to MethylProphet Table 5
 
-See [`PAPER_EXPERIMENTS.md`](PAPER_EXPERIMENTS.md) for how this chr1 setting fits into the three
-canonical MethylProphet-matched paper settings (chr1 done, chr123 in progress, ENCODE not yet
-built).
+This document records the exact TCGA chr1 protocol used for the
+MethylProphet comparison. Current model/training commands live in
+[`WORKFLOWS.md`](WORKFLOWS.md).
 
 ## Scope
 
@@ -168,14 +168,11 @@ model inputs.
 
 ## Training exposure
 
-**Historical note**: this section describes the retired two-stage architecture's exact
-reproduction trainer (`MethylProphetTrainer`, `--engine matched_chr1`), removed along with that
-architecture generation (see CLAUDE.md's "Model compatibility note"). The frozen numbers it
-produced remain under `results/reference/methylprophet_comparison/`. The current reference
-architecture trains on this same chr1 data preparation via `--engine matched_chr1_shared_backbone`
-(`scripts/train.py`, `rna_training/locus_cls_trainer.py::LocusCLSJointTrainer`) with its own
-(pair-complete or `contiguous_blocks`, see `docs/CHR123_TRAINING_OPTIMIZATIONS.md`) schedule, not
-the one described below.
+**Historical note**: the detailed exposure discussion below describes the retired
+MethylProphet-reproduction trainer. The current RNA model uses
+`RNAMethylationTrainer` with the same frozen matched-chr1 data universe plus
+the functional atlas/annotation inputs documented in `WORKFLOWS.md`. There is
+no selectable shared-backbone engine in the current runtime.
 
 The final trainer uses a complete Cartesian block schedule for each source.
 Every source matrix pair slot is visited exactly once per epoch and NaN targets
@@ -248,6 +245,6 @@ python scripts/benchmark_methylprophet/prepare.py \
   --device cuda
 ```
 
-Then train the reference architecture against this prepared cache with `scripts/train.py --engine
-matched_chr1_shared_backbone` (see CLAUDE.md's "Optimized reference training commands") rather
-than a dedicated launcher script.
+Then train the current RNA architecture against this prepared cache with
+`scripts/train.py --model rna_methylation --scope chr1 --prepared-root ...`
+and the functional inputs documented in `WORKFLOWS.md`.

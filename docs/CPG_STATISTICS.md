@@ -1,23 +1,29 @@
-# CpG statistics predictor
+# CpG statistics and mean-proxy targets
 
-`CpGStatisticsPredictor` is the only trainable static-locus auxiliary model.
-It jointly exposes mean and scale while keeping their neural parameter sets
-independent.
+`CpGStatisticsPredictor` is a retained auxiliary/static-locus workflow. It can
+predict locus-level methylation mean and scale, while the RNA model itself is
+trained separately.
 
-The target builder uses all requested technologies and stores source-specific
-observation counts.  This prevents a weighting rule from becoming an implicit
-implementation detail.  The default `sample_weighted` target treats every
-finite methylation observation equally; `technology_balanced` gives each
-technology with data at a locus equal mixture weight.
+For the paper-facing RNA model, the relevant artifact is the split-safe
+training-locus mean target:
 
-`mu` is a beta-space mean, consumed by the reference RNA-methylation model's mean-branch
-auxiliary proxy task (`rna_training/locus_cls_trainer.py`). `sigma` is a standard deviation in
-clipped `logit(beta)` space; it was the residual scale consumed by the now-removed two-stage
-architecture's `logit(mu) + sigma*residual` composition (see CLAUDE.md's "Model compatibility
-note") and remains part of the feature-cache schema for that reason, but the current reference
-architecture does not read it.
+```text
+derived/cpg_statistics/<scope>/
+  cpg_idx.npy
+  target_mu.npy
+  official_train_mask.npy
+  official_val_mask.npy
+  ...
+```
 
-The model is selected only on a genomic-block inner split of official train
-CpGs. Official held-out CpGs are final evaluation labels only.  For the RNA
-feature cache, empirical training-locus statistics may be inserted after model
-training while held-out loci always receive predictor outputs.
+`RNAMethylationTrainer` uses `target_mu.npy` only for the training-only
+mean-proxy objective. The scale target is not consumed by the current RNA
+model.
+
+The target builder can aggregate multiple methylation technologies while
+recording source-specific observation counts. Official held-out Array patients
+and held-out CpGs must not leak into training-locus supervision.
+
+The historical genomic feature cache is not an RNA-model input anymore.
+Prior-relative evaluation uses the separate metric-only `cpg_idx.npy +
+prior.npy` cache described in `docs/WORKFLOWS.md`.

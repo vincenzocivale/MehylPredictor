@@ -268,3 +268,11 @@ semantics changed in this phase.
 ## Phase 5b: configuration-field audit
 
 The remaining RNA architecture/loss config fields are classified in `configs/config_field_audit.yaml`. No fields are removed in this phase because protected J-series runs remain resumable. Compatibility-only ModelConfig, LossConfig and `locus_cls` keys now have an explicit deletion gate tied to final architecture selection.
+
+## Phase 5c: architecture-decision audit collector
+
+`scripts/architecture_decision_audit.py` provides a read-only inventory of J0/J-series run metrics and compute characteristics. It deliberately lives outside `scripts/experiments/`, so adding the analysis utility does not mutate the frozen experiment surface or recipe hashes.
+
+## Phase 5c: repository cleanup inventory
+
+Transient refactor helpers, tracked diagnostic/eval scratch outputs, and two stale runtime documents were removed. Active J-series recipes/launchers remain protected until architecture selection. `results/reference/` is explicitly deferred for a clean rebuild after fresh final paper runs. External data is not deleted in this phase; later deletion requires a dry-run dependency scan against final run manifests.

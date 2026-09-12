@@ -1,0 +1,140 @@
+schema_version: 1
+goal: keep the repository clean while protected architecture-search runs finish; perform destructive experiment/data
+  cleanup only after the final architecture and fresh paper runs are locked
+remove_now:
+  completed_in_this_phase:
+  - phase5b_audit_config_fields.py
+  - phase5c_add_architecture_decision_audit.py
+  - scripts/architecture_decision_audit.py
+  - tests/test_architecture_decision_audit.py
+  - docs/ARCHITECTURE_DECISION_AUDIT.md
+  - artifacts/architecture_decision/
+  - results/diagnostics/
+  - docs/BENCHMARKS.md
+  - docs/data/GENOMIC_FEATURE_STORE.md
+  rationale: delivery helpers, generated diagnostics, or documentation whose runtime assumptions are retired
+    and superseded
+keep_now:
+  core_runtime:
+  - src/methylation_predictor/modeling/
+  - src/methylation_predictor/rna_training/
+  - src/methylation_predictor/storage.py
+  - src/methylation_predictor/losses.py
+  - src/methylation_predictor/optim.py
+  - src/methylation_predictor/run_store.py
+  - src/methylation_predictor/tcga_canonical/
+  paper_entrypoints:
+  - scripts/train.py
+  - scripts/evaluate.py
+  - scripts/tune.py
+  - scripts/prepare.py
+  - configs/models/main.yaml
+  paper_studies:
+  - configs/models/baselines/
+  - configs/models/mean_contribution/
+  - configs/models/rna_encoder_comparison/
+  - scripts/experiments/functional_baseline_suite.py
+  - scripts/experiments/mean_contribution_suite.py
+  - scripts/experiments/run_mean_contribution.py
+  - scripts/experiments/functional_rna_encoder_suite.py
+  - scripts/experiments/run_rna_encoder_comparison.py
+  - scripts/experiments/collect_mean_contribution.py
+  - scripts/experiments/collect_rna_encoder_comparison.py
+  data_protocol_and_targets:
+  - src/methylation_predictor/tcga_canonical/
+  - src/methylation_predictor/cpg_statistics/
+  - scripts/benchmark_methylprophet/prepare.py
+  - docs/DATA.md
+  - docs/BENCHMARK_METHYLPROPHET.md
+  - docs/data/METHYLPROPHET_PROTOCOLS.md
+  tests:
+  - tests/
+protect_until_architecture_selection:
+  source:
+  - src/methylation_predictor/modeling/ablation.py
+  - src/methylation_predictor/modeling/factory.py
+  recipes:
+  - configs/models/functional_fusion/j1_iterative.yaml
+  - configs/models/functional_fusion/j2_ablation_depth1_residual.yaml
+  - configs/models/functional_fusion/j3_ablation_depth4_noresidual.yaml
+  - configs/models/functional_fusion/j4_efficient_single_attn.yaml
+  - configs/models/functional_fusion/j5_ablation_depth8_residual.yaml
+  - configs/models/functional_fusion/j5_ablation_depth10_residual.yaml
+  - configs/models/functional_fusion/j5_ablation_depth12_residual.yaml
+  - configs/models/functional_fusion/j6_gated_residual.yaml
+  - configs/models/functional_fusion/j7_efficient_single_attn_8ffn.yaml
+  - configs/models/functional_fusion/j9a_ffn_fusion_concat.yaml
+  - configs/models/functional_fusion/j9b_ffn_fusion_film.yaml
+  - configs/models/functional_fusion/j9b_functional_branch_depth.yaml
+  - configs/models/functional_fusion/j9c_ffn_fusion_two_stream_residual.yaml
+  - configs/models/functional_fusion/j9d_ffn_fusion_two_stream_residual_8_8.yaml
+  - configs/models/functional_fusion/j9e_ffn_fusion_two_stream_residual_4_4.yaml
+  - configs/models/functional_fusion/j10_symmetric_4ffn_both_branches.yaml
+  launchers:
+  - scripts/experiments/run_depth_residual_ablation.sh
+  - scripts/experiments/run_efficient_8ffn_ablation.sh
+  - scripts/experiments/run_efficient_single_attn_ablation.sh
+  - scripts/experiments/run_ffn_fusion_concat_godzilla.sh
+  - scripts/experiments/run_ffn_fusion_ladder.sh
+  - scripts/experiments/run_functional_branch_depth_ablation.sh
+  - scripts/experiments/run_gated_residual_ablation.sh
+  - scripts/experiments/run_symmetric_4ffn_ablation.sh
+  - scripts/experiments/wait_and_evaluate_j4.sh
+  - scripts/experiments/wait_and_evaluate_j6.sh
+  - scripts/experiments/wait_and_evaluate_j7.sh
+  - scripts/experiments/wait_and_run_iterative_retrieval.sh
+  rule: do not refactor, rename, or delete while these runs may need resume/evaluation compatibility
+remove_after_architecture_selection:
+  compatibility_runtime:
+  - src/methylation_predictor/rna_training/locus_cls_trainer.py
+  - LocusCLSJointTrainer/evaluate_official_split compatibility aliases
+  - _retired_locus_compat
+  - historical locus_cls config keys
+  - ModelConfig compatibility-only fields/classes
+  - legacy LossConfig fields
+  research_surface:
+  - all non-selected J-series recipes
+  - all non-selected J-series launchers
+  - architecture-only tests for deleted predictors
+  - unused predictor classes in modeling/ablation.py
+  - factory selectors for deleted variants
+  compatibility_recipes:
+  - configs/models/functional_fusion/base.yaml
+  - configs/models/functional_fusion/j0_final.yaml
+reset_after_fresh_paper_runs:
+  tracked_results:
+  - results/reference/
+  policy: do not treat current frozen ledgers as final paper outputs; after the definitive architecture
+    is selected, launch clean paper experiments and rebuild a minimal results/paper tree from those runs
+review_before_final_release:
+  ntv3_and_foundation_model_tooling:
+  - src/methylation_predictor/ntv3_atlas.py
+  - scripts/build_ntv3_atlas.py
+  - configs/benchmark_foundation_models/
+  - scripts/benchmark_foundation_models/
+  - src/methylation_predictor/benchmark/foundation_models/
+  reason: retain until final comparator/ablation set is fixed; delete anything not required by the final
+    paper
+  project_specs:
+  - PROJECT_SPECS.md
+external_data_cleanup_after_final_runs:
+  keep:
+  - canonical TCGA bundle
+  - frozen protocol definitions
+  - RNA cache required by final runs
+  - functional regulatory atlas
+  - static annotation cache
+  - split-safe CpG mean targets
+  - compact methylation cache if final runtime materially benefits
+  - minimal prior cache used by evaluation metrics
+  delete_or_archive_if_unreferenced:
+  - historical NTv3/FM embedding feature caches
+  - PRE/POST embedding-ablation caches
+  - old shared-backbone prepared features
+  - query-representation diagnostic caches
+  - router/program-projection experiment products
+  - smoke-test/evaluation scratch directories
+  - obsolete architecture-search run directories
+  - superseded development sweeps
+  safety_rule: data deletion must be driven by a separate dry-run dependency scanner after the final run
+    manifest exists; never delete by directory name alone

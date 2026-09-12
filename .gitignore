@@ -39,3 +39,10 @@ logs/
 .venv/
 .idea/
 .vscode/
+# Refactor delivery/scratch artifacts
+/phase*_*.py
+/results/diagnostics/
+
+# Refactor/local evaluation scratch
+/phase*.py
+**/.eval_runs/
