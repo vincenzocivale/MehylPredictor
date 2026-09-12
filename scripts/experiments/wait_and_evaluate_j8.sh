@@ -1,0 +1,42 @@
+#!/bin/bash
+# Waits for run_efficient_16ffn_ablation.sh's full 80-epoch run to finish,
+# then evaluates the resulting checkpoint on all three TRUE official
+# MethylProphet chr1 views in one call (evaluate_official_split).
+set -euo pipefail
+source /home/vcivale/miniconda3/etc/profile.d/conda.sh
+conda activate methyl-predictor
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RUN_ID="efficient-single-attn-16ffn-final-chr1-seed17"
+RUN_DIR="/home/vcivale/MethylPredictorData/experiments/runs/runs/locus_cls_joint/chr1/${RUN_ID}"
+ORCH_LOG="$ROOT/logs/functional_concat_final/efficient_16ffn_orchestrator.log"
+LOGDIR="$ROOT/logs/functional_concat_final"
+mkdir -p "$LOGDIR"
+
+echo "[eval] waiting for training to finish (watching $ORCH_LOG)..."
+while ! grep -q "efficient_single_attn_16ffn_residual finished successfully" "$ORCH_LOG" 2>/dev/null; do
+  if grep -q "FAILED" "$ORCH_LOG" 2>/dev/null; then
+    echo "[eval] training FAILED per orchestrator log; not evaluating." | tee -a "$LOGDIR/eval_j8_orchestrator.log"
+    exit 1
+  fi
+  sleep 30
+done
+echo "[eval] training finished. Evaluating checkpoint..." | tee -a "$LOGDIR/eval_j8_orchestrator.log"
+
+cd "$ROOT"
+python scripts/evaluate.py --model rna_methylation --engine matched_chr1_shared_backbone \
+  --checkpoint "$RUN_DIR/checkpoints/last.pt" --eval-scope chr1 \
+  --recipe configs/models/functional_fusion/j8_efficient_single_attn_16ffn.yaml \
+  --canonical-root /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1 \
+  --feature-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/features \
+  --rna-cache /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1/rna \
+  --registry /home/vcivale/MethylPredictorData/datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet \
+  --prepared-root /home/vcivale/MethylPredictorData/derived/methylprophet_table5_tcga_chr1 \
+  --cpg-targets-dir /home/vcivale/MethylPredictorData/derived/cpg_statistics/chr1 \
+  --functional-atlas /home/vcivale/MethylPredictorData/derived/ntv3_functional_peak_atlas_chr1_all_sources \
+  --annotation-cache /home/vcivale/MethylPredictorData/derived/ntv3_probe_targets/chr1_annotation_features_all_sources \
+  --functional-only \
+  --output "$RUN_DIR/evaluation/chr1/official_split.json" \
+  > "$LOGDIR/eval_${RUN_ID}.log" 2>&1
+
+echo "[eval] evaluation finished, see $RUN_DIR/evaluation/chr1/official_split.json" | tee -a "$LOGDIR/eval_j8_orchestrator.log"
