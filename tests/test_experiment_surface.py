@@ -98,13 +98,9 @@ def test_main_is_the_only_primary_reference_recipe():
         record["path"]
         for record in manifest["models"]["paper_facing"]
     }
-    compat = {
-        record["path"]
-        for record in manifest["models"]["compatibility"]
-    }
 
     assert "configs/models/main.yaml" in paper
-    assert "configs/models/functional_fusion/j0_final.yaml" in compat
+    assert manifest["models"]["compatibility"] == []
 
 
 def test_research_ladder_is_removed_after_architecture_selection():

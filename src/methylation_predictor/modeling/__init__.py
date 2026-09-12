@@ -1,28 +1,23 @@
 """Paper-facing model API."""
 
-from .ablation import (
-    DepthResidualAblationPredictor,
-    EfficientSingleAttentionPredictor,
-    FunctionalGeneFFNFusionPredictor,
-    GatedResidualPredictor,
-)
 from .baselines import FunctionalBaselinePredictor
 from .factory import (
+    FINAL_MODEL_KWARGS,
+    FINAL_VARIANT,
+    RNA_COMPARISON_VARIANT,
     SUPPORTED_FUNCTIONAL_VARIANTS,
     build_functional_predictor,
 )
-from .reference import IterativeRetrievalPredictor, SingleRetrievalPredictor
+from .final import EfficientSingleAttentionPredictor
 from .rna_comparison import RNAEncoderComparisonPredictor
 
 __all__ = [
-    "FunctionalBaselinePredictor",
-    "SingleRetrievalPredictor",
-    "IterativeRetrievalPredictor",
-    "RNAEncoderComparisonPredictor",
-    "DepthResidualAblationPredictor",
     "EfficientSingleAttentionPredictor",
-    "GatedResidualPredictor",
-    "FunctionalGeneFFNFusionPredictor",
+    "FunctionalBaselinePredictor",
+    "RNAEncoderComparisonPredictor",
+    "FINAL_MODEL_KWARGS",
+    "FINAL_VARIANT",
+    "RNA_COMPARISON_VARIANT",
     "SUPPORTED_FUNCTIONAL_VARIANTS",
     "build_functional_predictor",
 ]

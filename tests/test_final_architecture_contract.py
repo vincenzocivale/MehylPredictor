@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 import yaml
 
-from methylation_predictor.modeling.factory import EFFICIENT_VARIANTS
+from methylation_predictor.modeling.factory import FINAL_MODEL_KWARGS, FINAL_VARIANT
 from methylation_predictor.rna_training.config import load_rna_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "configs/models/main.yaml"
 SURFACE = ROOT / "configs/experiment_surface.yaml"
-FINAL = "efficient_single_attn_8ffn_residual_functional8_head2"
+FINAL = FINAL_VARIANT
 
 
 def test_main_selects_locked_final_architecture():
@@ -18,7 +18,7 @@ def test_main_selects_locked_final_architecture():
 
 
 def test_final_constructor_contract():
-    assert EFFICIENT_VARIANTS[FINAL] == {
+    assert FINAL_MODEL_KWARGS == {
         "n_ffn_blocks": 8,
         "n_functional_ffn_blocks": 8,
         "deep_query": False,

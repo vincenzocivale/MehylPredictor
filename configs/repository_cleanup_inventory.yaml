@@ -145,3 +145,24 @@ architecture_selection:
   - scripts/experiments/wait_and_evaluate_j6.sh
   - scripts/experiments/wait_and_evaluate_j7.sh
   - scripts/experiments/wait_and_run_iterative_retrieval.sh
+modeling_prune:
+  status: complete
+  retained:
+  - src/methylation_predictor/modeling/final.py
+  - src/methylation_predictor/modeling/baselines.py
+  - src/methylation_predictor/modeling/rna_comparison.py
+  - src/methylation_predictor/modeling/rna_comparators.py
+  - src/methylation_predictor/modeling/rna.py
+  - src/methylation_predictor/modeling/retrieval.py
+  - src/methylation_predictor/modeling/factory.py
+  removed:
+  - src/methylation_predictor/modeling/ablation.py
+  - src/methylation_predictor/modeling/reference.py
+  - tests/test_ablation_depth_residual.py
+  - tests/test_ffn_fusion.py
+  - tests/test_gated_residual.py
+  - tests/test_iterative_retrieval_model.py
+  - tests/test_efficient_single_attn.py
+  - configs/models/functional_fusion/base.yaml
+  - configs/models/functional_fusion/j0_final.yaml
+  next: Phase 6d2 trainer/config compatibility pruning

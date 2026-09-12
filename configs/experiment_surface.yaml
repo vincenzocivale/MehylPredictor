@@ -38,11 +38,7 @@ models:
   support:
   - path: configs/models/cpg_statistics.yaml
     sha256: 0d769bd204b200ef827afe4754601f7f4c2cbab2a98df695129f99165227141c
-  compatibility:
-  - path: configs/models/functional_fusion/base.yaml
-    sha256: 19e22027118e6aba2b5243375294af5c0d6507ee0f7b3125424aaf508389bae7
-  - path: configs/models/functional_fusion/j0_final.yaml
-    sha256: f03c7edeab62e6adba94d65951ed526166ddc2241e96570c1d4211265cb54a80
+  compatibility: []
   protected_research: []
 experiment_scripts:
   paper_facing:
@@ -170,5 +166,16 @@ architecture_selection:
   - kind: launcher
     path: scripts/experiments/wait_and_run_iterative_retrieval.sh
     sha256: 50053f6555462b70065424abf1ff0b64b9ccd79f83dff4dd0582fec188cee7c9
-  cleanup_gate: J-series recipes/launchers removed in Phase 6c; compatibility runtime/config
-    remains for Phase 6d.
+  cleanup_gate: Phase 6d1 modeling prune complete. Trainer/config compatibility remains
+    for Phase 6d2; storage-key migration remains Phase 6e.
+  modeling_prune_status: complete
+  modeling_prune_removed:
+  - src/methylation_predictor/modeling/ablation.py
+  - src/methylation_predictor/modeling/reference.py
+  - tests/test_ablation_depth_residual.py
+  - tests/test_ffn_fusion.py
+  - tests/test_gated_residual.py
+  - tests/test_iterative_retrieval_model.py
+  - tests/test_efficient_single_attn.py
+  - configs/models/functional_fusion/base.yaml
+  - configs/models/functional_fusion/j0_final.yaml
