@@ -61,3 +61,11 @@ from methylation_predictor.rna_training import (
     evaluate_rna_checkpoint,
 )
 ```
+
+## Final paper experiment API
+
+Fresh paper-facing reruns after architecture selection use the standardized
+[`PAPER_EXPERIMENT_API.md`](PAPER_EXPERIMENT_API.md) contract. The wrapper
+accepts only recipes classified as `paper_facing`, runs official evaluation,
+and writes one normalized `paper/record.json` per run for uniform collection.
+

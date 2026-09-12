@@ -1,0 +1,28 @@
+schema_version: 1
+name: tcga_chr1_paper
+scope: chr1
+
+# All paths below are relative to --data-root / METHYL_DATA_ROOT.
+paths:
+  canonical_root: datasets/methylprophet_repro_v1
+  prepared_root: derived/methylprophet_table5_tcga_chr1
+  registry: datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
+  rna_cache: derived/methylprophet_table5_tcga_chr1/rna
+  prior_cache: derived/methylprophet_table5_tcga_chr1/features
+  cpg_targets_dir: derived/cpg_statistics/chr1
+  functional_atlas: derived/ntv3_functional_peak_atlas_chr1_all_sources
+  annotation_cache: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
+  output_root: experiments
+
+# Historical runtime storage key. This can be migrated centrally after the
+# protected J-series is finished without changing the public paper API.
+storage:
+  rna_key: locus_cls_joint
+  cpg_prior_key: cpg_prior
+
+official_evaluation:
+  headline_view: val_cpg_x_val_sample
+  views:
+    - train_cpg_x_val_sample
+    - val_cpg_x_train_sample
+    - val_cpg_x_val_sample
