@@ -1,0 +1,100 @@
+# chr123 solo-GPU, larger-batch variant. Builds on
+# configs/models/chr123/main_chr123_iotuned_v2.yaml (hdf5_cache_mb=2048,
+# array.cpg_size=2048 chunk-aligned). Model/loss/training hyperparameters
+# are otherwise identical to main.yaml.
+#
+# Rationale (2026-09-13, urgent single-seed run for paper writing): when
+# run alone (no second process sharing the GPU), there is ~40GB of GPU1
+# headroom instead of the ~20GB budget used when pairing two seeds. Larger
+# sample_size per pool reduces the number of row-blocks in the
+# pair_complete schedule, which directly cuts total steps/epoch (the
+# dominant cost identified during profiling) without changing total data
+# coverage per epoch. wgbs.cpg_size raised to 24576 (= 3 full 8192-wide
+# chunks, vs 20480's 2.5) for perfect chunk alignment.
+#
+# Do not edit main.yaml in place -- it is the recipe used by the active
+# chr1 "main" paper study.
+model:
+  encoder:
+    kind: locus_attention
+    latent_dim: 256
+    n_programs: 64
+    program_dim: 256
+    n_heads: 4
+    dropout: 0.1
+    layer_norm: true
+  functional_fusion_variant: efficient_single_attn_8ffn_residual_functional8_head2
+
+loss:
+  beta_mse_weight: 1.0
+  locus_pearson_weight: 0.15
+  locus_min_observed_samples: 8
+
+training:
+  seed: 17
+  device: auto
+  epochs: 80
+  learning_rate: 0.0002
+  weight_decay: 0.0001
+  scheduler: cosine_warmup
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 8
+  prefetch_workers: 4
+  hdf5_cache_mb: 2048
+  checkpoint_every: 1
+  validation_every: 1
+  compile: false
+
+schedule_policy: pair_complete
+exclude_official_val_from_auxiliary: true
+structured_loss_sources:
+  - array
+  - epic
+  - wgbs
+
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15
+  final_regressor_dropout: 0.15
+
+batching:
+  array:
+    sample_size: 480
+    cpg_size: 2048
+  epic:
+    sample_size: 240
+    cpg_size: 5120
+  wgbs:
+    sample_size: 32
+    cpg_size: 24576
+
+development:
+  fraction: 0.1
+  block_bp: 5000000
+  split_seed: 17
+
+tracking:
+  backend: wandb
+  project: MethylPredictor-refactored
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags:
+    - functional-only
+    - efficient-single-attn
+    - retrieval-8ffn
+    - functional-8ffn
+    - head-2ffn
+    - final-architecture
+    - chr123
+    - iotuned
+    - bigbatch-solo
