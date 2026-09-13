@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "kind": "methylpredictor.paper_run",
+  "study": "main_model",
+  "arm": "main",
+  "model": "rna_methylation",
+  "scope": "chr1",
+  "seed": 17,
+  "run_id": "main-seed17-r3",
+  "campaign": null,
+  "git": {
+    "commit": "dcc3b435334e993f702bf41cf66e3fd1a53f6d62",
+    "dirty": false
+  },
+  "recipe": {
+    "path": "configs/models/main.yaml",
+    "sha256": "e01eb45735b67d9d9fe2297b1c065d96e83324a21a47e4fddb0615d3531a8aa4"
+  },
+  "data_profile": {
+    "path": "configs/data/paper_chr1.yaml",
+    "sha256": "65e493fc4eb98671912211f9f5324bd36380bb4cb859266a019d23ea8bef0304"
+  },
+  "best_epoch": 80,
+  "headline_view": "val_cpg_x_val_sample",
+  "headline_metrics": {
+    "rows": 6129992,
+    "mse": 0.014469190913678102,
+    "mae": 0.0761511039213867,
+    "prior_mse": 0.027223526572326653,
+    "skill_vs_prior": 0.4685041677008015,
+    "mas_pcc": 0.583604340837172,
+    "mac_pcc": 0.9507007894494623,
+    "mas_ccc": 0.49140759569122716,
+    "mac_ccc": 0.9481375564061584
+  },
+  "evaluation_views": {
+    "train_cpg_x_val_sample": {
+      "rows": 30563936,
+      "mse": 0.009299150803924771,
+      "mae": 0.05984459489290046,
+      "prior_mse": 0.023267619029304534,
+      "skill_vs_prior": 0.6003393904544808,
+      "mas_pcc": 0.7511144259402047,
+      "mac_pcc": 0.969485554802316,
+      "mas_ccc": 0.7208907416820588,
+      "mac_ccc": 0.9673876723473025
+    },
+    "val_cpg_x_train_sample": {
+      "rows": 55154676,
+      "mse": 0.01370677234114278,
+      "mae": 0.0740592986067034,
+      "prior_mse": 0.027401995828971383,
+      "skill_vs_prior": 0.49978926985124994,
+      "mas_pcc": 0.6359655703075338,
+      "mac_pcc": 0.9531909292358615,
+      "mas_ccc": 0.5311230746673461,
+      "mac_ccc": 0.9510185759971326
+    },
+    "val_cpg_x_val_sample": {
+      "rows": 6129992,
+      "mse": 0.014469190913678102,
+      "mae": 0.0761511039213867,
+      "prior_mse": 0.027223526572326653,
+      "skill_vs_prior": 0.4685041677008015,
+      "mas_pcc": 0.583604340837172,
+      "mac_pcc": 0.9507007894494623,
+      "mas_ccc": 0.49140759569122716,
+      "mac_ccc": 0.9481375564061584
+    }
+  },
+  "checkpoint_sha256": "e0f47e6b1c6d12986fead9efbe6175f88910b3482fb4e356db128c1590f1cc1e",
+  "training_summary_sha256": "88abbe56de23e5e87cda8425766dc210565913a5c96c78b6808a053d2a9b41cb",
+  "resolved_config_sha256": "ae241d0f66d9cf087488a71f62be11df03d1ac03ba8eb8b8badbd66fe68b4389",
+  "artifact_uris": {
+    "run": "methyl-data://experiments/runs/rna_methylation/chr1/main-seed17-r3",
+    "checkpoint": "methyl-data://experiments/runs/rna_methylation/chr1/main-seed17-r3/checkpoints/best.pt",
+    "resolved_config": "methyl-data://experiments/runs/rna_methylation/chr1/main-seed17-r3/config.resolved.yaml",
+    "training_summary": "methyl-data://experiments/runs/rna_methylation/chr1/main-seed17-r3/training/summary.json",
+    "evaluation": "methyl-data://experiments/runs/rna_methylation/chr1/main-seed17-r3/evaluation/chr1/metrics.json"
+  }
+}

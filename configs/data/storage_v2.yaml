@@ -98,12 +98,15 @@ repo_results:
   heavy_artifacts_in_git: forbidden
 
 paper_studies:
-  main:
+  # Renamed from `main` to `main_model` 2026-09-13 to match the study label
+  # actually recorded in paper/record.json at launch time (kingkong/ekko
+  # used --study main_model, free-text and never cross-checked against this
+  # file) -- see configs/paper_studies.yaml's matching note and
+  # docs/PAPER_EXPERIMENTS.md. Seeds updated to what was actually launched
+  # (main-seed17-r3, main-seed42-r3 done; main-seed123-r3 running) instead
+  # of the original 17/29/43 convention.
+  main_model:
     arms: [main]
-    # Updated 2026-09-13 to match the seeds actually launched on kingkong
-    # (main-seed17-r3, main-seed42-r3 running; main-seed123 crashed with no
-    # checkpoint, not relaunched) -- see docs/EXPERIMENT_LOG.md and
-    # configs/paper_studies.yaml's matching note.
     seeds: [17, 42, 123]
   functional_baselines:
     arms: [global_rna_shift, mlp_rna_cpg, bilinear_rna_cpg]

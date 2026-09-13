@@ -2,13 +2,14 @@
 schema_version: 1
 
 studies:
-  # NOTE 2026-09-13: aligned to the seeds actually launched for the main
-  # study on kingkong (main-seed17-r3, main-seed42-r3, running; main-seed123
-  # crashed with no checkpoint and is not being relaunched -- see
-  # docs/EXPERIMENT_LOG.md). This supersedes the original 17/29/43
-  # convention for the `main` study specifically; other studies below are
-  # unaffected and keep 17/29/43.
-  main:
+  # NOTE 2026-09-13: renamed from `main` to `main_model` to match the study
+  # label actually used at launch time on kingkong/ekko (paper_experiment.py
+  # --study main_model --arm main, free-text and not cross-checked against
+  # this file -- see docs/PAPER_EXPERIMENTS.md). Seeds aligned to what was
+  # actually launched (main-seed17-r3, main-seed42-r3, done;
+  # main-seed123-r3 running) instead of the original 17/29/43 convention;
+  # other studies below are unaffected and keep 17/29/43.
+  main_model:
     seeds: [17, 42, 123]
     arms:
       main:

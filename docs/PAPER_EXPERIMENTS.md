@@ -302,3 +302,21 @@ in `configs/paper_studies.yaml` rather than a parallel registry, and should
 reuse the existing `methyl-data://` URI convention to keep heavy artifacts
 (checkpoints, prediction matrices) on the shared `/dune/...` mount while only
 lightweight manifests/metrics stay in the repo-tracked `results/` tree.
+
+### Known gap: `--study`/`--arm` are not validated against `paper_studies.yaml`
+
+`scripts/paper_experiment.py --study ... --arm ...` are free-text CLI flags
+stored verbatim into `paper/record.json` — they are never cross-checked
+against `configs/paper_studies.yaml`'s registered study/arm names. Found
+2026-09-13: the kingkong main-model runs were launched with
+`--study main_model --arm main`, so `scripts/collect_paper_runs.py` curated
+them to `results/paper/main_model/main/seed{17,42}.json`. `paper_studies.yaml`'s
+study key was renamed from `main` to `main_model` to match reality (rather
+than relabeling the already-written `paper/record.json` files and
+regenerated warehouse, since the `main_model` label is already in use
+across multiple machines). If you use `scripts/run_paper_jobs.py` (which
+does read `configs/paper_studies.yaml` and derives `--study`/`--arm`
+automatically), this class of drift cannot happen; launching via
+`scripts/paper_experiment.py` directly with hand-typed `--study`/`--arm`
+can silently diverge from the registry and should be checked against
+`configs/paper_studies.yaml` by eye before launch.
