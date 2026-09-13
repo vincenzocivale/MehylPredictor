@@ -12,7 +12,7 @@ policy:
 models:
   paper_facing:
   - path: configs/models/main.yaml
-    sha256: d6f1b435ab5087584e0950a2d130b027579743e2b87070f6fe37a7b879684be8
+    sha256: e01eb45735b67d9d9fe2297b1c065d96e83324a21a47e4fddb0615d3531a8aa4
   - path: configs/models/baselines/baseline_cpg_prior.yaml
     sha256: 1ae20000d4231839328a0d1161e52c24e81d1d8e44a9f826f19b56bf1c30ae8e
   - path: configs/models/baselines/functional_global_rna_shift.yaml
@@ -35,6 +35,10 @@ models:
     sha256: ad6c3a5fb8daf7e089dfe0d7adb09d1d6248460d6d27d642c5f2f91f869abc09
   - path: configs/models/rna_encoder_comparison/functional_bulkrnabert.yaml
     sha256: 326760849e3075f8ccf44060207cb5ad2d295770f8b27e73c549e22f8aef0f85
+  - path: configs/models/functional_representation/basic_context.yaml
+    sha256: b57576b78e9382b5e007d413fe5052d3a3eb4e8c931f11fa3578216251b05339
+  - path: configs/models/functional_representation/minimal.yaml
+    sha256: 87d50777516f7803f5dca366d144c6b227a24bfb9f598199b33971b53dc30a8a
   support:
   - path: configs/models/cpg_statistics.yaml
     sha256: 0d769bd204b200ef827afe4754601f7f4c2cbab2a98df695129f99165227141c

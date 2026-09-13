@@ -11,6 +11,7 @@ results/experiments/
 *.hdf5
 *.npz
 MethylPredictionData/
+dune_data/
 
 # Vendored external foundation-model repos + their checkpoints + per-model
 # isolated venvs (benchmark/foundation_models/, see docs/PAPER_EXPERIMENTS.md)
@@ -43,3 +44,4 @@ logs/
 /phase*.py
 /results/diagnostics/
 **/.eval_runs/
+local_methyl_data/
