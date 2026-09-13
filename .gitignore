@@ -45,3 +45,7 @@ logs/
 /results/diagnostics/
 **/.eval_runs/
 local_methyl_data/
+
+# Machine-local data profile overrides (absolute paths, one machine only;
+# not part of the shared paper_worker.py campaign contract).
+configs/data/paper_chr1_local_*.yaml
