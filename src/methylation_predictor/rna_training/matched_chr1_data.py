@@ -41,6 +41,31 @@ class MatchedChr1Protocol:
     auxiliary_cpg_idx: dict[str, np.ndarray] = field(default_factory=dict)
     sources: tuple[str, ...] = ("array", "epic", "wgbs")
 
+    # tcga_canonical.protocol.Protocol-compatible aliases (added when
+    # RNAMethylationTrainer was generalized for ENCODE single-source bundles
+    # -- chr1's matched protocol is always array-primary, so these just
+    # forward to the array_* fields above; kept alongside them rather than
+    # renaming, since other call sites still read array_* directly).
+    @property
+    def primary_source(self) -> str:
+        return "array"
+
+    @property
+    def train_sample_idx(self) -> np.ndarray:
+        return self.array_train_sample_idx
+
+    @property
+    def val_sample_idx(self) -> np.ndarray:
+        return self.array_val_sample_idx
+
+    @property
+    def train_cpg_idx(self) -> np.ndarray:
+        return self.array_train_cpg_idx
+
+    @property
+    def val_cpg_idx(self) -> np.ndarray:
+        return self.array_val_cpg_idx
+
 
 def open_methylation_source(name: str, path: Path, *, hdf5_cache_mb: int = 256) -> MethylationSource:
     """Build a MethylationSource from any {beta,cpg_idx,sample_idx[,measurement_idx,
