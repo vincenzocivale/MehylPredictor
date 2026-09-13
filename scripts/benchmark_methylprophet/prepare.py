@@ -940,7 +940,7 @@ def build_eval_adapter(root: Path, final_config: Path, protocol: Table5Protocol,
         "rna_control": "real", "rna_transform": "zscore", "standardize_rna": True,
         "clip_beta_epsilon": 1e-4, "allow_partial_overlap": False,
     }
-    raw["tracking"] = {"backend": "none", "project": "MethylPredictor", "mode": "disabled", "log_checkpoint": False}
+    raw["tracking"] = {"backend": "none", "project": "MethylPredictor-refactored", "mode": "disabled", "log_checkpoint": False}
     eval_config = output / "eval_config.yaml"; eval_config.write_text(yaml.safe_dump(raw, sort_keys=False))
     return {"eval_config": str(eval_config), "embeddings": str(emb_h5)}
 

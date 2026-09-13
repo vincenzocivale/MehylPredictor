@@ -94,7 +94,7 @@ training:
 
 tracking:
   backend: wandb
-  project: MethylPredictor
+  project: MethylPredictor-refactored
   group: tcga-chr1-reference
   name: tcga-chr1-rna-methylation
   job_type: train

@@ -29,7 +29,7 @@ tracking:
   # Unified under the single MethylPredictor wandb project (2026-09-03) --
   # was MethylPredicotr-CpGMeanPredictor historically; kept configurable per
   # local recipe if a run needs that project instead.
-  project: MethylPredictor
+  project: MethylPredictor-refactored
   mode: online
   group: cpg-statistics
   job_type: train

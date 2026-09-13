@@ -148,7 +148,7 @@ class TrainingConfig:
 @dataclass(slots=True)
 class TrackingConfig:
     backend: str = "none"  # none|wandb
-    project: str = "MethylPredictor"
+    project: str = "MethylPredictor-refactored"
     entity: str | None = None
     group: str | None = None
     name: str | None = None
