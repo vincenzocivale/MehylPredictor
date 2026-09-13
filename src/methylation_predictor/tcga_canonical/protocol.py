@@ -74,25 +74,48 @@ class Protocol:
     array_val_cpg_idx: np.ndarray
     auxiliary_cpg_idx: dict[str, np.ndarray] = field(default_factory=dict)  # epic/wgbs -> pool
 
+    @property
+    def primary_source(self) -> str:
+        return self.metadata.get("primary_source", "array")
+
+    @property
+    def train_sample_idx(self) -> np.ndarray:
+        return self.array_train_sample_idx
+
+    @property
+    def val_sample_idx(self) -> np.ndarray:
+        return self.array_val_sample_idx
+
+    @property
+    def train_cpg_idx(self) -> np.ndarray:
+        return self.array_train_cpg_idx
+
+    @property
+    def val_cpg_idx(self) -> np.ndarray:
+        return self.array_val_cpg_idx
+
     # -- training -----------------------------------------------------
     def _build_pools(self) -> list[SourceSamplingPool]:
         """Build one pool per configured source, weight left at the default
         (1.0) -- weights are assigned afterwards by `_resolve_weights`."""
         pools: list[SourceSamplingPool] = []
 
-        if "array" in self.sources:
-            source = self.bundle.sources["array"]
-            train_mask = np.isin(source.sample_idx, self.array_train_sample_idx)
+        primary = self.primary_source
+        if primary in self.sources:
+            source = self.bundle.sources[primary]
+            train_mask = np.isin(source.sample_idx, self.train_sample_idx)
             pools.append(
                 SourceSamplingPool(
-                    name="array",
+                    name=primary,
                     row_positions=np.flatnonzero(train_mask).astype(np.int64),
                     sample_idx=source.sample_idx[train_mask],
                     measurement_idx=source.measurement_idx[train_mask],
-                    cpg_idx_pool=self.array_train_cpg_idx,
+                    cpg_idx_pool=self.train_cpg_idx,
                 )
             )
-        for name in ("epic", "wgbs"):
+        for name in self.sources:
+            if name == primary:
+                continue
             if name not in self.sources or name not in self.auxiliary_cpg_idx:
                 continue
             source = self.bundle.sources[name]
@@ -160,20 +183,21 @@ class Protocol:
     # -- evaluation -----------------------------------------------------
     def evaluation_views(self) -> dict[str, EvaluationView]:
         """The three official Array evaluation panels, IDs exact per protocol."""
+        source = self.primary_source
         return {
             "train_cpg_x_val_sample": EvaluationView(
-                "train_cpg_x_val_sample", "array", self.array_val_sample_idx, self.array_train_cpg_idx
+                "train_cpg_x_val_sample", source, self.val_sample_idx, self.train_cpg_idx
             ),
             "val_cpg_x_train_sample": EvaluationView(
-                "val_cpg_x_train_sample", "array", self.array_train_sample_idx, self.array_val_cpg_idx
+                "val_cpg_x_train_sample", source, self.train_sample_idx, self.val_cpg_idx
             ),
             "val_cpg_x_val_sample": EvaluationView(
-                "val_cpg_x_val_sample", "array", self.array_val_sample_idx, self.array_val_cpg_idx
+                "val_cpg_x_val_sample", source, self.val_sample_idx, self.val_cpg_idx
             ),
         }
 
     def evaluation_finite_counts(self) -> dict[str, int]:
-        source = self.bundle.sources["array"]
+        source = self.bundle.sources[self.primary_source]
         counts = {}
         for view_name, view in self.evaluation_views().items():
             rows = source.rows_of_samples(view.sample_idx)

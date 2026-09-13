@@ -44,3 +44,4 @@ logs/
 /phase*.py
 /results/diagnostics/
 **/.eval_runs/
+local_methyl_data/
