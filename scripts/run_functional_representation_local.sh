@@ -22,7 +22,9 @@ jobs=(
   "configs/models/main.yaml full_functional"
   "configs/models/functional_representation/minimal.yaml minimal"
 )
-seeds=(17 29 43)
+# Secondary/supplementary study: single seed for now (per user direction
+# 2026-09-13), not the full 3-seed paper matrix.
+seeds=(17)
 
 for job in "${jobs[@]}"; do
   read -r recipe arm <<< "$job"
