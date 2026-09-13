@@ -44,7 +44,4 @@ logs/
 /phase*.py
 /results/diagnostics/
 **/.eval_runs/
-
-# Machine-local data profile overrides (absolute paths, one machine only;
-# not part of the shared paper_worker.py campaign contract).
-configs/data/paper_chr1_local_*.yaml
+local_methyl_data/

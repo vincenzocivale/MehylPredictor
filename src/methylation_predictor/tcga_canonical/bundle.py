@@ -150,8 +150,13 @@ class MethylationSource:
     _sample_groups: GroupIndex
 
     @property
+    def matrix(self):
+        """Underlying methylation matrix (`beta` in TCGA, `X` in ENCODE)."""
+        return self.h5["beta"] if "beta" in self.h5 else self.h5["X"]
+
+    @property
     def shape(self) -> tuple[int, int]:
-        return tuple(self.h5["beta"].shape)
+        return tuple(self.matrix.shape)
 
     @property
     def n_rows(self) -> int:
@@ -160,7 +165,7 @@ class MethylationSource:
     def _column_major(self) -> bool:
         """WGBS is chunked (32, 8192) -- whole-column-band chunks, cheap to read
         by column. Array/EPIC are chunked one-row-per-chunk -- cheap by row."""
-        chunks = self.h5["beta"].chunks
+        chunks = self.matrix.chunks
         return chunks is not None and chunks[0] >= self.n_rows
 
     def has_cpg(self, cpg_idx) -> np.ndarray:
@@ -198,7 +203,7 @@ class MethylationSource:
         rows = np.asarray(row_positions, dtype=np.int64)
         if rows.size == 0 or cols.size == 0:
             return np.empty((len(rows), len(cols)), dtype=np.float32)
-        dataset = self.h5["beta"]
+        dataset = self.matrix
         if self._column_major():
             data = _read_cols(dataset, cols)
             return data[rows, :]
@@ -272,7 +277,7 @@ class MethylationSource:
         materializing the whole block at once."""
         cols = self._cpg_index.positions_of(cpg_idx_query)
         rows = np.asarray(row_positions, dtype=np.int64)
-        dataset = self.h5["beta"]
+        dataset = self.matrix
         if self._column_major():
             data = _read_cols(dataset, cols)
             return int(np.isfinite(data[rows, :]).sum())
@@ -300,6 +305,8 @@ class TCGACanonicalBundle:
     root: Path
     rna: RNASource
     sources: dict[str, MethylationSource]
+    primary_source: str = "array"
+    expected_shapes: dict[str, tuple[int, int]] | None = None
 
     @classmethod
     def from_root(
@@ -308,12 +315,17 @@ class TCGACanonicalBundle:
         validate_shapes: bool = True,
         *,
         hdf5_cache_mb: int = _DEFAULT_H5_CACHE_MB,
+        source_files: dict[str, str] | None = None,
+        rna_file: str | None = None,
+        expected_shapes: dict[str, tuple[int, int]] | None = None,
+        primary_source: str = "array",
     ) -> "TCGACanonicalBundle":
         root = Path(root)
         if not root.is_dir():
             raise FileNotFoundError(f"canonical bundle root does not exist: {root}")
 
-        rna_path = root / RNA_FILE
+        source_files = dict(SOURCE_FILES if source_files is None else source_files)
+        rna_path = root / (RNA_FILE if rna_file is None else rna_file)
         cache_kwargs = h5_cache_kwargs(hdf5_cache_mb)
         rna_h5 = h5py.File(rna_path, "r", **cache_kwargs)
         rna = RNASource(
@@ -324,12 +336,21 @@ class TCGACanonicalBundle:
         )
 
         sources: dict[str, MethylationSource] = {}
-        for name, relative_path in SOURCE_FILES.items():
+        for name, relative_path in source_files.items():
             path = root / relative_path
             h5f = h5py.File(path, "r", **cache_kwargs)
             sample_idx = np.asarray(h5f["sample_idx"][...], dtype=np.int64)
-            measurement_idx = np.asarray(h5f["measurement_idx"][...], dtype=np.int64)
+            measurement_idx = (
+                np.asarray(h5f["measurement_idx"][...], dtype=np.int64)
+                if "measurement_idx" in h5f
+                else np.arange(len(sample_idx), dtype=np.int64)
+            )
             sample_split = _decode(h5f["sample_split"][...]) if "sample_split" in h5f else None
+            cpg_axis = (
+                np.asarray(h5f["cpg_idx"][...], dtype=np.int64)
+                if "cpg_idx" in h5f
+                else np.arange(h5f["beta" if "beta" in h5f else "X"].shape[1], dtype=np.int64)
+            )
             sources[name] = MethylationSource(
                 name=name,
                 path=path,
@@ -337,19 +358,23 @@ class TCGACanonicalBundle:
                 sample_idx=sample_idx,
                 measurement_idx=measurement_idx,
                 sample_split=sample_split,
-                _cpg_index=UniqueIndex(h5f["cpg_idx"][...], name=f"{name} cpg_idx"),
+                _cpg_index=UniqueIndex(cpg_axis, name=f"{name} cpg_idx"),
                 _measurement_index=UniqueIndex(measurement_idx, name=f"{name} measurement_idx"),
                 _sample_groups=GroupIndex(sample_idx, name=f"{name} sample_idx"),
             )
 
-        bundle = cls(root=root, rna=rna, sources=sources)
+        if primary_source not in sources:
+            raise ValueError(f"primary source {primary_source!r} is not loaded; available={tuple(sources)}")
+        bundle = cls(root=root, rna=rna, sources=sources, primary_source=primary_source,
+                     expected_shapes=expected_shapes)
         if validate_shapes:
             bundle.validate_shapes()
         return bundle
 
     def validate_shapes(self) -> None:
         actual = {"rna": self.rna.shape, **{name: src.shape for name, src in self.sources.items()}}
-        mismatches = {k: (v, EXPECTED_SHAPES[k]) for k, v in actual.items() if v != EXPECTED_SHAPES[k]}
+        expected = EXPECTED_SHAPES if self.expected_shapes is None else self.expected_shapes
+        mismatches = {k: (v, expected[k]) for k, v in actual.items() if k in expected and v != expected[k]}
         if mismatches:
             raise ValueError(f"canonical bundle shape mismatch (actual, expected): {mismatches}")
 

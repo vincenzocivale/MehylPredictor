@@ -181,7 +181,8 @@ class FunctionalLocusCache:
     def __init__(self, functional_atlas_root: str | Path | None = None,
                  annotation_cache_root: str | Path | None = None,
                  bigwig_cache_root: str | Path | None = None,
-                 *, locus_store: str | Path | None = None):
+                 *, locus_store: str | Path | None = None,
+                 cpg_registry: str | Path | None = None):
         if locus_store is not None:
             if functional_atlas_root is not None or annotation_cache_root is not None or bigwig_cache_root is not None:
                 raise ValueError("locus_store cannot be combined with legacy cache roots")
@@ -206,7 +207,18 @@ class FunctionalLocusCache:
                     raise ValueError("frozen regulatory source files are not completely verified")
                 if root_manifest.get("regulatory_track_contract_sha256") != source_manifest.get("track_contract_sha256"):
                     raise ValueError("regulatory source contract differs from store manifest")
-                self.ids, self.locus_keys = _load_tcga_locus_aliases(self.annotation_cache_root)
+                if cpg_registry is None:
+                    self.ids, self.locus_keys = _load_tcga_locus_aliases(self.annotation_cache_root)
+                else:
+                    from .locus_features.ids import locus_key
+                    frame = pd.read_parquet(cpg_registry, columns=["cpg_idx", "chr", "pos"])
+                    self.ids = frame["cpg_idx"].to_numpy(np.int64)
+                    self.locus_keys = np.asarray(
+                        [locus_key(str(chrom), int(pos)) for chrom, pos in zip(frame["chr"], frame["pos"])],
+                        dtype=np.uint64,
+                    )
+                    order = np.argsort(self.ids, kind="mergesort")
+                    self.ids, self.locus_keys = self.ids[order], self.locus_keys[order]
                 self.index = SortedIndex(self.ids, "genome-wide functional locus cache")
                 self.locus_store = LocusFeatureStore(self.annotation_cache_root)
                 self.DENSE_DIM = 23
@@ -309,6 +321,7 @@ def open_functional_locus_cache(
     functional_atlas: str | Path | None = None,
     annotation_cache: str | Path | None = None,
     bigwig_cache: str | Path | None = None,
+    cpg_registry: str | Path | None = None,
 ) -> FunctionalLocusCache:
     """Open exactly one functional-locus backend.
 
@@ -318,7 +331,7 @@ def open_functional_locus_cache(
     if locus_store is not None:
         if any(value is not None for value in (functional_atlas, annotation_cache, bigwig_cache)):
             raise ValueError("--locus-store cannot be combined with legacy functional/annotation/BigWig caches")
-        return FunctionalLocusCache(locus_store=locus_store)
+        return FunctionalLocusCache(locus_store=locus_store, cpg_registry=cpg_registry)
     if functional_atlas is None or annotation_cache is None:
         raise ValueError("provide --locus-store or both legacy functional-atlas and annotation-cache paths")
     return FunctionalLocusCache(functional_atlas, annotation_cache, bigwig_cache)

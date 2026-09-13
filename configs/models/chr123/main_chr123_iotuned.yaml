@@ -1,0 +1,99 @@
+# chr123 I/O-tuned variant of the canonical paper-facing recipe
+# (configs/models/main.yaml). Model/loss/training hyperparameters are
+# byte-identical to main.yaml; only the HDF5 chunk-cache size changes.
+#
+# Rationale (see docs/EXPERIMENT_LOG.md / investigation 2026-09-13): the
+# wgbs axis for chr123 spans 5,396,437 CpGs with an 8192-wide chunk grid
+# (~659 chunks of ~1MB each, ~659MB working set). main.yaml's
+# hdf5_cache_mb=256 was sized for chr1's much smaller per-file working
+# set and thrashes on chr123 -- a uniform-random wgbs.cpg_size=20480
+# batch touches most of the ~659 chunks every step, so a 256MB cache
+# evicts and re-reads them continuously (confirmed via /proc/<pid>/io:
+# rchar >> read_bytes, i.e. nearly all reads served from OS page cache
+# but still paid for at the h5py chunk-cache layer). Raising the cache
+# past the full working set removes that thrashing. Do not edit
+# main.yaml in place -- it is the recipe used by the active chr1 "main"
+# paper study.
+model:
+  encoder:
+    kind: locus_attention
+    latent_dim: 256
+    n_programs: 64
+    program_dim: 256
+    n_heads: 4
+    dropout: 0.1
+    layer_norm: true
+  functional_fusion_variant: efficient_single_attn_8ffn_residual_functional8_head2
+
+loss:
+  beta_mse_weight: 1.0
+  locus_pearson_weight: 0.15
+  locus_min_observed_samples: 8
+
+training:
+  seed: 17
+  device: auto
+  epochs: 80
+  learning_rate: 0.0002
+  weight_decay: 0.0001
+  scheduler: cosine_warmup
+  scheduler_horizon_epochs: 80
+  warmup_epochs: 1.0
+  min_lr_ratio: 0.1
+  gradient_clip_norm: 1.0
+  amp: true
+  amp_dtype: bfloat16
+  allow_tf32: true
+  matmul_precision: high
+  fused_adamw: true
+  schedule_layout: contiguous_blocks
+  prefetch_depth: 8
+  prefetch_workers: 4
+  hdf5_cache_mb: 2048
+  checkpoint_every: 1
+  validation_every: 1
+  compile: false
+
+schedule_policy: pair_complete
+exclude_official_val_from_auxiliary: true
+structured_loss_sources:
+  - array
+  - epic
+  - wgbs
+
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.15
+  final_regressor_dropout: 0.15
+
+batching:
+  array:
+    sample_size: 320
+    cpg_size: 640
+  epic:
+    sample_size: 160
+    cpg_size: 5120
+  wgbs:
+    sample_size: 32
+    cpg_size: 20480
+
+development:
+  fraction: 0.1
+  block_bp: 5000000
+  split_seed: 17
+
+tracking:
+  backend: wandb
+  project: MethylPredictor-refactored
+  mode: online
+  group: functional_concat_final
+  job_type: train
+  tags:
+    - functional-only
+    - efficient-single-attn
+    - retrieval-8ffn
+    - functional-8ffn
+    - head-2ffn
+    - final-architecture
+    - chr123
+    - iotuned

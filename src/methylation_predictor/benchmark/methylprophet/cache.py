@@ -15,8 +15,15 @@ def prepare_rna_cache(
     *,
     train_sample_idx: np.ndarray,
     chunk_rows: int = 64,
+    rna_filename: str = "tcga_rna_official_full.h5",
 ) -> dict[str, object]:
-    """Fit z-score on official Array-train samples and mmap all canonical RNA rows."""
+    """Fit z-score on official train samples and mmap all canonical RNA rows.
+
+    ``rna_filename`` defaults to the TCGA canonical bundle's file name for
+    backward compatibility; pass e.g. ``"encode_rna_official_full.h5"`` to
+    reuse this same fitting/caching logic for a different canonical bundle
+    (see scripts/prepare_encode_runtime.py).
+    """
     root = Path(canonical_root)
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -28,7 +35,7 @@ def prepare_rna_cache(
         x = np.load(values_path, mmap_mode="r")
         return {"status": "cached", "shape": list(x.shape)}
 
-    path = root / "rna" / "tcga_rna_official_full.h5"
+    path = root / "rna" / rna_filename
     with h5py.File(path, "r") as h:
         X = h["X"]
         ids = np.asarray(h["sample_idx"][...], dtype=np.int64)

@@ -81,6 +81,30 @@ def scope_protocol(scope: str, bundle, *, canonical_root: str | Path) -> Protoco
     technology measured them.
     """
     scope_obj = resolve_scope(scope)
+    if bundle.primary_source != "array":
+        # A non-TCGA bundle carries its own frozen sample/CpG split.  The
+        # legacy array_* field names remain as compatibility aliases on
+        # Protocol, but no Array source is required or opened.
+        split_root = Path(canonical_root) / "cpg" / "splits"
+        source = bundle.primary_source
+        required = {name: split_root / f"{name}.npy" for name in
+                    ("train_sample_idx", "val_sample_idx", "train_cpg_idx", "val_cpg_idx")}
+        missing = [str(path) for path in required.values() if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(f"single-source protocol is missing split files: {missing}")
+        train_samples = np.load(required["train_sample_idx"]).astype(np.int64)
+        val_samples = np.load(required["val_sample_idx"]).astype(np.int64)
+        train_cpgs = np.load(required["train_cpg_idx"]).astype(np.int64)
+        val_cpgs = np.load(required["val_cpg_idx"]).astype(np.int64)
+        if np.intersect1d(train_samples, val_samples).size or np.intersect1d(train_cpgs, val_cpgs).size:
+            raise ValueError("single-source protocol train/val axes overlap")
+        return Protocol(
+            name=f"{source}_genomewide", bundle=bundle,
+            metadata={"primary_source": source, "sources": [source], "dataset": "single_source"},
+            sources=(source,), chromosomes=tuple(),
+            array_train_sample_idx=train_samples, array_val_sample_idx=val_samples,
+            array_train_cpg_idx=train_cpgs, array_val_cpg_idx=val_cpgs,
+        )
     if scope_obj.name == "chr1":
         return load_protocol("tcga_mix_chr1", bundle, root=canonical_root)
     if scope_obj.name == "chr123":

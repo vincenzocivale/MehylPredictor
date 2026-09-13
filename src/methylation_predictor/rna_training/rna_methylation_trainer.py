@@ -105,6 +105,7 @@ class RNAMethylationTrainer:
         bigwig_cache: str | Path | None = None,
         genomic_fm_cache: str | Path | None = None,
         feature_set: str | None = None,
+        dataset_source: str | None = None,
     ):
         self.development_split_seed = (
             None
@@ -123,6 +124,7 @@ class RNAMethylationTrainer:
         self.early_stop_patience = int(early_stop_patience) if early_stop_patience else None
         self.scope = scope
         self.root = Path(canonical_root)
+        self.dataset_source = dataset_source
         self.registry = Path(registry)
         self.recipe = load_rna_recipe(recipe_path)
         for key, value in (overrides or {}).items():
@@ -164,7 +166,16 @@ class RNAMethylationTrainer:
                     self.matched_chr1_root, self.protocol, hdf5_cache_mb=cfg.hdf5_cache_mb,
                 )
         else:
-            self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
+            if dataset_source is None or dataset_source == "array":
+                self.bundle = TCGACanonicalBundle.from_root(self.root, hdf5_cache_mb=cfg.hdf5_cache_mb)
+            else:
+                self.bundle = TCGACanonicalBundle.from_root(
+                    self.root, hdf5_cache_mb=cfg.hdf5_cache_mb,
+                    rna_file="rna/encode_rna_official_full.h5",
+                    source_files={dataset_source: "methylation/encode_wgbs_full.h5"},
+                    primary_source=dataset_source,
+                    expected_shapes={"rna": (95, 25017), dataset_source: (95, 27078450)},
+                )
             self.protocol = scope_protocol(scope, self.bundle, canonical_root=self.root)
             self._sources = self.bundle.sources
         self.rna = RNACache(rna_cache)
@@ -204,6 +215,7 @@ class RNAMethylationTrainer:
             self.functional = open_functional_locus_cache(
                 locus_store=locus_store, functional_atlas=functional_atlas,
                 annotation_cache=annotation_cache, bigwig_cache=bigwig_cache,
+                cpg_registry=self.registry if self.dataset_source is not None else None,
             )
             if feature_set is not None:
                 # E03 comparator path (paper plan sec. E03): zero out parts
@@ -221,10 +233,9 @@ class RNAMethylationTrainer:
         )
         if self.functional is not None:
             required_axes = {
-                "array_train": self.protocol.array_train_cpg_idx,
-                "array_val": self.protocol.array_val_cpg_idx,
-                "epic_train": self.protocol.auxiliary_cpg_idx.get("epic", np.empty(0, np.int64)),
-                "wgbs_train": self.protocol.auxiliary_cpg_idx.get("wgbs", np.empty(0, np.int64)),
+                f"{self.protocol.primary_source}_train": self.protocol.train_cpg_idx,
+                f"{self.protocol.primary_source}_val": self.protocol.val_cpg_idx,
+                **{f"{name}_train": ids for name, ids in self.protocol.auxiliary_cpg_idx.items()},
             }
             for axis_name, axis in required_axes.items():
                 try:
@@ -396,6 +407,7 @@ class RNAMethylationTrainer:
 
     def _build_pools(self) -> list[TrainingPool]:
         p = self.protocol
+        primary = p.primary_source
         if self.mode == "development":
             frac = float(self.recipe.raw.get("development", {}).get("fraction", 0.1))
             block_bp = int(self.recipe.raw.get("development", {}).get("block_bp", 5_000_000))
@@ -411,15 +423,19 @@ class RNAMethylationTrainer:
                 "val_cpg_x_train_sample": (train_s, val_c),
                 "val_cpg_x_val_sample": (val_s, val_c),
             }
-            array_rows = self._sources["array"].rows_of_samples(train_s)
-            pools = [TrainingPool("array", array_rows, train_s, train_c)]
+            primary_rows = self._sources[primary].rows_of_samples(train_s)
+            pools = [TrainingPool(primary, primary_rows, train_s, train_c)]
             forbidden = val_s
         else:
-            array_rows = self._sources["array"].rows_of_samples(p.array_train_sample_idx)
-            pools = [TrainingPool("array", array_rows, p.array_train_sample_idx, p.array_train_cpg_idx)]
+            primary_rows = self._sources[primary].rows_of_samples(p.train_sample_idx)
+            pools = [TrainingPool(primary, primary_rows, p.train_sample_idx, p.train_cpg_idx)]
             forbidden = p.array_val_sample_idx if self.recipe.exclude_official_val_from_auxiliary else np.empty(0, np.int64)
 
-        for name in ("epic", "wgbs"):
+        for name in p.sources:
+            if name == primary:
+                continue
+            if self.training_sources and name not in self.training_sources:
+                continue
             if name not in p.sources:
                 continue
             source = self._sources[name]
@@ -462,7 +478,7 @@ class RNAMethylationTrainer:
     def _schedules(self, epoch: int):
         schedules = []
         for i, pool in enumerate(self.pools):
-            batch = self.recipe.batching[pool.name]
+            batch = self.recipe.batching.get(pool.name, self.recipe.batching.get("wgbs", {"sample_size": 32, "cpg_size": 20480}))
             schedules.append(SourceSchedule(
                 len(pool.row_positions), len(pool.cpg_idx), int(batch["sample_size"]), int(batch["cpg_size"]),
                 epoch, self.seed + 1009 * i, self.recipe.schedule_policy, self.recipe.training.schedule_layout,
@@ -597,7 +613,7 @@ class RNAMethylationTrainer:
             )
             loss_cfg = loss_config_for_source(
                 self.recipe.loss,
-                pool.name,
+                "array" if pool.name == self.protocol.primary_source else pool.name,
                 self.recipe.structured_loss_sources,
             )
             total, pieces = self._mas_concat_loss(
@@ -644,7 +660,7 @@ class RNAMethylationTrainer:
     @torch.no_grad()
     def evaluate_view(self, sample_ids, cpg_ids, *, sample_chunk=128, cpg_chunk=2048):
         self.model.eval()
-        source = self._sources["array"]
+        source = self._sources[self.protocol.primary_source]
         rows = source.rows_of_samples(sample_ids)
         metrics = ArrayMomentMetrics(
             len(sample_ids),
