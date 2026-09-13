@@ -19,9 +19,14 @@ PROFILE=configs/data/paper_chr1_local_ekko.yaml
 
 jobs=(
   "configs/models/functional_representation/basic_context.yaml basic_context"
-  "configs/models/main.yaml full_functional"
   "configs/models/functional_representation/minimal.yaml minimal"
 )
+# full_functional (configs/models/main.yaml) is deliberately NOT trained
+# here: it is the exact same recipe+seed+scope as main-seed17-r3, already
+# running on kingkong as part of the `main` study. Once that run completes,
+# reuse its checkpoint/metrics for functional_representation/full_functional
+# /seed17 (evaluate+record only, no retraining) instead of duplicating ~16h
+# of GPU work. See docs/EXPERIMENT_LOG.md.
 # Secondary/supplementary study: single seed for now (per user direction
 # 2026-09-13), not the full 3-seed paper matrix.
 seeds=(17)
