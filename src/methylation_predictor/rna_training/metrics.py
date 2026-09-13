@@ -40,6 +40,18 @@ class ArrayMomentMetrics:
                 np.nan,
             )
 
+    @staticmethod
+    def _ccc(n, sx, sy, sxx, syy, sxy):
+        """Lin's concordance correlation coefficient, complementary/optional metric."""
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mx = sx / n
+            my = sy / n
+            cov = sxy / n - mx * my
+            vx = sxx / n - mx * mx
+            vy = syy / n - my * my
+            denom = vx + vy + (mx - my) ** 2
+            return np.where((n >= 2) & (denom > 0), 2 * cov / denom, np.nan)
+
     def add(
         self,
         s0: int,
@@ -93,12 +105,20 @@ class ArrayMomentMetrics:
                 "skill_vs_prior": float("nan"),
                 "mas_pcc": float("nan"),
                 "mac_pcc": float("nan"),
+                "mas_ccc": float("nan"),
+                "mac_ccc": float("nan"),
             }
 
         rs = self._corr(
             self.sn, self.st, self.sp, self.stt, self.spp, self.stp
         )
         rc = self._corr(
+            self.cn, self.ct, self.cp, self.ctt, self.cpp, self.ctp
+        )
+        ccc_s = self._ccc(
+            self.sn, self.st, self.sp, self.stt, self.spp, self.stp
+        )
+        ccc_c = self._ccc(
             self.cn, self.ct, self.cp, self.ctt, self.cpp, self.ctp
         )
         mse = self.sse / self.n
@@ -119,4 +139,8 @@ class ArrayMomentMetrics:
             ),
             "mas_pcc": float(np.nanmedian(rc)),
             "mac_pcc": float(np.nanmedian(rs)),
+            # Complementary/optional metric (see MethylPredictor paper experiment
+            # plan sec. 2.2): not used for checkpoint selection or headline claims.
+            "mas_ccc": float(np.nanmedian(ccc_c)),
+            "mac_ccc": float(np.nanmedian(ccc_s)),
         }

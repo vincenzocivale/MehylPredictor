@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 from pathlib import Path
+import sys
 
 import yaml
 
@@ -20,6 +21,8 @@ def load_runner():
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    # Dataclasses resolve postponed annotations through sys.modules.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

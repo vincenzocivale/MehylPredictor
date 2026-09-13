@@ -143,12 +143,20 @@ def test_artifact_classification_uses_frozen_dependencies():
     )
     assert cls == "REQUIRED_REPRODUCIBILITY"
 
+    # 2026-09-13: derived/ntv3_expansion (and the rest of the former
+    # review_then_delete_if_unreferenced list) was investigated, confirmed
+    # unreferenced, and physically deleted -- see configs/external_cleanup_
+    # policy.yaml's `deleted_2026_09_13` record. The contract's cleanup list
+    # is now empty (nothing left pending review-for-deletion), so an
+    # unreferenced/unlisted path classifies as REVIEW, not
+    # UNREFERENCED_CLEANUP_TARGET -- exercise that fallback explicitly here
+    # instead of asserting against a path that no longer exists on disk.
     cls, _ = module.classify_artifact(
         "derived/ntv3_expansion",
         registry,
         contract,
     )
-    assert cls == "UNREFERENCED_CLEANUP_TARGET"
+    assert cls == "REVIEW"
 
 
 def test_missing_cache_member_is_detected(tmp_path):

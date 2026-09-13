@@ -70,6 +70,16 @@ external_inputs:
     required_files:
       - cpg_idx.npy
       - annotation_core.f32.npy
+  locus_store:
+    path: derived/locus_features_v1
+    retention: runtime
+    kind: directory
+    roles: [training, evaluation, inference]
+    required_files:
+      - manifest.json
+      - regulatory/track_contract.tsv
+      - regulatory/manifest.json
+      - validation_regulatory_chr1.json
   bulkformer_rna:
     path: derived/bulkformer_embeddings/tcga_147m
     retention: runtime
@@ -105,8 +115,7 @@ dependency_sets:
     - registry
     - prior_cache
     - cpg_targets
-    - functional_atlas
-    - annotation_cache
+    - locus_store
   cpg_prior:
     - canonical_root
     - registry

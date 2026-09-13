@@ -1,0 +1,16 @@
+# E03 arm: minimal functional representation.
+# Only the bare CpG-island context (island/shore/shelf/open_sea) and TSS
+# distance are kept from the 23-dim dense annotation; all 4165 sparse
+# regulatory tracks, genomic-region/cCRE class, and breadth are zeroed by
+# MaskedFunctionalLocusCache (src/methylation_predictor/storage.py). Model
+# architecture, RNA branch, training protocol, loss and evaluator are
+# unchanged from main.yaml -- only which locus-representation entries are
+# nonzero changes, per the paper plan's E03 methodology.
+extends: ../main.yaml
+
+locus_cls:
+  feature_set: minimal
+
+tracking:
+  group: functional_representation_2026_09
+  tags: [functional-only, e03-representation, minimal]

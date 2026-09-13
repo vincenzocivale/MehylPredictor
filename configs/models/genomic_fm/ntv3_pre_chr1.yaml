@@ -1,0 +1,25 @@
+# E04 arm: genomic-FM (sequence-derived) locus representation baseline.
+# Replaces the functional annotation locus representation with a frozen
+# NTv3-pre (InstaDeepAI/NTv3_650M_pre) chr1 embedding
+# (derived/ntv3_pre_chr1_atlas/chr1_ntv3_pretrain_atlas_v1.h5, 1536-d,
+# window 32768bp) via modeling.genomic_fm.GenomicFMLocusPredictor -- a
+# subclass of the frozen final architecture with only N_TRACKS/DENSE_DIM
+# overridden. RNA branch, retrieval attention, mean-proxy head, loss,
+# training protocol and evaluator are all unchanged from main.yaml, per the
+# paper plan's E04 methodology ("Regola sperimentale": change only the
+# locus representation).
+#
+# NTv3-post is deliberately never used here or anywhere in the paper
+# benchmark -- see CLAUDE.md and
+# MethylPredictor_Paper_Experiments_and_Codebase_Plan.md.
+#
+# Launch with --genomic-fm-cache pointing at the embedding file above,
+# instead of --locus-store/--functional-atlas/--annotation-cache.
+extends: ../main.yaml
+
+model:
+  functional_fusion_variant: genomic_fm_ntv3_pre
+
+tracking:
+  group: genomic_fm_comparison_2026_09
+  tags: [genomic-fm, e04-representation, ntv3-pre, chr1]

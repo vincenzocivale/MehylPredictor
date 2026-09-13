@@ -6,6 +6,24 @@ import hashlib
 import json
 
 import numpy as np
+import pandas as pd
+
+
+def _load_tcga_locus_aliases(root: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Load the three parquet aliases without constructing a giant DataFrame."""
+    frames = []
+    for tech in ("array", "epic", "wgbs"):
+        frame = pd.read_parquet(root / "aliases" / f"tcga_{tech}.parquet", columns=["cpg_idx", "locus_key"])
+        frames.append((frame.cpg_idx.to_numpy(np.int64), frame.locus_key.to_numpy(np.uint64)))
+    ids = np.concatenate([x[0] for x in frames])
+    keys = np.concatenate([x[1] for x in frames])
+    order = np.argsort(ids, kind="mergesort")
+    ids, keys = ids[order], keys[order]
+    duplicate = ids[1:] == ids[:-1]
+    if np.any(duplicate & (keys[1:] != keys[:-1])):
+        raise ValueError("TCGA aliases disagree on cpg_idx coordinate")
+    keep = np.r_[True, ~duplicate]
+    return ids[keep], keys[keep]
 
 
 class SortedIndex:
@@ -160,17 +178,64 @@ class FunctionalLocusCache:
     N_TRACKS = 4165
     DENSE_DIM = 23
 
-    def __init__(self, functional_atlas_root: str | Path, annotation_cache_root: str | Path,
-                 bigwig_cache_root: str | Path | None = None):
-        self.functional_atlas_root = Path(functional_atlas_root)
+    def __init__(self, functional_atlas_root: str | Path | None = None,
+                 annotation_cache_root: str | Path | None = None,
+                 bigwig_cache_root: str | Path | None = None,
+                 *, locus_store: str | Path | None = None):
+        if locus_store is not None:
+            if functional_atlas_root is not None or annotation_cache_root is not None or bigwig_cache_root is not None:
+                raise ValueError("locus_store cannot be combined with legacy cache roots")
+            annotation_cache_root = locus_store
+        if annotation_cache_root is None:
+            raise ValueError("annotation_cache_root or locus_store is required")
+        self.functional_atlas_root = Path(functional_atlas_root) if functional_atlas_root is not None else None
         self.annotation_cache_root = Path(annotation_cache_root)
         self.bigwig_cache_root = Path(bigwig_cache_root) if bigwig_cache_root is not None else None
+        self.new_full_store = False
+        if (self.annotation_cache_root / "manifest.json").exists():
+            root_manifest = json.loads((self.annotation_cache_root / "manifest.json").read_text())
+            if root_manifest.get("regulatory_status") == "complete":
+                if root_manifest.get("status") != "complete":
+                    raise ValueError("locus feature store is incomplete")
+                from .locus_features.store import LocusFeatureStore
+                gate = json.loads((self.annotation_cache_root / "validation_regulatory_chr1.json").read_text())
+                if gate.get("status") != "complete":
+                    raise ValueError("regulatory chr1 regression gate is incomplete")
+                source_manifest = json.loads((self.annotation_cache_root / "regulatory" / "manifest.json").read_text())
+                if source_manifest.get("status") != "complete" or source_manifest.get("verified") != self.N_TRACKS:
+                    raise ValueError("frozen regulatory source files are not completely verified")
+                if root_manifest.get("regulatory_track_contract_sha256") != source_manifest.get("track_contract_sha256"):
+                    raise ValueError("regulatory source contract differs from store manifest")
+                self.ids, self.locus_keys = _load_tcga_locus_aliases(self.annotation_cache_root)
+                self.index = SortedIndex(self.ids, "genome-wide functional locus cache")
+                self.locus_store = LocusFeatureStore(self.annotation_cache_root)
+                self.DENSE_DIM = 23
+                self.new_full_store = True
+                return
+        if self.functional_atlas_root is None:
+            raise ValueError("legacy functional cache requires functional_atlas_root; pass a complete locus store for the canonical backend")
         self.ids = np.load(self.functional_atlas_root / "cpg_idx.npy", mmap_mode="r")
-        annotation_ids = np.load(self.annotation_cache_root / "cpg_idx.npy", mmap_mode="r")
-        if not np.array_equal(self.ids, annotation_ids):
-            raise ValueError("functional atlas and annotation cache cpg_idx axes do not match exactly")
-
-        self.annotation = np.load(self.annotation_cache_root / "annotation_core.f32.npy", mmap_mode="r")
+        self.locus_store = None
+        self.locus_keys = None
+        if (self.annotation_cache_root / "features").is_dir():
+            from .locus_features.store import LocusFeatureStore
+            root_manifest = json.loads((self.annotation_cache_root / "manifest.json").read_text())
+            gate = json.loads((self.annotation_cache_root / "validation_chr1.json").read_text())
+            if root_manifest.get("status") != "complete" or gate.get("status") != "complete":
+                raise ValueError("locus feature store or chr1 regression gate is incomplete")
+            self.locus_store = LocusFeatureStore(self.annotation_cache_root)
+            alias_ids, alias_keys = _load_tcga_locus_aliases(self.annotation_cache_root)
+            missing = np.setdiff1d(self.ids, alias_ids, assume_unique=False)
+            if len(missing):
+                raise KeyError(f"locus store lacks {len(missing)} functional atlas aliases")
+            positions = np.searchsorted(alias_ids, np.asarray(self.ids, dtype=np.int64))
+            self.locus_keys = alias_keys[positions]
+            self.annotation = None
+        else:
+            annotation_ids = np.load(self.annotation_cache_root / "cpg_idx.npy", mmap_mode="r")
+            if not np.array_equal(self.ids, annotation_ids):
+                raise ValueError("functional atlas and annotation cache cpg_idx axes do not match exactly")
+            self.annotation = np.load(self.annotation_cache_root / "annotation_core.f32.npy", mmap_mode="r")
         self.breadth = np.load(self.functional_atlas_root / "breadth_features.f32.npy", mmap_mode="r")
         self.bigwig = None
         if self.bigwig_cache_root is not None:
@@ -186,7 +251,7 @@ class FunctionalLocusCache:
         expected_shape = (len(self.ids), self.N_TRACKS)
         if shape != expected_shape:
             raise ValueError(f"unexpected functional CSR shape {shape}; expected {expected_shape}")
-        if self.annotation.shape != (len(self.ids), 18):
+        if self.annotation is not None and self.annotation.shape != (len(self.ids), 18):
             raise ValueError(f"unexpected annotation_core shape {self.annotation.shape}")
         if self.breadth.shape != (len(self.ids), 5):
             raise ValueError(f"unexpected breadth_features shape {self.breadth.shape}")
@@ -201,9 +266,23 @@ class FunctionalLocusCache:
             raise ValueError("functional CSR contains out-of-range track indices")
         self.index = SortedIndex(self.ids, "functional locus cache")
 
+    def source_provenance(self) -> dict[str, str]:
+        if self.new_full_store:
+            return {"locus_store": str(self.annotation_cache_root.resolve())}
+        return {
+            "functional_atlas": str(self.functional_atlas_root.resolve()),
+            "annotation_cache": str(self.annotation_cache_root.resolve()),
+        }
+
     def get(self, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
         """Retrieve arbitrary/repeated loci without densifying the track matrix."""
         rows = self.index.positions_of(np.asarray(cpg_ids, dtype=np.int64))
+        if self.new_full_store:
+            from .locus_features.regulatory import unpack_embedding_bags
+            annotation, breadth, packed = self.locus_store.lookup_full(self.locus_keys[rows])
+            track_indices, offsets = unpack_embedding_bags(packed)
+            return {"track_indices": track_indices, "offsets": offsets,
+                    "dense": np.concatenate((annotation, breadth), axis=1)}
         starts = np.asarray(self.indptr[rows], dtype=np.int64)
         counts = np.asarray(self.indptr[rows + 1], dtype=np.int64) - starts
         offsets = np.empty(len(rows) + 1, dtype=np.int64)
@@ -215,8 +294,138 @@ class FunctionalLocusCache:
             track_indices = np.asarray(self.indices[repeated_starts + within_rows], dtype=np.int64)
         else:
             track_indices = np.empty(0, dtype=np.int64)
-        dense_parts = [np.asarray(self.annotation[rows], dtype=np.float32), np.asarray(self.breadth[rows], dtype=np.float32)]
+        annotations = (self.locus_store.lookup(self.locus_keys[rows]) if self.locus_store is not None
+                       else np.asarray(self.annotation[rows], dtype=np.float32))
+        dense_parts = [annotations, np.asarray(self.breadth[rows], dtype=np.float32)]
         if self.bigwig is not None:
             dense_parts.append(np.asarray(self.bigwig[rows], dtype=np.float32))
         dense = np.concatenate(dense_parts, axis=1)
         return {"track_indices": track_indices, "offsets": offsets, "dense": dense}
+
+
+def open_functional_locus_cache(
+    *,
+    locus_store: str | Path | None = None,
+    functional_atlas: str | Path | None = None,
+    annotation_cache: str | Path | None = None,
+    bigwig_cache: str | Path | None = None,
+) -> FunctionalLocusCache:
+    """Open exactly one functional-locus backend.
+
+    The canonical store and the frozen legacy pair are deliberately mutually
+    exclusive so callers cannot silently combine feature namespaces.
+    """
+    if locus_store is not None:
+        if any(value is not None for value in (functional_atlas, annotation_cache, bigwig_cache)):
+            raise ValueError("--locus-store cannot be combined with legacy functional/annotation/BigWig caches")
+        return FunctionalLocusCache(locus_store=locus_store)
+    if functional_atlas is None or annotation_cache is None:
+        raise ValueError("provide --locus-store or both legacy functional-atlas and annotation-cache paths")
+    return FunctionalLocusCache(functional_atlas, annotation_cache, bigwig_cache)
+
+
+class GenomicFMLocusCache:
+    """E04 comparator: a dense sequence-model (genomic-FM) locus embedding,
+    duck-type compatible with ``FunctionalLocusCache.get()``'s output shape
+    (``track_indices``/``offsets``/``dense``) so it can feed
+    ``modeling.genomic_fm.GenomicFMLocusPredictor`` (a subclass of the frozen
+    final architecture with ``N_TRACKS=1``/``DENSE_DIM=embedding_dim``)
+    through the same batch-construction path as the functional cache,
+    without any change to the trainer's core data flow.
+
+    ``track_indices``/``offsets`` are always empty (the degenerate
+    ``EmbeddingBag(1, WIDTH)`` in ``GenomicFMLocusPredictor`` is never
+    populated) -- the embedding is carried entirely through ``dense``.
+
+    Expects an HDF5 file with ``cpg_idx`` (int64, [N]) and ``embedding``
+    (float16/float32, [N, embedding_dim]) datasets -- the format produced by
+    ``scripts/build_ntv3_atlas.py`` (see e.g.
+    ``derived/ntv3_pre_chr1_atlas/chr1_ntv3_pretrain_atlas_v1.h5``).
+    """
+
+    def __init__(self, embedding_path: str | Path):
+        import h5py
+
+        self.embedding_path = Path(embedding_path)
+        self._h5 = h5py.File(self.embedding_path, "r")
+        self.ids = np.asarray(self._h5["cpg_idx"][...], dtype=np.int64)
+        self.embedding_dim = int(self._h5["embedding"].shape[1])
+        if self._h5["embedding"].shape[0] != len(self.ids):
+            raise ValueError(
+                f"{self.embedding_path}: cpg_idx/embedding row count mismatch"
+            )
+        self.index = SortedIndex(self.ids, "genomic-FM locus cache")
+        self.model = self._h5.attrs.get("model")
+
+    def source_provenance(self) -> dict[str, str]:
+        return {
+            "genomic_fm_cache": str(self.embedding_path.resolve()),
+            "genomic_fm_model": str(self.model) if self.model is not None else "",
+        }
+
+    def get(self, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
+        rows = self.index.positions_of(np.asarray(cpg_ids, dtype=np.int64))
+        dense = np.asarray(self._h5["embedding"][...][rows], dtype=np.float32)
+        offsets = np.zeros(len(rows) + 1, dtype=np.int64)
+        return {
+            "track_indices": np.empty(0, dtype=np.int64),
+            "offsets": offsets,
+            "dense": dense,
+        }
+
+
+class MaskedFunctionalLocusCache:
+    """E03 comparator: wraps a full ``FunctionalLocusCache``/genome-wide
+    locus store and zeroes out parts of its output to realize the paper
+    plan's reduced functional-representation arms (sec. E03), without
+    changing the frozen model architecture (input shape is unchanged --
+    only which entries are nonzero changes) or duplicating the underlying
+    store.
+
+    ``minimal``: no sparse regulatory tracks, only the bare CpG-island
+    context (dense indices 0-3) and TSS distance (index 17) dense
+    annotations; genomic-region/cCRE class and all breadth/track signal
+    zeroed.
+    ``basic_context``: no sparse regulatory tracks; all 18 static reference
+    annotations (dense indices 0-17: CpG-island context, genomic region,
+    cCRE class, TSS distance) kept, breadth (18-22) zeroed.
+    ``full_functional``: passthrough, identical to the wrapped cache.
+
+    Dense column indices follow ``resources/locus_features/annotation_core_v1.json``.
+    """
+
+    FEATURE_SETS = ("minimal", "basic_context", "full_functional")
+    _MINIMAL_DENSE_IDX = (0, 1, 2, 3, 17)
+    _BASIC_CONTEXT_DENSE_IDX = tuple(range(0, 18))
+
+    def __init__(self, wrapped, *, feature_set: str):
+        if feature_set not in self.FEATURE_SETS:
+            raise ValueError(
+                f"unknown feature_set {feature_set!r}; expected one of {self.FEATURE_SETS}"
+            )
+        self.wrapped = wrapped
+        self.feature_set = feature_set
+        self.index = wrapped.index
+
+    def source_provenance(self) -> dict[str, str]:
+        provenance = dict(self.wrapped.source_provenance())
+        provenance["feature_set"] = self.feature_set
+        return provenance
+
+    def get(self, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
+        payload = self.wrapped.get(cpg_ids)
+        if self.feature_set == "full_functional":
+            return payload
+        dense = np.zeros_like(payload["dense"])
+        keep_idx = (
+            self._MINIMAL_DENSE_IDX
+            if self.feature_set == "minimal"
+            else self._BASIC_CONTEXT_DENSE_IDX
+        )
+        dense[:, list(keep_idx)] = payload["dense"][:, list(keep_idx)]
+        n_rows = len(np.asarray(cpg_ids))
+        return {
+            "track_indices": np.empty(0, dtype=np.int64),
+            "offsets": np.zeros(n_rows + 1, dtype=np.int64),
+            "dense": dense,
+        }

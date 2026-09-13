@@ -92,8 +92,8 @@ beta MSE + 0.15 * locus-PCC loss + 0.15 * mean-proxy loss
 RNA training consumes the canonical TCGA data preparation together with:
 
 ```text
---functional-atlas   sparse ENCODE regulatory-track atlas
---annotation-cache   static/breadth CpG annotation cache
+--locus-store        canonical genome-wide 4,165+23 CpG feature store
+--functional-atlas / --annotation-cache  legacy frozen fallback
 --rna-cache          normalized RNA cache
 --cpg-targets-dir    training-locus mean targets for the auxiliary mean proxy
 ```
@@ -113,6 +113,8 @@ methylation_predictor.storage.FunctionalLocusCache
 
 which preserves CSR-style track lookup and does not densify the full
 locus-by-track matrix.
+New paper-facing runs open the mmap-backed `derived/locus_features_v1` store;
+the frozen chr1 CSR pair remains available only for compatibility and regression.
 
 ## Train
 
@@ -129,8 +131,7 @@ python scripts/train.py \
   --rna-cache "$RNA_CACHE" \
   --prior-cache "$PRIOR_CACHE" \
   --cpg-targets-dir "$CPG_TARGETS" \
-  --functional-atlas "$FUNCTIONAL_ATLAS" \
-  --annotation-cache "$ANNOTATION_CACHE" \
+  --locus-store "$METHYL_DATA_ROOT/derived/locus_features_v1" \
   --prepared-root "$MATCHED_CHR1_ROOT" \
   --output-root "$RUN_ROOT" \
   --run-id functional-reference-seed17
@@ -152,9 +153,7 @@ python scripts/evaluate.py \
   --registry "$REGISTRY" \
   --rna-cache "$RNA_CACHE" \
   --prior-cache "$PRIOR_CACHE" \
-  --cpg-targets-dir "$CPG_TARGETS" \
-  --functional-atlas "$FUNCTIONAL_ATLAS" \
-  --annotation-cache "$ANNOTATION_CACHE" \
+  --locus-store "$METHYL_DATA_ROOT/derived/locus_features_v1" \
   --prepared-root "$MATCHED_CHR1_ROOT" \
   --output "$OUTPUT_JSON"
 ```
@@ -205,3 +204,4 @@ Current priorities after the functional/core cutover are:
 
 The frozen experiment inventory is documented in
 [`docs/EXPERIMENT_SURFACE.md`](docs/EXPERIMENT_SURFACE.md).
+The genome-wide hg38 locus store supplies 4,165 binary ENCODE overlaps, 18 annotation values and five breadth values. Its full chr1 regression gates and build commands are documented in [locus features](docs/data/LOCUS_FEATURES.md).

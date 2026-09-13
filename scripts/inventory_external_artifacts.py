@@ -114,9 +114,21 @@ def _profile_refs(profile_path: Path, data_root: Path) -> dict[str, list[str]]:
         "cpg_targets_dir",
         "functional_atlas",
         "annotation_cache",
+        # New genome-wide locus feature store (paths.locus_store), replacing
+        # the legacy functional_atlas/annotation_cache pair for fresh runs --
+        # see docs/data/LOCUS_FEATURES.md. Without this key, derived/locus_
+        # features_v1 was spuriously classified REVIEW/unreferenced even
+        # though it is an active, required paper-runtime dependency.
+        "locus_store",
     }
 
     paths = payload.get("paths") or {}
+    # functional_atlas/annotation_cache may live under a legacy_frozen block
+    # (see configs/data/paper_chr1.yaml) rather than paths, once locus_store
+    # supersedes them for fresh runs; check both so either generation of
+    # profile is picked up as reference evidence.
+    legacy_frozen = payload.get("legacy_frozen") or {}
+    paths = {**legacy_frozen, **paths}
     for key in sorted(input_keys):
         raw = paths.get(key)
         if raw is None:

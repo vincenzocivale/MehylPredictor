@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "regulatory_breadth_v1",
+  "reference_genome": "hg38",
+  "source_track_contract": "derived/ntv3_functional_peak_atlas_chr1_all_sources/all_primary_columns.tsv",
+  "source_overlap_semantics": "binary CpG BED point overlap with one frozen processed ENCODE peak file per track",
+  "dtype": "float32",
+  "features": [
+    {"index": 0, "name": "accessibility_breadth", "formula": "accessibility overlap count / 533", "denominator": 533},
+    {"index": 1, "name": "histone_breadth", "formula": "histone overlap count / 1959", "denominator": 1959},
+    {"index": 2, "name": "ctcf_breadth", "formula": "ctcf overlap count / 201", "denominator": 201},
+    {"index": 3, "name": "tf_binding_breadth", "formula": "tf_binding overlap count / 1472", "denominator": 1472},
+    {"index": 4, "name": "core_breadth", "formula": "core overlap count / 2401", "denominator": 2401}
+  ],
+  "core_membership": {
+    "functional_blocks": ["accessibility", "ctcf"],
+    "histone_mark_groups": ["H3K27AC", "H3K27ME3", "H3K36ME3", "H3K4ME1", "H3K4ME3", "H3K9AC", "H3K9ME3"],
+    "track_count": 2401
+  },
+  "regression_oracle": "derived/ntv3_functional_peak_atlas_chr1_all_sources/breadth_features.f32.npy"
+}

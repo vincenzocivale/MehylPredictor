@@ -735,3 +735,4 @@ This specification summarizes policy. Detailed live contracts remain in:
 If these documents disagree, code plus the resolved configuration and immutable data/run
 manifests determine what actually happened; the documentation discrepancy must then be fixed
 before publication.
+The shared locus store contains 4,165 binary processed-peak overlaps and 23 dense values (18 reference annotations plus five breadth features). The frozen file contract and full chr1 regression gates are documented in [locus features](docs/data/LOCUS_FEATURES.md).

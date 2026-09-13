@@ -14,7 +14,7 @@ from .rna_methylation_trainer import RNAMethylationTrainer
 
 def run_search(
     *, canonical_root, scope, recipe_path, rna_cache, registry, cpg_targets_dir,
-    functional_atlas, annotation_cache, output_root, learning_rates, schedulers, max_epochs,
+    functional_atlas=None, annotation_cache=None, locus_store=None, output_root=None, learning_rates=(), schedulers=(), max_epochs=1,
     prior_cache=None, bigwig_cache=None, matched_chr1_root=None, seed=17, search_id=None,
 ):
     store = SearchStore.create(output_root, model="rna_methylation", scope=scope, search_id=search_id)
@@ -30,7 +30,7 @@ def run_search(
             canonical_root=canonical_root, scope=scope, recipe_path=recipe_path,
             rna_cache=rna_cache, prior_cache=prior_cache, registry=registry,
             cpg_targets_dir=cpg_targets_dir, matched_chr1_root=matched_chr1_root,
-            functional_atlas=functional_atlas, annotation_cache=annotation_cache,
+            functional_atlas=functional_atlas, annotation_cache=annotation_cache, locus_store=locus_store,
             bigwig_cache=bigwig_cache,
             output_root=store.path / "runs", mode="development", run_id=candidate_id,
             overrides={"learning_rate": float(lr), "scheduler": scheduler, "epochs": int(max_epochs), "seed": int(seed)},

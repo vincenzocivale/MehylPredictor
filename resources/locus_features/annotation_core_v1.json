@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "reference_genome": "hg38",
+  "n_features": 18,
+  "status": "validated_chr1",
+  "features": [
+    {
+      "index": 0,
+      "name": "cpg_context__island",
+      "semantic": "CpG island context class equals island",
+      "source": "UCSC cpgIslandExt hg38",
+      "source_version": "hg38 table snapshot",
+      "encoding": "one-hot(cpg_island_class == 'island')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "UCSC island BED intervals; 2kb shore and next 2kb shelf on either side; island > shore > shelf > open_sea."
+    },
+    {
+      "index": 1,
+      "name": "cpg_context__shore",
+      "semantic": "CpG island context class equals shore",
+      "source": "UCSC cpgIslandExt hg38",
+      "source_version": "hg38 table snapshot",
+      "encoding": "one-hot(cpg_island_class == 'shore')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "UCSC island BED intervals; 2kb shore and next 2kb shelf on either side; island > shore > shelf > open_sea."
+    },
+    {
+      "index": 2,
+      "name": "cpg_context__shelf",
+      "semantic": "CpG island context class equals shelf",
+      "source": "UCSC cpgIslandExt hg38",
+      "source_version": "hg38 table snapshot",
+      "encoding": "one-hot(cpg_island_class == 'shelf')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "UCSC island BED intervals; 2kb shore and next 2kb shelf on either side; island > shore > shelf > open_sea."
+    },
+    {
+      "index": 3,
+      "name": "cpg_context__open_sea",
+      "semantic": "CpG island context class equals open_sea",
+      "source": "UCSC cpgIslandExt hg38",
+      "source_version": "hg38 table snapshot",
+      "encoding": "one-hot(cpg_island_class == 'open_sea')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "UCSC island BED intervals; 2kb shore and next 2kb shelf on either side; island > shore > shelf > open_sea."
+    },
+    {
+      "index": 4,
+      "name": "genomic_region__promoter",
+      "semantic": "genomic region class equals promoter",
+      "source": "GENCODE v50 GTF",
+      "source_version": "v50",
+      "encoding": "one-hot(genomic_region == 'promoter')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "GENCODE v50 gene records define gene body and strand-aware promoter/TSS; exon records define exons; precedence promoter > exon > intron > intergenic."
+    },
+    {
+      "index": 5,
+      "name": "genomic_region__exon",
+      "semantic": "genomic region class equals exon",
+      "source": "GENCODE v50 GTF",
+      "source_version": "v50",
+      "encoding": "one-hot(genomic_region == 'exon')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "GENCODE v50 gene records define gene body and strand-aware promoter/TSS; exon records define exons; precedence promoter > exon > intron > intergenic."
+    },
+    {
+      "index": 6,
+      "name": "genomic_region__intron",
+      "semantic": "genomic region class equals intron",
+      "source": "GENCODE v50 GTF",
+      "source_version": "v50",
+      "encoding": "one-hot(genomic_region == 'intron')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "GENCODE v50 gene records define gene body and strand-aware promoter/TSS; exon records define exons; precedence promoter > exon > intron > intergenic."
+    },
+    {
+      "index": 7,
+      "name": "genomic_region__intergenic",
+      "semantic": "genomic region class equals intergenic",
+      "source": "GENCODE v50 GTF",
+      "source_version": "v50",
+      "encoding": "one-hot(genomic_region == 'intergenic')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "GENCODE v50 gene records define gene body and strand-aware promoter/TSS; exon records define exons; precedence promoter > exon > intron > intergenic."
+    },
+    {
+      "index": 8,
+      "name": "ccre_class__none",
+      "semantic": "cCRE class equals none",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'none')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 9,
+      "name": "ccre_class__PLS",
+      "semantic": "cCRE class equals PLS",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'PLS')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 10,
+      "name": "ccre_class__pELS",
+      "semantic": "cCRE class equals pELS",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'pELS')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 11,
+      "name": "ccre_class__dELS",
+      "semantic": "cCRE class equals dELS",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'dELS')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 12,
+      "name": "ccre_class__CA",
+      "semantic": "cCRE class equals CA",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'CA')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 13,
+      "name": "ccre_class__TF",
+      "semantic": "cCRE class equals TF",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'TF')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 14,
+      "name": "ccre_class__CA-CTCF",
+      "semantic": "cCRE class equals CA-CTCF",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'CA-CTCF')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 15,
+      "name": "ccre_class__CA-H3K4me3",
+      "semantic": "cCRE class equals CA-H3K4me3",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'CA-H3K4me3')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 16,
+      "name": "ccre_class__CA-TF",
+      "semantic": "cCRE class equals CA-TF",
+      "source": "ENCODE cCRE Registry V4",
+      "source_version": "V4",
+      "encoding": "one-hot(ccre_class == 'CA-TF')",
+      "dtype": "float32",
+      "expected_range": [
+        0,
+        1
+      ],
+      "normalization": "none",
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "Registry V4 BED point overlap; last class in frozen class order wins on overlap."
+    },
+    {
+      "index": 17,
+      "name": "dist_tss_abs_log10__z",
+      "semantic": "Absolute log10 distance to nearest TSS, standardized",
+      "source": "GENCODE v50 GTF",
+      "source_version": "v50",
+      "encoding": "zscore(log10(1 + absolute distance in bp to nearest GENCODE v50 gene-record TSS)); frozen historical training-locus mean and std",
+      "dtype": "float32",
+      "expected_range": "unbounded",
+      "normalization": {
+        "fit_on": "official_train_cpg",
+        "mean": 3.2289013469204666,
+        "std": 0.9242045243544466,
+        "frozen": true,
+        "fit_population": "historical official training CpGs",
+        "raw_feature": "dist_tss_abs_log10"
+      },
+      "coordinate_rule": "hg38; 1-based C of CpG; BED query [position-1, position)",
+      "recovery_status": "validated on full frozen chr1 cache",
+      "calculation_source_rule": "GENCODE v50 gene records define gene body and strand-aware promoter/TSS; exon records define exons; precedence promoter > exon > intron > intergenic."
+    }
+  ],
+  "validated_chr1_loci": 2004436,
+  "tss_atol": 1e-06
+}

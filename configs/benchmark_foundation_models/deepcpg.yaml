@@ -52,8 +52,12 @@ paper_precedent: none
 scopes:
   chr1:
     array_cpg_registry: ${TCGA_CANONICAL_ROOT}/cpg/registries/array_cpg_map.parquet
-    hg38_fasta: null   # TODO: set once available on this machine
-    status: ready_pending_fasta_path
+    # Reuses the same hg38 FASTA convention as the locus-features build
+    # (docs/data/LOCUS_FEATURES.md's `--fai "$METHYL_DATA_ROOT/reference/hg38/hg38.fa.fai"`)
+    # instead of a machine-local hardcoded path, per PROJECT_SPECS.md's no-hardcoded-
+    # absolute-paths rule.
+    hg38_fasta: ${METHYL_DATA_ROOT}/reference/hg38/hg38.fa
+    status: ready
   chr123:
     status: usable_unverified
   encode:

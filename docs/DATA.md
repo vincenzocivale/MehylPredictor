@@ -147,3 +147,4 @@ No `/raid/...` path is hardcoded in any Python module under
   cheap; WGBS is chunked with every row in each chunk (32 rows x 8192
   cols), so `MethylationSource.block`/`finite_count` switch to
   column-grouped reads for it automatically (`_column_major`).
+The shared hg38 locus store, frozen 4,165-track peak contract, 18 annotations, five breadth values, aliases and views are documented in [locus features](data/LOCUS_FEATURES.md).

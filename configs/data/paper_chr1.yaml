@@ -10,9 +10,15 @@ paths:
   rna_cache: derived/methylprophet_table5_tcga_chr1/rna
   prior_cache: derived/methylprophet_table5_tcga_chr1/features
   cpg_targets_dir: derived/cpg_statistics/chr1
+  locus_store: derived/locus_features_v1
+  # E04 comparator only (configs/models/genomic_fm/*.yaml); unused by every
+  # other recipe. See scripts/paper_experiment.py's _locus_cache_args.
+  genomic_fm_cache: derived/ntv3_pre_chr1_atlas/chr1_ntv3_pretrain_atlas_v1.h5
+  output_root: experiments
+
+legacy_frozen:
   functional_atlas: derived/ntv3_functional_peak_atlas_chr1_all_sources
   annotation_cache: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
-  output_root: experiments
 
 # Final Data/Results V2 run namespace.
 storage:

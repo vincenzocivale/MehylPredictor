@@ -1,0 +1,14 @@
+# E03 arm: basic-context functional representation.
+# All 18 static reference annotations are kept (CpG-island context, genomic
+# region, cCRE class, TSS distance); the 4165 sparse regulatory tracks and
+# the 5 breadth features are zeroed by MaskedFunctionalLocusCache
+# (src/methylation_predictor/storage.py). Everything else identical to
+# main.yaml.
+extends: ../main.yaml
+
+locus_cls:
+  feature_set: basic_context
+
+tracking:
+  group: functional_representation_2026_09
+  tags: [functional-only, e03-representation, basic-context]

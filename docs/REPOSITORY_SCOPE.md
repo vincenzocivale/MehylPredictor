@@ -273,6 +273,17 @@ The remaining RNA architecture/loss config fields are classified in `configs/con
 
 `scripts/architecture_decision_audit.py` provides a read-only inventory of J0/J-series run metrics and compute characteristics. It deliberately lives outside `scripts/experiments/`, so adding the analysis utility does not mutate the frozen experiment surface or recipe hashes.
 
+## Phase 5d: paper experiment gap tracking
+
+Point 5–6 of this document's scope ("reproduce MethylProphet/external-model
+comparisons" and "reproduce efficiency measurements") are declared in-scope
+but are not yet backed by code: there is no compute/memory/throughput
+profiling module (needed for the efficiency benchmark and compute-scaling
+analysis) and no external-dataset adapter (needed for external validation).
+The full per-experiment implementation status against the paper's experiment
+catalog is tracked in [`PAPER_EXPERIMENTS.md`](PAPER_EXPERIMENTS.md) rather
+than restated here, to avoid the two documents drifting apart.
+
 ## Phase 5c: repository cleanup inventory
 
 Transient refactor helpers, tracked diagnostic/eval scratch outputs, and two stale runtime documents were removed. Active J-series recipes/launchers remain protected until architecture selection. `results/reference/` is explicitly deferred for a clean rebuild after fresh final paper runs. External data is not deleted in this phase; later deletion requires a dry-run dependency scan against final run manifests.

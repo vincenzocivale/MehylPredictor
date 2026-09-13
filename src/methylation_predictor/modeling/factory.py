@@ -6,6 +6,7 @@ from torch import nn
 from ..config import ModelConfig
 from .baselines import BASELINE_VARIANTS, FunctionalBaselinePredictor
 from .final import EfficientSingleAttentionPredictor
+from .genomic_fm import GenomicFMLocusPredictor
 from .rna_comparison import RNAEncoderComparisonPredictor
 
 
@@ -19,11 +20,20 @@ FINAL_MODEL_KWARGS = {
 
 RNA_COMPARISON_VARIANT = "functional_rna_encoder_comparison"
 
+# E04 genomic-FM baseline comparators (paper plan sec. E04). Each name maps
+# to a chr1-only frozen embedding cache under METHYL_DATA_ROOT; NTv3-post is
+# deliberately never added here -- excluded from the paper regardless of
+# scope, see CLAUDE.md and MethylPredictor_Paper_Experiments_and_Codebase_Plan.md.
+GENOMIC_FM_VARIANTS = {
+    "genomic_fm_ntv3_pre",
+}
+
 SUPPORTED_FUNCTIONAL_VARIANTS = frozenset(
     {
         FINAL_VARIANT,
         RNA_COMPARISON_VARIANT,
         *BASELINE_VARIANTS,
+        *GENOMIC_FM_VARIANTS,
     }
 )
 
@@ -37,6 +47,8 @@ def architecture_label(variant: str, config: ModelConfig) -> str:
         return RNA_COMPARISON_VARIANT + suffix
     if variant == FINAL_VARIANT:
         return "methylpredictor_final"
+    if variant in GENOMIC_FM_VARIANTS:
+        return variant
     raise ValueError(f"unsupported functional model variant {variant!r}")
 
 
@@ -71,6 +83,13 @@ def build_functional_predictor(
             input_dim,
             config,
             **common,
+        )
+    elif variant in GENOMIC_FM_VARIANTS:
+        model = GenomicFMLocusPredictor(
+            input_dim,
+            config,
+            **common,
+            **FINAL_MODEL_KWARGS,
         )
     else:
         model = EfficientSingleAttentionPredictor(

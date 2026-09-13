@@ -18,3 +18,9 @@ Historical shared-backbone, FeatureFusion, query-representation and earlier
 two-stage residual implementations are not paper-facing APIs. Minimal compatibility
 scaffolding may remain in the current branch until the protected J-series experiments finish;
 the full research history remains available through Git history and frozen result ledgers.
+The locus branch uses 4,165 binary ENCODE overlaps plus 18 annotations and five breadth values. It is patient-, RNA-, label- and technology-independent. The TSS-distance transform uses frozen historical training-locus mean/std, never refitted on validation or inference. See [locus features](data/LOCUS_FEATURES.md).
+
+`cpg_targets_dir` is required when training because it supplies the training-only
+mean-proxy targets. Pure checkpoint evaluation and genome-wide inference do not
+read that directory; observed methylation, when needed for evaluation metrics,
+comes from the selected measurement source.

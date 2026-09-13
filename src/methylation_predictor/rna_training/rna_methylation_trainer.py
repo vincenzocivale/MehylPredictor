@@ -34,7 +34,7 @@ from ..modeling.factory import (
 from ..optim import build_lr_scheduler
 from ..run_store import RunStore, write_json
 from ..scopes import scope_protocol
-from ..storage import FunctionalLocusCache, LocusPriorCache, RNACache, SortedIndex
+from ..storage import LocusPriorCache, RNACache, SortedIndex, open_functional_locus_cache
 from ..tcga_canonical import TCGACanonicalBundle
 from .config import load_rna_recipe
 from .matched_chr1_data import load_compact_scope_sources, load_matched_chr1_protocol_and_sources
@@ -85,7 +85,7 @@ class RNAMethylationTrainer:
         rna_cache: str | Path,
         prior_cache: str | Path | None = None,
         registry: str | Path,
-        cpg_targets_dir: str | Path,
+        cpg_targets_dir: str | Path | None,
         output_root: str | Path,
         matched_chr1_root: str | Path | None = None,
         use_mean_branch: bool = True,
@@ -97,10 +97,14 @@ class RNAMethylationTrainer:
         development_split_seed: int | None = None,
         track: bool = True,
         resume: bool = False,
+        evaluation_only: bool = False,
         training_sources: tuple[str, ...] | None = None,
         functional_atlas: str | Path | None = None,
         annotation_cache: str | Path | None = None,
+        locus_store: str | Path | None = None,
         bigwig_cache: str | Path | None = None,
+        genomic_fm_cache: str | Path | None = None,
+        feature_set: str | None = None,
     ):
         self.development_split_seed = (
             None
@@ -175,16 +179,43 @@ class RNAMethylationTrainer:
                 self.protocol.array_val_cpg_idx,
             ]))
             self.prior_cache.index.positions_of(evaluation_cpgs)
-        if functional_atlas is None or annotation_cache is None:
-            raise ValueError(
-                "RNA methylation training requires --functional-atlas and "
-                "--annotation-cache"
+        if genomic_fm_cache is not None:
+            # E04 comparator path (paper plan sec. E04): a chr1-only
+            # genomic-FM embedding replaces the functional annotation
+            # representation entirely -- mutually exclusive with every
+            # functional-cache source, and with --feature-set (E03 masking
+            # only applies to the functional representation).
+            if any(
+                value is not None
+                for value in (locus_store, functional_atlas, annotation_cache, bigwig_cache)
+            ):
+                raise ValueError(
+                    "--genomic-fm-cache cannot be combined with functional/annotation/BigWig/locus-store caches"
+                )
+            if feature_set is not None:
+                raise ValueError("--genomic-fm-cache cannot be combined with --feature-set")
+            from ..storage import GenomicFMLocusCache
+            self.functional = GenomicFMLocusCache(genomic_fm_cache)
+        else:
+            if locus_store is not None and (functional_atlas is not None or annotation_cache is not None or bigwig_cache is not None):
+                raise ValueError("--locus-store cannot be combined with legacy functional/annotation/BigWig caches")
+            if locus_store is None and (functional_atlas is None or annotation_cache is None):
+                raise ValueError("RNA methylation training requires --locus-store or the legacy --functional-atlas/--annotation-cache pair")
+            self.functional = open_functional_locus_cache(
+                locus_store=locus_store, functional_atlas=functional_atlas,
+                annotation_cache=annotation_cache, bigwig_cache=bigwig_cache,
             )
-        self.functional = FunctionalLocusCache(
-            functional_atlas,
-            annotation_cache,
-            bigwig_cache,
-        )
+            if feature_set is not None:
+                # E03 comparator path (paper plan sec. E03): zero out parts
+                # of the functional representation to realize the
+                # minimal/basic_context reduced arms. Wraps, rather than
+                # replaces, the opened cache -- no change to the underlying
+                # store or its regression-gated contract.
+                from ..storage import MaskedFunctionalLocusCache
+                self.functional = MaskedFunctionalLocusCache(
+                    self.functional, feature_set=feature_set,
+                )
+        self.feature_set = feature_set
         self.functional_fusion_variant = (
             self.recipe.model.functional_fusion_variant
         )
@@ -202,10 +233,17 @@ class RNAMethylationTrainer:
                     raise ValueError(f"functional cache does not cover {axis_name}") from exc
 
         self.aux_weight = float(aux_weight)
-        cpg_targets_dir = Path(cpg_targets_dir)
-        self.cpg_target_ids = np.load(cpg_targets_dir / "cpg_idx.npy")
-        self.cpg_target_mu = np.load(cpg_targets_dir / "target_mu.npy")
-        self.cpg_target_index = SortedIndex(self.cpg_target_ids, "cpg_statistics targets")
+        if cpg_targets_dir is None:
+            if not evaluation_only:
+                raise ValueError("RNA training requires cpg_targets_dir for mean-proxy supervision")
+            self.cpg_target_ids = np.empty(0, dtype=np.int64)
+            self.cpg_target_mu = np.empty(0, dtype=np.float32)
+            self.cpg_target_index = None
+        else:
+            cpg_targets_dir = Path(cpg_targets_dir)
+            self.cpg_target_ids = np.load(cpg_targets_dir / "cpg_idx.npy")
+            self.cpg_target_mu = np.load(cpg_targets_dir / "target_mu.npy")
+            self.cpg_target_index = SortedIndex(self.cpg_target_ids, "cpg_statistics targets")
 
         self.use_mean_branch = bool(use_mean_branch)
         # Experiment-specific architecture kwargs live in
@@ -252,6 +290,7 @@ class RNAMethylationTrainer:
             "use_mean_branch": use_mean_branch,
             "aux_weight": self.aux_weight,
             "final_regressor_dropout": final_regressor_dropout,
+            **({"feature_set": feature_set} if feature_set is not None else {}),
         }
         resolved_config = {
             **self.recipe.raw,
@@ -260,9 +299,13 @@ class RNAMethylationTrainer:
         }
         if self.functional is not None:
             resolved_config["functional_locus"] = {
-                "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
-                "annotation_cache": str(self.functional.annotation_cache_root.resolve()),
-                "n_tracks": 4165, "dense_dim": 23,
+                **self.functional.source_provenance(),
+                # Read the model's own locus-input dims rather than
+                # hardcoding the functional-representation defaults -- E04's
+                # GenomicFMLocusPredictor overrides these (N_TRACKS=1,
+                # DENSE_DIM=embedding_dim).
+                "n_tracks": getattr(self.model, "N_TRACKS", 4165),
+                "dense_dim": getattr(self.model, "DENSE_DIM", 23),
                 "encoder_dim": 256 if self.functional_fusion_variant else 64,
                 **({"fusion_variant": self.functional_fusion_variant} if self.functional_fusion_variant else {}),
                 "residual_policy": "random_initialized_functional_projection",
@@ -657,12 +700,18 @@ class RNAMethylationTrainer:
             "locus_cls": {
                 "use_mean_branch": self.use_mean_branch,
                 "aux_weight": self.aux_weight,
+                **({"feature_set": self.feature_set} if self.feature_set is not None else {}),
                 **({"functional_locus": {
-                    "functional_atlas": str(self.functional.functional_atlas_root.resolve()),
-                    "annotation_cache": str(self.functional.annotation_cache_root.resolve()),
-                    **({"bigwig_cache": str(self.functional.bigwig_cache_root.resolve())} if self.functional.bigwig_cache_root is not None else {}),
-                    "n_tracks": 4165,
-                    "dense_dim": self.functional.DENSE_DIM,
+                    **self.functional.source_provenance(),
+                    **({"bigwig_cache": str(self.functional.bigwig_cache_root.resolve())}
+                       if getattr(self.functional, "bigwig_cache_root", None) is not None else {}),
+                    # Read the model's own locus-input dims rather than
+                    # hardcoding the functional-representation defaults --
+                    # GenomicFMLocusCache/MaskedFunctionalLocusCache do not
+                    # carry N_TRACKS/DENSE_DIM themselves (they are data
+                    # caches, not the model).
+                    "n_tracks": getattr(self.model, "N_TRACKS", 4165),
+                    "dense_dim": getattr(self.model, "DENSE_DIM", 23),
                     "encoder_dim": 256,
                     "fusion_variant": self.functional_fusion_variant,
                     "mode": "functional_only",
@@ -929,20 +978,24 @@ def evaluate_rna_checkpoint(
     prior_cache: str | Path,
     registry: str | Path,
     matched_chr1_root: str | Path | None,
-    cpg_targets_dir: str | Path,
     output: str | Path,
     scope: str = "chr1",
     sample_chunk: int = 128,
     cpg_chunk: int = 2048,
     functional_atlas: str | Path | None = None,
     annotation_cache: str | Path | None = None,
+    locus_store: str | Path | None = None,
+    genomic_fm_cache: str | Path | None = None,
+    cpg_targets_dir: str | Path | None = None,
 ) -> dict:
     """Evaluate a checkpoint on all three TRUE official MethylProphet views.
 
     The headline ``metrics`` field remains the double-OOD
     ``val_cpg_x_val_sample`` view for backwards compatibility.  The complete
     result is also available under ``views`` and is logged to W&B with one
-    namespace per view.
+    namespace per view. The training-only mean-proxy target directory is
+    optional here because evaluation reads observed methylation directly from
+    the selected protocol source.
     """
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
     if ckpt.get("regulatory_feature_cache") is not None:
@@ -960,20 +1013,25 @@ def evaluate_rna_checkpoint(
         raise ValueError(
             "checkpoint is not a paper-facing functional-only RNA model"
         )
-    if functional_atlas is None or annotation_cache is None:
-        raise ValueError(
-            "functional checkpoint evaluation requires --functional-atlas "
-            "and --annotation-cache"
-        )
-    supplied = {
-        "functional_atlas": str(Path(functional_atlas).resolve()),
-        "annotation_cache": str(Path(annotation_cache).resolve()),
-    }
-    for key, value in supplied.items():
-        if value != checkpoint_functional.get(key):
-            raise ValueError(
-                f"evaluation {key} does not match the checkpoint metadata"
-            )
+    if genomic_fm_cache is not None:
+        if locus_store is not None or functional_atlas is not None or annotation_cache is not None:
+            raise ValueError("--genomic-fm-cache cannot be combined with functional/annotation/locus-store caches")
+        if str(Path(genomic_fm_cache).resolve()) != checkpoint_functional.get("genomic_fm_cache"):
+            raise ValueError("evaluation genomic_fm_cache does not match checkpoint metadata")
+    elif locus_store is not None:
+        if functional_atlas is not None or annotation_cache is not None:
+            raise ValueError("--locus-store cannot be combined with legacy caches")
+        if checkpoint_functional.get("locus_store") is not None:
+            if str(Path(locus_store).resolve()) != checkpoint_functional["locus_store"]:
+                raise ValueError("evaluation locus_store does not match checkpoint metadata")
+        elif checkpoint_functional.get("n_tracks") != 4165 or checkpoint_functional.get("dense_dim") != 23:
+            raise ValueError("legacy checkpoint has an incompatible locus feature contract")
+    else:
+        if functional_atlas is None or annotation_cache is None:
+            raise ValueError("evaluation requires --locus-store, --genomic-fm-cache, or the legacy cache pair")
+        for key, value in {"functional_atlas": functional_atlas, "annotation_cache": annotation_cache}.items():
+            if str(Path(value).resolve()) != checkpoint_functional.get(key):
+                raise ValueError(f"evaluation {key} does not match checkpoint metadata")
     # RNAMethylationTrainer always wants its own run-store scratch dir (distinct
     # from `output`, which here is the single evaluation-summary JSON file the
     # scripts/evaluate.py CLI convention expects). track=False: this is an
@@ -991,6 +1049,9 @@ def evaluate_rna_checkpoint(
         use_mean_branch=lc.get("use_mean_branch", True),
         aux_weight=lc.get("aux_weight", 0.15),
         functional_atlas=functional_atlas, annotation_cache=annotation_cache,
+        locus_store=locus_store, genomic_fm_cache=genomic_fm_cache,
+        feature_set=lc.get("feature_set"),
+        evaluation_only=True,
         track=False,
     )
     try:

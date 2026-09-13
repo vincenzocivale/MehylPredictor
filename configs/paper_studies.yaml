@@ -2,8 +2,14 @@
 schema_version: 1
 
 studies:
+  # NOTE 2026-09-13: aligned to the seeds actually launched for the main
+  # study on kingkong (main-seed17-r3, main-seed42-r3, running; main-seed123
+  # crashed with no checkpoint and is not being relaunched -- see
+  # docs/EXPERIMENT_LOG.md). This supersedes the original 17/29/43
+  # convention for the `main` study specifically; other studies below are
+  # unaffected and keep 17/29/43.
   main:
-    seeds: [17, 29, 43]
+    seeds: [17, 42, 123]
     arms:
       main:
         recipe: configs/models/main.yaml
@@ -73,3 +79,74 @@ studies:
         recipe: configs/models/baselines/baseline_cpg_prior.yaml
         required_dependencies: [chr1_runtime]
         no_seed: true
+
+  # E08 -- structured residual (locus mean-proxy + locus-Pearson structuring
+  # on top of beta MSE) vs direct single-shot beta prediction. See
+  # docs/PAPER_EXPERIMENTS.md for the mapping onto the paper experiment plan.
+  prediction_head:
+    seeds: [17, 29, 43]
+    arms:
+      structured_residual:
+        recipe: configs/models/main.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+      direct_prediction:
+        recipe: configs/models/architecture_ablation/direct_prediction.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+
+  # A01 -- locus-conditioned RNA retrieval (main.yaml) vs a single
+  # patient-global RNA logit shift with no patient-by-locus interaction
+  # (functional_baseline_global_shift, already functional-matched: same
+  # functional encoder, ProgramTokenEncoder, mean-proxy task, loss and
+  # training protocol as main.yaml).
+  # E03 -- functional annotation contribution. `full` reuses main.yaml
+  # (unmasked); `basic_context`/`minimal` reuse the same model/training but
+  # mask parts of the locus representation via MaskedFunctionalLocusCache.
+  # See docs/PAPER_EXPERIMENTS.md.
+  functional_representation:
+    seeds: [17, 29, 43]
+    arms:
+      full_functional:
+        recipe: configs/models/main.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+      basic_context:
+        recipe: configs/models/functional_representation/basic_context.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+      minimal:
+        recipe: configs/models/functional_representation/minimal.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+
+  # E04 -- functional annotations vs generic genomic-FM representations.
+  # `functional_full` is the same reference as functional_representation's
+  # full_functional arm; `genomic_fm_ntv3_pre` swaps only the locus
+  # representation (modeling.genomic_fm.GenomicFMLocusPredictor). Launch
+  # genomic_fm_ntv3_pre with --genomic-fm-cache pointing at
+  # derived/ntv3_pre_chr1_atlas/chr1_ntv3_pretrain_atlas_v1.h5, not
+  # --locus-store. NTv3-post is never a valid arm here (see CLAUDE.md).
+  locus_representation_genomic_fm:
+    seeds: [17, 29, 43]
+    arms:
+      functional_full:
+        recipe: configs/models/main.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+      genomic_fm_ntv3_pre:
+        recipe: configs/models/genomic_fm/ntv3_pre_chr1.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime, ntv3_pre_chr1_atlas]
+
+  rna_interaction_scope:
+    seeds: [17, 29, 43]
+    arms:
+      locus_conditioned:
+        recipe: configs/models/main.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]
+      global_rna:
+        recipe: configs/models/baselines/functional_global_rna_shift.yaml
+        rna_cache: canonical
+        required_dependencies: [chr1_runtime]

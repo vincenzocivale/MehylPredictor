@@ -25,6 +25,8 @@ from typing import Any
 import yaml
 
 from methylation_predictor.artifact_uri import to_uri
+from methylation_predictor.modeling.factory import GENOMIC_FM_VARIANTS
+from methylation_predictor.rna_training.config import load_rna_recipe
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -138,11 +140,10 @@ def load_profile(profile_path: Path, data_root: Path) -> dict[str, Any]:
         "registry",
         "rna_cache",
         "prior_cache",
-        "cpg_targets_dir",
-        "functional_atlas",
-        "annotation_cache",
         "output_root",
     }
+    if "locus_store" not in paths_raw and not {"functional_atlas", "annotation_cache"} <= set(paths_raw):
+        raise ValueError(f"{profile_path}: paths requires locus_store or the legacy cache pair")
     missing = sorted(required - set(paths_raw))
     if missing:
         raise ValueError(
@@ -219,6 +220,7 @@ def _require_inputs(
     profile: dict[str, Any],
     model_kind: str,
     rna_cache_override: Path | None,
+    stage: str = "all",
 ) -> None:
     paths = dict(profile["paths"])
     if rna_cache_override is not None:
@@ -226,12 +228,14 @@ def _require_inputs(
 
     keys = ["canonical_root", "registry", "prior_cache"]
     if model_kind == "rna_methylation":
-        keys += [
-            "rna_cache",
-            "cpg_targets_dir",
-            "functional_atlas",
-            "annotation_cache",
-        ]
+        keys += ["rna_cache"]
+        if stage in {"train", "all"}:
+            keys.append("cpg_targets_dir")
+        keys += (
+            ["locus_store"]
+            if "locus_store" in paths
+            else ["functional_atlas", "annotation_cache"]
+        )
         if profile["scope"] == "chr1":
             keys.append("prepared_root")
 
@@ -245,6 +249,32 @@ def _require_inputs(
             "missing required paper-experiment inputs:\n  "
             + "\n  ".join(missing)
         )
+
+
+def _locus_cache_args(paths: dict[str, Any], recipe_relative: str) -> list[str]:
+    """Locus-representation cache flags for a train/eval subprocess.
+
+    E04 comparator arms (``model.functional_fusion_variant`` in
+    ``GENOMIC_FM_VARIANTS``) use ``--genomic-fm-cache`` from
+    ``paths["genomic_fm_cache"]`` instead of the functional
+    ``--locus-store``/``--functional-atlas``+``--annotation-cache`` pair --
+    see ``configs/models/genomic_fm/ntv3_pre_chr1.yaml`` and
+    ``docs/PAPER_EXPERIMENTS.md``.
+    """
+    recipe = load_rna_recipe(REPO_ROOT / recipe_relative)
+    if recipe.model.functional_fusion_variant in GENOMIC_FM_VARIANTS:
+        if "genomic_fm_cache" not in paths:
+            raise ValueError(
+                f"{recipe_relative} selects a genomic-FM variant but the "
+                "data profile has no paths.genomic_fm_cache entry"
+            )
+        return ["--genomic-fm-cache", str(paths["genomic_fm_cache"])]
+    if "locus_store" in paths:
+        return ["--locus-store", str(paths["locus_store"])]
+    return [
+        "--functional-atlas", str(paths["functional_atlas"]),
+        "--annotation-cache", str(paths["annotation_cache"]),
+    ]
 
 
 def build_train_command(
@@ -283,13 +313,10 @@ def build_train_command(
         str(paths["prior_cache"]),
         "--cpg-targets-dir",
         str(paths["cpg_targets_dir"]),
-        "--functional-atlas",
-        str(paths["functional_atlas"]),
-        "--annotation-cache",
-        str(paths["annotation_cache"]),
         "--output-root",
         str(paths["output_root"]),
     ]
+    cmd += _locus_cache_args(paths, recipe_relative)
     if profile["scope"] == "chr1":
         cmd += ["--prepared-root", str(paths["prepared_root"])]
     if resume:
@@ -345,15 +372,10 @@ def build_evaluate_command(
         str(rna_cache),
         "--prior-cache",
         str(paths["prior_cache"]),
-        "--cpg-targets-dir",
-        str(paths["cpg_targets_dir"]),
-        "--functional-atlas",
-        str(paths["functional_atlas"]),
-        "--annotation-cache",
-        str(paths["annotation_cache"]),
         "--output",
         str(output),
     ]
+    cmd += _locus_cache_args(paths, recipe_relative)
     if profile["scope"] == "chr1":
         cmd += ["--prepared-root", str(paths["prepared_root"])]
     return cmd
@@ -575,7 +597,7 @@ def main() -> int:
                 "Commit/stash changes or pass --allow-dirty for a non-final smoke run."
             )
 
-    _require_inputs(profile, model_kind, rna_override)
+    _require_inputs(profile, model_kind, rna_override, args.stage)
 
     train_cmd = None
     if model_kind == "rna_methylation":

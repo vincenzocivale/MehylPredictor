@@ -8,6 +8,17 @@ roots:
   optional_work_env: METHYL_WORK_ROOT
   artifact_uri_scheme: methyl-data
 
+# Canonical reusable annotation store. Legacy chr1 paths remain frozen references.
+locus_features:
+  schema_version: 1
+  root: derived/locus_features_v1
+  schema: locus_features_v1
+  annotation_contract: resources/locus_features/annotation_core_v1.json
+  regulatory_contract: derived/locus_features_v1/regulatory/track_contract.tsv
+  breadth_contract: resources/locus_features/breadth_v1.json
+  regulatory_chr1_gate: derived/locus_features_v1/validation_regulatory_chr1.json
+  status: complete
+
 principles:
   - Git stores code, recipes, compact JSON/JSONL/CSV result ledgers, and manifests.
   - METHYL_DATA_ROOT stores datasets, derived caches, checkpoints, logs, and heavy artifacts.
@@ -20,17 +31,25 @@ paper_inputs:
   canonical:
     canonical_root: datasets/methylprophet_repro_v1
     hg38_reference: reference/hg38
+  locus_features:
+    root: derived/locus_features_v1
+    schema: locus_features_v1
   chr1_runtime:
     prepared_root: derived/methylprophet_table5_tcga_chr1
     registry: datasets/methylprophet_repro_v1/cpg/registries/array_cpg_map.parquet
     rna_cache: derived/methylprophet_table5_tcga_chr1/rna
     prior_cache: derived/methylprophet_table5_tcga_chr1/features
     cpg_targets_dir: derived/cpg_statistics/chr1
+    locus_store: derived/locus_features_v1
+  legacy_regression_inputs:
     functional_atlas: derived/ntv3_functional_peak_atlas_chr1_all_sources
     annotation_cache: derived/ntv3_probe_targets/chr1_annotation_features_all_sources
   comparator_inputs:
     bulkformer_147m: derived/bulkformer_embeddings/tcga_147m
     bulkrnabert: derived/bulkrnabert_embeddings/tcga
+    # E04 genomic-FM baseline (paper_studies.yaml's
+    # locus_representation_genomic_fm study). NTv3-pre, chr1-only.
+    ntv3_pre_chr1_atlas: derived/ntv3_pre_chr1_atlas/chr1_ntv3_pretrain_atlas_v1.h5
   repo_inputs:
     gene_pathway_membership: resources/pathways/survpath_combine_tcga.npz
 
@@ -81,7 +100,11 @@ repo_results:
 paper_studies:
   main:
     arms: [main]
-    seeds: [17, 29, 43]
+    # Updated 2026-09-13 to match the seeds actually launched on kingkong
+    # (main-seed17-r3, main-seed42-r3 running; main-seed123 crashed with no
+    # checkpoint, not relaunched) -- see docs/EXPERIMENT_LOG.md and
+    # configs/paper_studies.yaml's matching note.
+    seeds: [17, 42, 123]
   functional_baselines:
     arms: [global_rna_shift, mlp_rna_cpg, bilinear_rna_cpg]
     seeds: [17, 29, 43]
@@ -119,15 +142,24 @@ cleanup_target:
     - derived/ntv3_probe_targets
     - derived/bulkformer_embeddings
     - derived/bulkrnabert_embeddings
-  review_then_delete_if_unreferenced:
-    - derived/genomic_prior_v2
-    - derived/hyenadna_expansion
+    - derived/locus_features_v1
+    # E04 genomic-FM baseline embedding (NTv3_650M_pre, chr1-only). Relocated
+    # 2026-09-13 from derived/tcga_canonical/chr1_ntv3_pretrain_atlas_v1.h5 --
+    # see configs/external_cleanup_policy.yaml's paper_runtime_keep entry.
+    - derived/ntv3_pre_chr1_atlas
+  # Referenced by PROJECT_SPECS.md / docs/MEAN_CONTRIBUTION_EXPERIMENTS.md as
+  # the live chr123-scope data preparation target; not a cleanup target.
+  keep_pending_chr123_scope:
     - derived/methylprophet_compact_chr123
-    - derived/methylprophet_table5_tcga_chr1_pretrain_ablation
-    - derived/ntv3_expansion
-    - derived/ntv3_functional_peak_atlas_chr1
-    - derived/ntv3_post_track_manifest
-    - derived/ntv3_pretrain_expansion
-    - derived/rna_feature_cache
-    - derived/rna_feature_cache_ntv3_pre
-    - derived/tcga_canonical
+  # 2026-09-13: the artifacts formerly listed here (genomic_prior_v2,
+  # hyenadna_expansion, methylprophet_table5_tcga_chr1_pretrain_ablation,
+  # ntv3_expansion, ntv3_functional_peak_atlas_chr1, ntv3_post_track_manifest,
+  # ntv3_pretrain_expansion, rna_feature_cache, rna_feature_cache_ntv3_pre,
+  # tcga_canonical) were investigated (forensic HDF5/checkpoint-provenance
+  # inspection + codebase reference scan), confirmed unreferenced by any
+  # active runtime/paper-experiment path, and physically deleted under
+  # explicit user authorization (~107GB reclaimed; backup held on another
+  # machine). See configs/external_cleanup_policy.yaml's
+  # `deleted_2026_09_13` record for the exact list and byte counts, and
+  # docs/PAPER_EXPERIMENTS.md's external storage reorganization note.
+  review_then_delete_if_unreferenced: []

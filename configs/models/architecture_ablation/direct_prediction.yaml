@@ -1,0 +1,29 @@
+# E08 ablation arm: direct_prediction vs configs/models/main.yaml (structured_residual).
+#
+# main.yaml supervises the locus branch with two structuring signals on top
+# of plain beta MSE: a training-only mean-proxy auxiliary head/loss
+# (locus_cls.use_mean_branch/aux_weight) and a per-locus Pearson structuring
+# term on the final beta prediction (loss.locus_pearson_weight). Together
+# they are this repository's implementation of "structured residual"
+# supervision (paper plan sec. C3/E08): the locus branch is explicitly
+# shaped to carry the stable, patient-independent component before the
+# patient-specific RNA interaction is layered on.
+#
+# This arm removes both structuring signals, leaving only plain beta MSE, so
+# the model is trained to predict beta directly with no explicit locus/
+# patient-residual decomposition pressure. CpG representation, RNA encoder,
+# parameter budget (aside from dropping the small mean_head, as already
+# accepted by the E07 no_mean_branch arm) and training schedule are
+# otherwise identical to main.yaml.
+extends: ../main.yaml
+
+loss:
+  locus_pearson_weight: 0.0
+
+locus_cls:
+  use_mean_branch: false
+  aux_weight: 0.0
+
+tracking:
+  group: architecture_ablation_2026_09
+  tags: [functional-only, architecture-ablation, direct-prediction]

@@ -1,0 +1,48 @@
+{
+  "status": "complete",
+  "rows": 2004436,
+  "tracks": 4165,
+  "cpg_idx_axis_exact": true,
+  "track_contract_exact": true,
+  "expected_nnz": 252488360,
+  "observed_nnz": 252488360,
+  "mismatched_bits": 0,
+  "mismatched_rows": 0,
+  "mismatched_tracks": 0,
+  "examples": [],
+  "per_block": {
+    "accessibility": {
+      "tracks": 533,
+      "expected_nnz": 28507481,
+      "observed_nnz": 28507481
+    },
+    "histone": {
+      "tracks": 1959,
+      "expected_nnz": 187231131,
+      "observed_nnz": 187231131
+    },
+    "ctcf": {
+      "tracks": 201,
+      "expected_nnz": 5406635,
+      "observed_nnz": 5406635
+    },
+    "tf_binding": {
+      "tracks": 1472,
+      "expected_nnz": 31343113,
+      "observed_nnz": 31343113
+    }
+  },
+  "breadth": {
+    "shape_exact": true,
+    "exact_matches": 10022180,
+    "mismatches": 0,
+    "max_abs_error": 0.0,
+    "per_feature_mismatches": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

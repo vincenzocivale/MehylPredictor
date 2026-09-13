@@ -137,6 +137,10 @@ def _data_dependency_paths(
         ]
     if dependency == "gene_pathway_membership":
         return []
+    if dependency == "ntv3_pre_chr1_atlas":
+        return [
+            Path(inputs["comparator_inputs"]["ntv3_pre_chr1_atlas"])
+        ]
     raise ValueError(f"unknown dependency name: {dependency!r}")
 
 

@@ -48,3 +48,14 @@ pytest -q
 ```
 
 See `docs/MODEL.md`, `docs/WORKFLOWS.md`, and `docs/REPOSITORY_SCOPE.md`.
+
+## Logging experiment launches
+
+Whenever a paper experiment run is launched (against
+`configs/paper_studies.yaml`'s study/arm/seed matrix, on any machine), add a
+row to `docs/EXPERIMENT_LOG.md` recording at minimum: date, study, arm,
+seed, run ID, and **the machine it was launched on**. This is required
+because runs execute against the shared `METHYL_DATA_ROOT` from multiple
+machines, and the log is the only place that state is visible without
+opening every run's `metadata.json` individually. Update the row's status
+when a run finishes, fails, or is superseded by a retry.
