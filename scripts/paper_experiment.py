@@ -109,6 +109,11 @@ def validate_paper_recipe(recipe: Path) -> tuple[str, dict[str, Any]]:
 
 def classify_recipe(recipe: Path) -> str:
     raw = _read_yaml(recipe)
+    if raw.get("extends"):
+        # `model`/`training` live on the parent recipe; a recipe that
+        # extends another is always the trainable rna_methylation kind
+        # (cpg_prior recipes are always standalone, model/training-free).
+        return "rna_methylation"
     if raw.get("model") is None and raw.get("training") is None:
         return "cpg_prior"
     return "rna_methylation"
