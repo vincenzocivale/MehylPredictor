@@ -144,6 +144,43 @@ only `genomic_fm_ntv3_pre`; a GENA baseline needs its own atlas + variant
 entry before it can be added the same way. NTv3-post is not, and will never
 be, a member of `GENOMIC_FM_VARIANTS`.
 
+**Blocked candidate arm: MethylProphet's own pretrained chr1 encoder**
+(2026-09-13 investigation, `MethylProphet/tcga_mix_chr1-bs_512-c2b2` on HF).
+Architecture confirmed from `xk-huang/methylprophet`'s source
+(`src/models/methylformer_bert.py`): `MethylformerBertModel`, a DistilBERT
+(768-d, 12 layers) over `[CLS, chr_embed, gene_expr-via-Bottleneck-MLP,
+CGI tokens, DNABERT-2-tokenized 1000bp DNA window]`, trained jointly on
+TCGA Array+EPIC+WGBS chr1. To extract a frozen, patient-independent locus
+embedding (this repo's E04 methodology: swap only the locus representation,
+keep the rest of the architecture fixed) the plan was: run the model with
+gene_expr fixed/zeroed, take the CLS hidden state per CpG as a 768-d
+embedding, following the exact same atlas-then-`GenomicFMLocusPredictor`
+pattern already used for `genomic_fm_ntv3_pre` (`storage.GenomicFMLocusCache`
+only requires an HDF5 with `cpg_idx`/`embedding`, already
+architecture-agnostic).
+
+**Actual blocker**: the model's CGI input requires a proprietary per-CpG
+table (`cpg_island_tuple`, e.g. `"sea_-1,upshore2_12"` — a CpG-island index
+1-28000 plus a non-standard distance-bucket vocabulary `{cgi, sea, shelve,
+upshore1-4}`, see `CGITokenizer` in their `src/data/data_preprocessor.py`)
+built by an unpublished preprocessing step (`stats_cpg_island.py` only
+consumes an already-built `cpg_island.parquet` with `cgiIndex`/`location`
+columns; the script that produces that parquet from raw CpG-island calls
+was not found in the public repo). Checked and ruled out as sources for
+this table: the gated model checkpoint itself (only weights), the
+`methylprophet-example_data-tcga_mix_chr1` HF dataset (only ~100 unique
+CpGs, a demo, not chr1-scale), and the 46GB `250116_191533-241231-tcga-raw`
+HF dataset (verified by full extraction: only raw gene-expression/CpG-name/
+sample-list CSVs, no CGI annotation table). Approximating the bucket
+thresholds ourselves would produce CGI tokens outside the model's training
+distribution, undermining the exact point of reusing a pretrained encoder
+for this comparison — not attempted.
+
+**To unblock**: either the CGI-table-generation script from the authors, or
+their exact `cpg_island.parquet` (chr1 rows suffice) directly. Until then,
+no `methylprophet_pretrained_chr1`-style arm exists in
+`locus_representation_genomic_fm`.
+
 Both were verified end-to-end (forward pass shape checks, cache round-trip,
 recipe loading, `_locus_cache_args` branching) with the real `torch`/`h5py`
 environment (`methyl-predictor` conda env) in this session — see the
