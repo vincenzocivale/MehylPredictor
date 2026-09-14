@@ -81,9 +81,13 @@ judgment call:
   `configs/benchmark_foundation_models/deepcpg.yaml` now points at
   `${METHYL_DATA_ROOT}/reference/hg38/hg38.fa` (the same convention used by the
   locus-features build), matching the FASTA already available on this machine's
-  storage. Still needs `scripts/benchmark_foundation_models/setup.sh` run on a
-  host with network access to vendor `external/deepcpg` and the legacy
-  `deepcpg-env` conda environment (python=3.7/tensorflow==1.13.1/keras==1.2.2).
+  storage. The executable DNA-only runner is now implemented at
+  `scripts/benchmark_foundation_models/run_deepcpg.py`; it scores both released
+  human DNA-only variants and expands their patient-agnostic predictions across
+  the training-patient × validation-CpG view. It still needs
+  `scripts/benchmark_foundation_models/setup.sh` run on a host with network
+  access to vendor `external/deepcpg` and the legacy `deepcpg-env` conda
+  environment (python=3.7/tensorflow==1.13.1/keras==1.2.2).
 - **MethylGPT** — decision made 2026-09-13: **wait for a GPU host with flash-attn**
   before running masked-recovery evaluation. The non-flash-attn compatible-load
   remap (`_remap_flash_attn_qkv_keys`) lets the checkpoint load and pass
@@ -102,6 +106,31 @@ judgment call:
 None of the three require new architectural work in this repo's own training
 code — E02 is entirely an external-model integration effort, gated on
 network/GPU access this session does not have.
+
+### E02 execution update (2026-09-13)
+
+The local benchmark assets were found under the sibling
+`methylation-fm-benchmark` project and are consumed by
+`scripts/benchmark_foundation_models/run_official_views.py`. The runner joins
+the canonical coordinate registry to the released Illumina vocabulary, keeps
+only training patients, masks the official validation-CpG set, and writes both
+long predictions and the standard benchmark report. Missing probes outside a
+scope are filled with 0.5 and marked unobserved; they are excluded from
+observed-only metrics.
+
+The ENCODE run is complete with the available MethylGPT 256-dimensional
+released checkpoint: 66 training patients, 4,450 validation CpGs covered,
+3,182 variable CpGs, `frac_variable_beats=0.5179`, and
+`median_r2_gain=0.0298`. Artifacts are in
+`local_methyl_data/runs/foundation_models/encode/`.
+
+The MethylGPT chr1 run is complete. The first combined queue stopped at the
+CpGPT loader preflight and was relaunched with the explicit loader under retry
+PID 721727. Its log is
+`local_methyl_data/runs/foundation_models/logs/foundation-retry.log`.
+The retry uses the official `tcga_mix_chr1` and `tcga_mix_chr123` splits and
+the same released checkpoints; results must not be reported until it has
+produced both predictions and reports for each scope/model.
 
 ### E03/E04 — implementation notes (2026-09-13)
 

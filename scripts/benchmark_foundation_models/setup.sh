@@ -11,9 +11,10 @@
 #     see external/MethylGPT/docs/troubleshooting.md's version table), ABI-
 #     incompatible with torch 2.13. Confirmed 2026-09-02: `torchtext==0.18.0`
 #     only loads cleanly against `torch==2.3.1`, not torch>=2.9.
-#   - DeepCpG needs a legacy `python=3.7`/`tensorflow==1.13.1`/`keras==1.2.2`
-#     stack (Kipoi's own model.yaml pin) -- a **conda** env, not a venv (no
-#     python3.7 interpreter available on this machine for venv to wrap).
+#   - DeepCpG needs a legacy Python 3.7 Keras/TensorFlow stack. TensorFlow 1.13.1
+#     is the original Kipoi pin, but it is no longer on the configured PyPI
+#     index; the runner supports the verified TensorFlow 2.5 compatibility
+#     fallback. This is a **conda** env, not a venv.
 # Do not try to unify any of these three.
 set -euo pipefail
 cd "$(dirname "$0")/../.."   # repo root
@@ -104,7 +105,10 @@ done
 # this machine for a venv to wrap, so this one is a **conda** env, not a venv.
 if ! conda env list 2>/dev/null | grep -q '^deepcpg-env '; then
   conda create -y -n deepcpg-env python=3.7
-  conda run -n deepcpg-env pip install --quiet tensorflow==1.13.1 keras==1.2.2 "h5py==2.10.0" "protobuf==3.20"
+  if ! PYTHONNOUSERSITE=1 conda run -n deepcpg-env python -m pip install --quiet --isolated tensorflow==1.13.1 keras==1.2.2 "h5py==2.10.0" "protobuf==3.20"; then
+    PYTHONNOUSERSITE=1 conda run -n deepcpg-env python -m pip install --quiet --isolated tensorflow==2.5.0 keras==2.4.3 "h5py<3.9" "protobuf<4" "numpy<1.20"
+  fi
+  PYTHONNOUSERSITE=1 conda run -n deepcpg-env python -m pip install --quiet --isolated pyfaidx pandas pyarrow
 fi
 
 echo "Setup complete. Next: run scripts/benchmark_foundation_models/check_readiness.py"
