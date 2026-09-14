@@ -1,0 +1,13 @@
+# Claim-driven ablation of configs/models/chr123/main_chr123_iotuned_v2.yaml
+# (the chr123 I/O-tuned counterpart of main.yaml). Removes the training-only
+# mean-proxy head and its supervision entirely -- same claim as
+# mean_contribution/no_mean_branch.yaml, extended to the chr123 scope.
+extends: ../chr123/main_chr123_iotuned_v2.yaml
+
+locus_cls:
+  use_mean_branch: false
+  aux_weight: 0.0
+
+tracking:
+  group: mean_contribution_functional_2026_09
+  tags: [functional-only, mean-contribution, no-mean-branch, chr123, iotuned, chunk-aligned]

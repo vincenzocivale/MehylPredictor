@@ -1,0 +1,13 @@
+# Claim-driven ablation of configs/models/chr123/main_chr123_iotuned_v2.yaml
+# (the chr123 I/O-tuned counterpart of main.yaml). Architecture/capacity is
+# unchanged; only L_mean is disabled -- same claim as
+# mean_contribution/no_mean_supervision.yaml, extended to the chr123 scope.
+extends: ../chr123/main_chr123_iotuned_v2.yaml
+
+locus_cls:
+  use_mean_branch: true
+  aux_weight: 0.0
+
+tracking:
+  group: mean_contribution_functional_2026_09
+  tags: [functional-only, mean-contribution, no-mean-supervision, chr123, iotuned, chunk-aligned]
