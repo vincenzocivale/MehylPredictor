@@ -77,11 +77,21 @@ def _extract_functional_locus(
     trainer: RNAMethylationTrainer,
     cpg_ids: np.ndarray,
     chunk: int,
-) -> tuple[np.ndarray, np.ndarray] | None:
+) -> dict[str, np.ndarray] | None:
+    """Recompute the functional-branch representations for `cpg_ids`.
+
+    Mirrors `EfficientSingleAttentionPredictor.forward` (src/methylation_predictor/
+    modeling/final.py) exactly: `h_c_deep` is `h_c` passed through the
+    `n_functional_ffn_blocks` (8 in the current recipe) functional FFN residual
+    blocks, and the mean head is applied to `h_c_deep`, never to shallow `h_c`.
+    `h_c` (pre-FFN) is also returned as a supplementary shallow control -- it is
+    NOT the representation the mean-proxy auxiliary loss supervises, so it is
+    not used for the main-paper probe/direct-head claims.
+    """
     if not trainer.use_mean_branch or trainer.model.mean_head is None:
         return None
 
-    reps, head_pred = [], []
+    deep_reps, shallow_reps, head_pred = [], [], []
     trainer.model.eval()
     for c0 in range(0, len(cpg_ids), chunk):
         local = cpg_ids[c0:c0 + chunk]
@@ -95,13 +105,21 @@ def _extract_functional_locus(
                 kwargs["functional_dense"]
             )
             h_c = trainer.model.locus_norm(peak + dense)
+            h_c_deep = h_c
+            for ffn in trainer.model.functional_ffn:
+                h_c_deep = ffn(h_c_deep)
             mu = torch.sigmoid(
-                trainer.model.mean_head(h_c).squeeze(-1)
+                trainer.model.mean_head(h_c_deep).squeeze(-1)
             )
-        reps.append(h_c.float().cpu().numpy())
+        deep_reps.append(h_c_deep.float().cpu().numpy())
+        shallow_reps.append(h_c.float().cpu().numpy())
         head_pred.append(mu.float().cpu().numpy())
 
-    return np.concatenate(reps), np.concatenate(head_pred)
+    return {
+        "deep": np.concatenate(deep_reps),
+        "shallow": np.concatenate(shallow_reps),
+        "head_pred": np.concatenate(head_pred),
+    }
 
 
 def _linear_probe(
@@ -260,6 +278,7 @@ def checkpoint_mode(args) -> int:
 
         direct_mean = None
         probe = None
+        probe_shallow_control = None
         train_repr = _extract_functional_locus(
             trainer, train_c, args.representation_chunk
         )
@@ -267,10 +286,19 @@ def checkpoint_mode(args) -> int:
             trainer, val_c, args.representation_chunk
         )
         if train_repr is not None and val_repr is not None:
-            train_h, _ = train_repr
-            val_h, val_head = val_repr
-            direct_mean = _basic_regression(val_mu, val_head)
-            probe = _linear_probe(train_h, train_mu, val_h, val_mu)
+            # Main-paper claim: probe the representation the mean-proxy loss
+            # actually supervises (h_c_deep, i.e. h_c after the 8 functional
+            # FFN blocks -- same tensor the mean head consumes in forward()).
+            direct_mean = _basic_regression(val_mu, val_repr["head_pred"])
+            probe = _linear_probe(
+                train_repr["deep"], train_mu, val_repr["deep"], val_mu
+            )
+            # Supplementary control only: pre-FFN h_c, never seen by the mean
+            # head or the auxiliary loss. Useful for an h_c^shallow vs
+            # h_c^deep, with/without proxy comparison, but not a main-paper metric.
+            probe_shallow_control = _linear_probe(
+                train_repr["shallow"], train_mu, val_repr["shallow"], val_mu
+            )
 
         views = {
             "val_cpg_x_train_sample": (p.array_train_sample_idx, p.array_val_cpg_idx),
@@ -294,10 +322,12 @@ def checkpoint_mode(args) -> int:
             "locus_cls": lc,
             "mean_head_on_unseen_cpg": direct_mean,
             "functional_locus_linear_probe_train_cpg_to_val_cpg": probe,
+            "functional_locus_linear_probe_train_cpg_to_val_cpg_shallow_control": probe_shallow_control,
             "views": view_results,
             "interpretation_contract": {
-                "mean_head": "Direct auxiliary-head accuracy on official val CpGs; null if mean branch is absent.",
-                "linear_probe": "OLS probe fit on functional h_c using train CpGs only and evaluated on official val CpGs.",
+                "mean_head": "Direct auxiliary-head accuracy on official val CpGs; mean_head(h_c_deep), matching the real forward pass; null if mean branch is absent.",
+                "linear_probe": "OLS probe fit on h_c_deep (h_c after the 8 functional FFN blocks -- the representation actually supervised by the mean-proxy loss) using train CpGs only, evaluated on official val CpGs. This is the main-paper metric for the 'proxy makes h_deep methylation-aware' claim.",
+                "linear_probe_shallow_control": "Same protocol, but probing pre-FFN h_c (never seen by the mean head or the auxiliary loss). Supplementary diagnostic only -- shows whether any methylation-propensity signal is already present before the functional FFN stack, not a main-paper claim.",
                 "locus_bias": "Final beta averaged across samples per CpG; lower absolute bias is better.",
                 "variance_deciles": "CpGs ranked by true across-sample variance; decile 1 is lowest variance.",
             },
