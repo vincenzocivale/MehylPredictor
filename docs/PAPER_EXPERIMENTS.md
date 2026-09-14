@@ -81,9 +81,13 @@ judgment call:
   `configs/benchmark_foundation_models/deepcpg.yaml` now points at
   `${METHYL_DATA_ROOT}/reference/hg38/hg38.fa` (the same convention used by the
   locus-features build), matching the FASTA already available on this machine's
-  storage. Still needs `scripts/benchmark_foundation_models/setup.sh` run on a
-  host with network access to vendor `external/deepcpg` and the legacy
-  `deepcpg-env` conda environment (python=3.7/tensorflow==1.13.1/keras==1.2.2).
+  storage. The executable DNA-only runner is now implemented at
+  `scripts/benchmark_foundation_models/run_deepcpg.py`; it scores both released
+  human DNA-only variants and expands their patient-agnostic predictions across
+  the training-patient × validation-CpG view. It still needs
+  `scripts/benchmark_foundation_models/setup.sh` run on a host with network
+  access to vendor `external/deepcpg` and the legacy `deepcpg-env` conda
+  environment (python=3.7/tensorflow==1.13.1/keras==1.2.2).
 - **MethylGPT** — decision made 2026-09-13: **wait for a GPU host with flash-attn**
   before running masked-recovery evaluation. The non-flash-attn compatible-load
   remap (`_remap_flash_attn_qkv_keys`) lets the checkpoint load and pass
@@ -102,6 +106,29 @@ judgment call:
 None of the three require new architectural work in this repo's own training
 code — E02 is entirely an external-model integration effort, gated on
 network/GPU access this session does not have.
+
+### E02 execution update (2026-09-13)
+
+The local benchmark assets were found under the sibling
+`methylation-fm-benchmark` project and are consumed by
+`scripts/benchmark_foundation_models/run_official_views.py`. The runner joins
+the canonical coordinate registry to the released Illumina vocabulary, keeps
+only training patients, masks the official validation-CpG set, and writes both
+long predictions and the standard benchmark report. Missing probes outside a
+scope are filled with 0.5 and marked unobserved; they are excluded from
+observed-only metrics.
+
+The ENCODE run is complete with the available MethylGPT 256-dimensional
+released checkpoint: 66 training patients, 4,450 validation CpGs covered,
+3,182 variable CpGs, `frac_variable_beats=0.5179`, and
+`median_r2_gain=0.0298`. Artifacts are in
+`local_methyl_data/runs/foundation_models/encode/`.
+
+The MethylGPT and CpGPT runs are complete for chr1, chr123, and ENCODE. DeepCpG
+DNA-only is complete for chr1 for both released human variants; its chr123 run
+was still in progress at the time of the versioned result snapshot. Lightweight
+reports and metadata are versioned under `results/foundation_models/`; the raw
+patient-by-CpG parquet files remain in the ignored local data store.
 
 ### E03/E04 — implementation notes (2026-09-13)
 
@@ -143,6 +170,43 @@ genomic-FM variant. `modeling.factory.GENOMIC_FM_VARIANTS` currently has
 only `genomic_fm_ntv3_pre`; a GENA baseline needs its own atlas + variant
 entry before it can be added the same way. NTv3-post is not, and will never
 be, a member of `GENOMIC_FM_VARIANTS`.
+
+**Blocked candidate arm: MethylProphet's own pretrained chr1 encoder**
+(2026-09-13 investigation, `MethylProphet/tcga_mix_chr1-bs_512-c2b2` on HF).
+Architecture confirmed from `xk-huang/methylprophet`'s source
+(`src/models/methylformer_bert.py`): `MethylformerBertModel`, a DistilBERT
+(768-d, 12 layers) over `[CLS, chr_embed, gene_expr-via-Bottleneck-MLP,
+CGI tokens, DNABERT-2-tokenized 1000bp DNA window]`, trained jointly on
+TCGA Array+EPIC+WGBS chr1. To extract a frozen, patient-independent locus
+embedding (this repo's E04 methodology: swap only the locus representation,
+keep the rest of the architecture fixed) the plan was: run the model with
+gene_expr fixed/zeroed, take the CLS hidden state per CpG as a 768-d
+embedding, following the exact same atlas-then-`GenomicFMLocusPredictor`
+pattern already used for `genomic_fm_ntv3_pre` (`storage.GenomicFMLocusCache`
+only requires an HDF5 with `cpg_idx`/`embedding`, already
+architecture-agnostic).
+
+**Actual blocker**: the model's CGI input requires a proprietary per-CpG
+table (`cpg_island_tuple`, e.g. `"sea_-1,upshore2_12"` — a CpG-island index
+1-28000 plus a non-standard distance-bucket vocabulary `{cgi, sea, shelve,
+upshore1-4}`, see `CGITokenizer` in their `src/data/data_preprocessor.py`)
+built by an unpublished preprocessing step (`stats_cpg_island.py` only
+consumes an already-built `cpg_island.parquet` with `cgiIndex`/`location`
+columns; the script that produces that parquet from raw CpG-island calls
+was not found in the public repo). Checked and ruled out as sources for
+this table: the gated model checkpoint itself (only weights), the
+`methylprophet-example_data-tcga_mix_chr1` HF dataset (only ~100 unique
+CpGs, a demo, not chr1-scale), and the 46GB `250116_191533-241231-tcga-raw`
+HF dataset (verified by full extraction: only raw gene-expression/CpG-name/
+sample-list CSVs, no CGI annotation table). Approximating the bucket
+thresholds ourselves would produce CGI tokens outside the model's training
+distribution, undermining the exact point of reusing a pretrained encoder
+for this comparison — not attempted.
+
+**To unblock**: either the CGI-table-generation script from the authors, or
+their exact `cpg_island.parquet` (chr1 rows suffice) directly. Until then,
+no `methylprophet_pretrained_chr1`-style arm exists in
+`locus_representation_genomic_fm`.
 
 Both were verified end-to-end (forward pass shape checks, cache round-trip,
 recipe loading, `_locus_cache_args` branching) with the real `torch`/`h5py`

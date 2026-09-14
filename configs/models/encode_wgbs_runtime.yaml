@@ -1,0 +1,9 @@
+extends: main.yaml
+
+# ENCODE WGBS is the only training source.  A larger sample block keeps the
+# A100 occupied and reduces the pair-complete grid from three row blocks to
+# one for the 66 training samples.
+batching:
+  wgbs:
+    sample_size: 128
+    cpg_size: 65536

@@ -34,6 +34,7 @@ install or CpGPT/MethylGPT's venvs).
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 import numpy as np
@@ -92,11 +93,80 @@ def one_hot_dna_window(fasta_path: str | Path, chrom: str, pos: int, wlen: int =
     return encoded
 
 
+def one_hot_dna_windows(
+    fasta_path: str | Path, chroms, positions, wlen: int = DNA_WINDOW_LEN
+) -> np.ndarray:
+    """Encode many windows while opening the FASTA index only once."""
+    import pyfaidx
+
+    fasta = pyfaidx.Fasta(str(fasta_path), one_based_attributes=False)
+    half = wlen // 2
+    result = np.zeros((len(positions), wlen, 4), dtype=np.float32)
+    for i, (chrom, pos) in enumerate(zip(chroms, positions)):
+        start0 = int(pos) - 1 - half
+        end0 = start0 + wlen
+        chrom_len = len(fasta[str(chrom)])
+        clip_start = max(start0, 0)
+        clip_end = min(end0, chrom_len)
+        if clip_start >= clip_end:
+            continue
+        seq = str(fasta[str(chrom)][clip_start:clip_end]).upper()
+        offset = clip_start - start0
+        for j, base in enumerate(seq):
+            row = _BASE_TO_ROW.get(base)
+            if row is not None:
+                result[i, offset + j, row] = 1.0
+    return result
+
+
 def build_random_model(arch_path: str | Path):
     """Reconstruct the Keras architecture from its saved JSON, random-initialized."""
-    from keras.models import model_from_json
+    # DeepCpG was released against standalone Keras 1.x.  On current hosts the
+    # legacy TensorFlow 1.13 wheel is unavailable for Python 3.7, so the setup
+    # uses TensorFlow 2.5; its bundled tf.keras has the compatible JSON loader,
+    # while mixing it with standalone Keras 2.4 causes registry errors.
+    try:
+        from tensorflow.keras.models import model_from_json
+    except ImportError:  # pragma: no cover - exercised only in the original env
+        from keras.models import model_from_json
 
     arch_json = Path(arch_path).read_text()
+    # Keras 1.x serialized ``input_dtype`` on InputLayer; tf.keras 2.5 rejects
+    # that legacy keyword even though it can otherwise reconstruct the graph.
+    try:
+        payload = json.loads(arch_json)
+        for layer in payload.get("config", {}).get("layers", []):
+            old = layer.get("config", {})
+            kind = layer.get("class_name")
+            if kind == "InputLayer":
+                old.pop("input_dtype", None)
+            elif kind == "Convolution1D":
+                layer["class_name"] = "Conv1D"
+                layer["config"] = {
+                    "name": old.get("name"), "trainable": old.get("trainable", True),
+                    "filters": old["nb_filter"], "kernel_size": old["filter_length"],
+                    "strides": old.get("subsample_length", 1),
+                    "padding": old.get("border_mode", "valid"),
+                    "activation": old.get("activation", "linear"),
+                    "use_bias": old.get("bias", True),
+                }
+            elif kind == "MaxPooling1D":
+                layer["config"] = {
+                    "name": old.get("name"), "trainable": old.get("trainable", True),
+                    "pool_size": old["pool_length"], "strides": old.get("stride"),
+                    "padding": old.get("border_mode", "valid"),
+                }
+            elif kind == "Dense":
+                layer["config"] = {
+                    "name": old.get("name"), "trainable": old.get("trainable", True),
+                    "units": old["output_dim"], "activation": old.get("activation", "linear"),
+                    "use_bias": old.get("bias", True),
+                }
+            elif kind == "Dropout":
+                old["rate"] = old.pop("p")
+        arch_json = json.dumps(payload)
+    except (TypeError, ValueError):
+        pass
     return model_from_json(arch_json)
 
 
