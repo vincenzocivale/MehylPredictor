@@ -1,0 +1,24 @@
+# chr123-scope simple baseline: functional-matched global RNA shift.
+# Mirrors configs/models/baselines/functional_global_rna_shift.yaml (chr1)
+# at chr123 scope: same encoder/fusion pipeline and chr123 I/O tuning as
+# configs/models/chr123/main_chr123_iotuned_v2.yaml, but RNA contributes
+# only one patient-global logit shift (functional_baseline_global_shift),
+# so there is no patient-by-locus RNA interaction.
+#
+# Uses the iotuned_v2 (not bigbatch_solo) batching -- iotuned_v2's batch
+# sizes were sized for a ~20GB budget when sharing an A100 with a second
+# process; bigbatch_solo's larger batches were sized for ~40GB of solo
+# headroom and would not fit a 24GB card.
+#
+# Launched ad hoc outside configs/paper_studies.yaml (chr123 is not in the
+# frozen paper matrix, same as other chr123 runs -- see
+# docs/EXPERIMENT_LOG.md) via scripts/train.py directly, not
+# scripts/paper_experiment.py.
+extends: main_chr123_iotuned_v2.yaml
+
+model:
+  functional_fusion_variant: functional_baseline_global_shift
+
+tracking:
+  group: functional_baselines_2026_09
+  tags: [functional-only, baseline, global-rna-shift, chr123]
