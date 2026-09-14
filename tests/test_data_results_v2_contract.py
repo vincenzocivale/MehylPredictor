@@ -43,16 +43,17 @@ def test_comparator_inputs_are_keep_dependencies():
 def test_frozen_study_surface():
     studies = _load(CONTRACT)["paper_studies"]
     assert set(studies) == {
-        "main",
+        "main_model",
         "functional_baselines",
         "mean_proxy",
         "rna_encoder",
         "cpg_prior",
     }
-    # Updated 2026-09-13: main study seeds aligned to what was actually
-    # launched (17, 42, 123) -- see configs/data/storage_v2.yaml's note and
-    # docs/EXPERIMENT_LOG.md.
-    assert studies["main"]["seeds"] == [17, 42, 123]
+    # Updated 2026-09-13: `main` renamed to `main_model` to match the study
+    # label actually recorded at launch time, and seeds aligned to what was
+    # actually launched (17, 42, 123) -- see configs/data/storage_v2.yaml's
+    # note and docs/EXPERIMENT_LOG.md.
+    assert studies["main_model"]["seeds"] == [17, 42, 123]
     assert set(studies["rna_encoder"]["arms"]) == {
         "ours_program_tokens",
         "bottleneck_mlp",

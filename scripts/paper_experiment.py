@@ -340,6 +340,12 @@ def build_evaluate_command(
     paths = profile["paths"]
     output = evaluation_path(run_dir, profile["scope"])
     if model_kind == "cpg_prior":
+        # CpGPriorEvaluator treats --output as a directory it writes
+        # metrics.json/per_chromosome.csv/manifest.json into (unlike the
+        # rna_methylation path below, which writes exactly to the given
+        # file path) -- pass the parent dir, not the metrics.json path
+        # itself, or evaluation/{scope}/metrics.json ends up created as a
+        # directory and build_record's later file check fails.
         return [
             sys.executable,
             "scripts/evaluate.py",
@@ -354,7 +360,7 @@ def build_evaluate_command(
             "--registry",
             str(paths["registry"]),
             "--output",
-            str(output),
+            str(output.parent),
         ]
 
     rna_cache = rna_cache_override or paths["rna_cache"]

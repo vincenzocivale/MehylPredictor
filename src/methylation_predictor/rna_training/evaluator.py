@@ -63,4 +63,10 @@ class CpGPriorEvaluator:
         for name,view in self.protocol.evaluation_views().items():
             started=time.time(); glob,per=self._view(view.sample_idx,view.cpg_idx); result["views"][name]={"global":glob,"per_chromosome":per}; print(f"[eval:{self.train_scope}->{self.eval_scope}:{name}] mas_pcc={glob['mas_pcc']:.6f} mse={glob['mse']:.6f} seconds={time.time()-started:.1f}",flush=True)
             for chrom,m in per.items(): rows.append({"view":name,"chromosome":chrom,**m})
+        # Mirror the headline view at top level as "metrics", matching the
+        # schema evaluate_rna_checkpoint's summary already uses -- this is
+        # what scripts/paper_experiment.py's build_record checks against
+        # (evaluation.get("metrics") == views[headline_view]) regardless of
+        # model kind.
+        result["metrics"]=result["views"].get("val_cpg_x_val_sample")
         write_json(self.output/"metrics.json",result); pd.DataFrame(rows).to_csv(self.output/"per_chromosome.csv",index=False); write_json(self.output/"manifest.json",{"training_scope":self.train_scope,"evaluation_scope":self.eval_scope,"checkpoint":None,"checkpoint_sha256":None,"dataset_contract":"TCGA canonical official Array evaluation views"}); return result

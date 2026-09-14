@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-09-13T17:13:42.277081+00:00",
+  "generated_from_git_commit": "dcc3b435334e993f702bf41cf66e3fd1a53f6d62",
+  "scope": "chr1",
+  "study_filter": null,
+  "n_runs": 2,
+  "sources": [
+    "/dune/DATASETS/MethylPredictionData/experiments/runs/rna_methylation/chr1/main-seed17-r3/paper/record.json",
+    "/dune/DATASETS/MethylPredictionData/experiments/runs/rna_methylation/chr1/main-seed42-r3/paper/record.json"
+  ],
+  "outputs": {
+    "jsonl": "results/paper/runs.jsonl",
+    "csv": "results/paper/runs.csv",
+    "registry": "results/paper/registry.json",
+    "per_run": [
+      "results/paper/main_model/main/seed17.json",
+      "results/paper/main_model/main/seed42.json"
+    ]
+  }
+}
