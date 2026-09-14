@@ -1,0 +1,13 @@
+{
+  "scope": "chr1",
+  "model": "deepcpg",
+  "variant": "hou2016_hcc_dna",
+  "view": "val_cpg_x_train_sample",
+  "patient_agnostic": true,
+  "checkpoint": "/data2/home/vcivale/projects/methylation/MehylPredictor/external/checkpoints/deepcpg/hou2016_hcc_dna/weights.h5",
+  "architecture": "/data2/home/vcivale/projects/methylation/MehylPredictor/external/checkpoints/deepcpg/hou2016_hcc_dna/arch.json",
+  "fasta": "/data2/home/vcivale/projects/methylation/backup/MethylPredictionData/reference/hg38/hg38.fa",
+  "n_training_samples": 8260,
+  "n_validation_cpgs": 6742,
+  "dna_window_len": 1001
+}

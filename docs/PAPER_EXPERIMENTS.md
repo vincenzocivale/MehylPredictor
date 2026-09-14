@@ -124,13 +124,11 @@ released checkpoint: 66 training patients, 4,450 validation CpGs covered,
 `median_r2_gain=0.0298`. Artifacts are in
 `local_methyl_data/runs/foundation_models/encode/`.
 
-The MethylGPT chr1 run is complete. The first combined queue stopped at the
-CpGPT loader preflight and was relaunched with the explicit loader under retry
-PID 721727. Its log is
-`local_methyl_data/runs/foundation_models/logs/foundation-retry.log`.
-The retry uses the official `tcga_mix_chr1` and `tcga_mix_chr123` splits and
-the same released checkpoints; results must not be reported until it has
-produced both predictions and reports for each scope/model.
+The MethylGPT and CpGPT runs are complete for chr1, chr123, and ENCODE. DeepCpG
+DNA-only is complete for chr1 for both released human variants; its chr123 run
+was still in progress at the time of the versioned result snapshot. Lightweight
+reports and metadata are versioned under `results/foundation_models/`; the raw
+patient-by-CpG parquet files remain in the ignored local data store.
 
 ### E03/E04 — implementation notes (2026-09-13)
 
