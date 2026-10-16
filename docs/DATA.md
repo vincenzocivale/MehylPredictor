@@ -127,7 +127,7 @@ No `/raid/...` path is hardcoded in any Python module under
 `src/methylation_predictor/tcga_canonical/`. Resolution order (see
 `tcga_canonical/config.py::resolve_bundle_root`):
 
-1. an explicit `root=` argument in code / `--canonical-root` on `scripts/{prepare,train,tune,evaluate}.py`
+1. an explicit `root=` argument in code / `--canonical-root` on `scripts/{train,tune,evaluate}.py`
 2. the `TCGA_CANONICAL_ROOT` environment variable
 3. `root:` in `configs/data/tcga_canonical.yaml`
 
@@ -147,4 +147,4 @@ No `/raid/...` path is hardcoded in any Python module under
   cheap; WGBS is chunked with every row in each chunk (32 rows x 8192
   cols), so `MethylationSource.block`/`finite_count` switch to
   column-grouped reads for it automatically (`_column_major`).
-The shared hg38 locus store, frozen 4,165-track peak contract, 18 annotations, five breadth values, aliases and views are documented in [locus features](data/LOCUS_FEATURES.md).
+The shared hg38 locus store, frozen 4,165-track peak contract, 18 annotations, five breadth values, aliases and views are part of the locus store.

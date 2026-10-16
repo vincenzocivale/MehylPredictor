@@ -181,27 +181,6 @@ configs/models/
 
 docs/
     MODEL.md
-    REPOSITORY_SCOPE.md
-    REFACTORING_CONTRACT.md
+    WORKFLOWS.md
+    DATA.md
 ```
-
-Benchmark-specific code is kept isolated under
-`methylation_predictor/benchmark/` and `scripts/benchmark_*`.
-
-## Reproducibility refactor
-
-The refactor contract is documented in
-[`docs/REFACTORING_CONTRACT.md`](docs/REFACTORING_CONTRACT.md).  The intended
-final repository boundary is documented in
-[`docs/REPOSITORY_SCOPE.md`](docs/REPOSITORY_SCOPE.md).
-
-Current priorities after the functional/core cutover are:
-
-1. lock the final architecture decision from the protected J-series experiments;
-2. prune research-only recipes/config fields after that decision;
-3. consolidate data preparation and paper-table reproduction commands;
-4. perform the final repository and reproducibility audit.
-
-The frozen experiment inventory is documented in
-[`docs/EXPERIMENT_SURFACE.md`](docs/EXPERIMENT_SURFACE.md).
-The genome-wide hg38 locus store supplies 4,165 binary ENCODE overlaps, 18 annotation values and five breadth values. Its full chr1 regression gates and build commands are documented in [locus features](docs/data/LOCUS_FEATURES.md).

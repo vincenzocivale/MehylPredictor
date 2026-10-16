@@ -62,19 +62,11 @@ from methylation_predictor.rna_training import (
 )
 ```
 
-## Final paper experiment API
-
-Fresh paper-facing reruns after architecture selection use the standardized
-[`PAPER_EXPERIMENT_API.md`](PAPER_EXPERIMENT_API.md) contract. The wrapper
-accepts only recipes classified as `paper_facing`, runs official evaluation,
-and writes one normalized `paper/record.json` per run for uniform collection.
-Build commands and full chr1 annotation, regulatory and breadth regression gates are in [locus features](data/LOCUS_FEATURES.md). The genome-wide store is shared by TCGA chr1, chr123 and genomewide views.
-
 For chromosome-chunked inference, provide explicit canonical RNA sample IDs (to
 avoid an accidental all-samples run):
 
 ```bash
-python scripts/infer_tcga_genomewide.py \
+python scripts/infer.py --model rna_methylation --dataset tcga --scope genomewide \
   --checkpoint "$CHECKPOINT" --recipe configs/models/main.yaml \
   --locus-store "$METHYL_DATA_ROOT/derived/locus_features_v1" \
   --rna-cache "$RNA_CACHE" --sample-ids sample_ids.npy \
@@ -87,10 +79,3 @@ resumed safely; it reads no methylation targets or legacy CpG feature cache.
 Use `--source array`, `--source epic` or `--source wgbs` to restrict output to
 the corresponding alias universe; source-specific outputs are stored below a
 matching subdirectory.
-
-## Paper experiment catalog
-
-The full paper experiment catalog (claims, arms, views, tiering) and its
-mapping onto this repository's split-naming and run-storage conventions are
-tracked in [`PAPER_EXPERIMENTS.md`](PAPER_EXPERIMENTS.md), which also records
-which experiments are implemented, partial, or missing.

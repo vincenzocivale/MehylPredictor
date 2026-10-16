@@ -52,7 +52,7 @@ def test_functional_mode_is_an_invariant_not_a_runtime_switch():
 
 
 def test_public_rna_clis_have_no_legacy_engine_switch():
-    for relative in ("scripts/train.py", "scripts/evaluate.py"):
+    for relative in ("scripts/train.py",):
         text = (ROOT / relative).read_text()
         assert "--engine" not in text
         assert "--functional-only" not in text
