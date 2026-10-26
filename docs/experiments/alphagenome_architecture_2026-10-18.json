@@ -1,0 +1,840 @@
+{
+  "frozen": {
+    "selected": null,
+    "best_balanced": {
+      "mode": "joint",
+      "space": "none",
+      "blend": 0.0,
+      "double_ood": {
+        "mse": 0.027488447543317487,
+        "mas_pcc": 0.4964907490325674,
+        "within_tissue": 0.33917360258114737,
+        "bias_fraction": 0.39210149947653394,
+        "severe": 0.1825275004253125,
+        "p10_pcc": 0.13597457080964248,
+        "mae": 0.10932597726232426,
+        "rows": 7291276.666666667
+      },
+      "known_loci": {
+        "mse": 0.01299040359681307,
+        "mas_pcc": 0.6696159184554824,
+        "within_tissue": 0.41942481394520353,
+        "bias_fraction": 0.07959541870787601,
+        "severe": 0.08616161500557763,
+        "p10_pcc": 0.23234671072051455,
+        "mae": 0.07434144722381114,
+        "rows": 2993801.3333333335
+      },
+      "admissible": false,
+      "balanced_mse_ratio": 0.9192960967417088
+    },
+    "baseline": {
+      "mode": "v1_early",
+      "space": "none",
+      "blend": 0.0,
+      "double_ood": {
+        "mse": 0.027530878320146987,
+        "mas_pcc": 0.5038044406917033,
+        "within_tissue": 0.33817466772152344,
+        "bias_fraction": 0.3866894024546684,
+        "severe": 0.17839787464060883,
+        "p10_pcc": 0.13698408105333099,
+        "mae": 0.10738226622213512,
+        "rows": 7291276.666666667
+      },
+      "known_loci": {
+        "mse": 0.015462310619310518,
+        "mas_pcc": 0.6211196020901956,
+        "within_tissue": 0.3879050154220324,
+        "bias_fraction": 0.13807159326382648,
+        "severe": 0.10431074354897445,
+        "p10_pcc": 0.18143667732662322,
+        "mae": 0.0804280978531795,
+        "rows": 2993801.3333333335
+      },
+      "admissible": false,
+      "balanced_mse_ratio": 1.0
+    },
+    "v2": {
+      "mode": "v2_early",
+      "space": "none",
+      "blend": 0.0,
+      "double_ood": {
+        "mse": 0.026582640034518185,
+        "mas_pcc": 0.5043616033248735,
+        "within_tissue": 0.33851079297844056,
+        "bias_fraction": 0.3794106199352083,
+        "severe": 0.17815028729852397,
+        "p10_pcc": 0.13911069324444275,
+        "mae": 0.10755896182388248,
+        "rows": 7291276.666666667
+      },
+      "known_loci": {
+        "mse": 0.015909991953506643,
+        "mas_pcc": 0.6199193894947718,
+        "within_tissue": 0.38828403519372356,
+        "bias_fraction": 0.15534081709683012,
+        "severe": 0.10904066060857066,
+        "p10_pcc": 0.18429428408019888,
+        "mae": 0.08330374451734203,
+        "rows": 2993801.3333333335
+      },
+      "admissible": false,
+      "balanced_mse_ratio": 0.9972551749762941
+    },
+    "candidates": [
+      {
+        "mode": "v1_early",
+        "space": "none",
+        "blend": 0.0,
+        "double_ood": {
+          "mse": 0.027530878320146987,
+          "mas_pcc": 0.5038044406917033,
+          "within_tissue": 0.33817466772152344,
+          "bias_fraction": 0.3866894024546684,
+          "severe": 0.17839787464060883,
+          "p10_pcc": 0.13698408105333099,
+          "mae": 0.10738226622213512,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.015462310619310518,
+          "mas_pcc": 0.6211196020901956,
+          "within_tissue": 0.3879050154220324,
+          "bias_fraction": 0.13807159326382648,
+          "severe": 0.10431074354897445,
+          "p10_pcc": 0.18143667732662322,
+          "mae": 0.0804280978531795,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0
+      },
+      {
+        "mode": "v2_early",
+        "space": "none",
+        "blend": 0.0,
+        "double_ood": {
+          "mse": 0.026582640034518185,
+          "mas_pcc": 0.5043616033248735,
+          "within_tissue": 0.33851079297844056,
+          "bias_fraction": 0.3794106199352083,
+          "severe": 0.17815028729852397,
+          "p10_pcc": 0.13911069324444275,
+          "mae": 0.10755896182388248,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.015909991953506643,
+          "mas_pcc": 0.6199193894947718,
+          "within_tissue": 0.38828403519372356,
+          "bias_fraction": 0.15534081709683012,
+          "severe": 0.10904066060857066,
+          "p10_pcc": 0.18429428408019888,
+          "mae": 0.08330374451734203,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9972551749762941
+      },
+      {
+        "mode": "v2_early",
+        "space": "raw",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.02660503482633995,
+          "mas_pcc": 0.5045804091108336,
+          "within_tissue": 0.33898121283274274,
+          "bias_fraction": 0.3791889191514546,
+          "severe": 0.17920879279825042,
+          "p10_pcc": 0.13991336896306533,
+          "mae": 0.10797365900002776,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01646400663268723,
+          "mas_pcc": 0.6064872958949393,
+          "within_tissue": 0.38307157016121085,
+          "bias_fraction": 0.1506061682619571,
+          "severe": 0.11345776260288244,
+          "p10_pcc": 0.18090142181902785,
+          "mae": 0.08503790212982941,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0155768992234644
+      },
+      {
+        "mode": "v2_early",
+        "space": "raw",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.02704554236649752,
+          "mas_pcc": 0.4888175068809347,
+          "within_tissue": 0.3309782319768657,
+          "bias_fraction": 0.3732046063171314,
+          "severe": 0.182290628436331,
+          "p10_pcc": 0.13568768248296223,
+          "mae": 0.10913936261387007,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.017521475574307416,
+          "mas_pcc": 0.5705921938787436,
+          "within_tissue": 0.3663467528546314,
+          "bias_fraction": 0.1421603492988484,
+          "severe": 0.12128668224616364,
+          "p10_pcc": 0.17109303412755505,
+          "mae": 0.08785429997607515,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0577721932661732
+      },
+      {
+        "mode": "v2_early",
+        "space": "learned",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.026584990405592923,
+          "mas_pcc": 0.5043628022083411,
+          "within_tissue": 0.33909915785120287,
+          "bias_fraction": 0.3793296977674429,
+          "severe": 0.17830235005325468,
+          "p10_pcc": 0.13933387715127052,
+          "mae": 0.10760860671099205,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01617708454584385,
+          "mas_pcc": 0.6130902539622965,
+          "within_tissue": 0.3863504168494859,
+          "bias_fraction": 0.1530364295138048,
+          "severe": 0.11105744543569139,
+          "p10_pcc": 0.18297797474553834,
+          "mae": 0.08402635282458165,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0059347523724917
+      },
+      {
+        "mode": "v2_early",
+        "space": "learned",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.02676226523919053,
+          "mas_pcc": 0.49808784462178896,
+          "within_tissue": 0.3361977737333721,
+          "bias_fraction": 0.37680806246503273,
+          "severe": 0.1792766107037008,
+          "p10_pcc": 0.13731768212273504,
+          "mae": 0.10797238453584289,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.0166532920280119,
+          "mas_pcc": 0.5969153785901782,
+          "within_tissue": 0.37951500155431694,
+          "bias_fraction": 0.14899335956045856,
+          "severe": 0.11454457420242045,
+          "p10_pcc": 0.17996557107639113,
+          "mae": 0.08521132711577878,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.024553291499365
+      },
+      {
+        "mode": "joint",
+        "space": "none",
+        "blend": 0.0,
+        "double_ood": {
+          "mse": 0.027488447543317487,
+          "mas_pcc": 0.4964907490325674,
+          "within_tissue": 0.33917360258114737,
+          "bias_fraction": 0.39210149947653394,
+          "severe": 0.1825275004253125,
+          "p10_pcc": 0.13597457080964248,
+          "mae": 0.10932597726232426,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01299040359681307,
+          "mas_pcc": 0.6696159184554824,
+          "within_tissue": 0.41942481394520353,
+          "bias_fraction": 0.07959541870787601,
+          "severe": 0.08616161500557763,
+          "p10_pcc": 0.23234671072051455,
+          "mae": 0.07434144722381114,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9192960967417088
+      },
+      {
+        "mode": "joint",
+        "space": "raw",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.027366621682763444,
+          "mas_pcc": 0.500206134074187,
+          "within_tissue": 0.34152846137437465,
+          "bias_fraction": 0.3938367311737594,
+          "severe": 0.183130943371239,
+          "p10_pcc": 0.13875034458484967,
+          "mae": 0.10951442193668987,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.013696767662347724,
+          "mas_pcc": 0.6556805213906127,
+          "within_tissue": 0.4129211568626685,
+          "bias_fraction": 0.07582656768551459,
+          "severe": 0.09206736002582351,
+          "p10_pcc": 0.22483449957374246,
+          "mae": 0.07673334106970114,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9399250437502972
+      },
+      {
+        "mode": "joint",
+        "space": "raw",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.027753023365344746,
+          "mas_pcc": 0.4869274863628256,
+          "within_tissue": 0.33435269905654347,
+          "bias_fraction": 0.38846304843964646,
+          "severe": 0.18612834866768757,
+          "p10_pcc": 0.1362923562512815,
+          "mae": 0.11061640378635784,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01507745592177955,
+          "mas_pcc": 0.612128407256644,
+          "within_tissue": 0.3911185607036231,
+          "bias_fraction": 0.06943348070790883,
+          "severe": 0.10285292765909151,
+          "p10_pcc": 0.20621448367884054,
+          "mae": 0.08068198017597489,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9915895423108161
+      },
+      {
+        "mode": "joint",
+        "space": "learned",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.027414896607393522,
+          "mas_pcc": 0.4983097644134499,
+          "within_tissue": 0.34110883687957944,
+          "bias_fraction": 0.3930272063243371,
+          "severe": 0.1822707488364676,
+          "p10_pcc": 0.13660771916707534,
+          "mae": 0.10922303205544176,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.013325406999856829,
+          "mas_pcc": 0.6620143399153894,
+          "within_tissue": 0.41677947540131693,
+          "bias_fraction": 0.07779591617039329,
+          "severe": 0.08894171819579068,
+          "p10_pcc": 0.23048358892839665,
+          "mae": 0.07535880460976205,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9287932092674938
+      },
+      {
+        "mode": "joint",
+        "space": "learned",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.027556849622301757,
+          "mas_pcc": 0.49267552615714116,
+          "within_tissue": 0.3387883257440831,
+          "bias_fraction": 0.39092528917025626,
+          "severe": 0.1829984410115929,
+          "p10_pcc": 0.1345872851726443,
+          "mae": 0.1095054927697979,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.013938427779153365,
+          "mas_pcc": 0.643429883311488,
+          "within_tissue": 0.4082479733880879,
+          "bias_fraction": 0.0746713282549933,
+          "severe": 0.09373777065421803,
+          "p10_pcc": 0.22530154425009416,
+          "mae": 0.07704795102461899,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9511943434721961
+      },
+      {
+        "mode": "freeze_mean",
+        "space": "none",
+        "blend": 0.0,
+        "double_ood": {
+          "mse": 0.027556275189175545,
+          "mas_pcc": 0.49748207197295513,
+          "within_tissue": 0.3398485306561475,
+          "bias_fraction": 0.3945660926551946,
+          "severe": 0.1830147750490412,
+          "p10_pcc": 0.13664042142592037,
+          "mae": 0.10951815512660104,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01304253879205445,
+          "mas_pcc": 0.6698335409996037,
+          "within_tissue": 0.41955438302409204,
+          "bias_fraction": 0.08427288437142498,
+          "severe": 0.08655819983279837,
+          "p10_pcc": 0.2340963666247108,
+          "mae": 0.07481219298195395,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9222138233211854
+      },
+      {
+        "mode": "freeze_mean",
+        "space": "raw",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.027437310327070242,
+          "mas_pcc": 0.5011484102838228,
+          "within_tissue": 0.3420617237602044,
+          "bias_fraction": 0.3961383060979636,
+          "severe": 0.183671074590697,
+          "p10_pcc": 0.13948331261048028,
+          "mae": 0.10971980914932433,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.013748674142644626,
+          "mas_pcc": 0.6562957655161011,
+          "within_tissue": 0.41321867373250165,
+          "bias_fraction": 0.08034175364797112,
+          "severe": 0.0925095518974752,
+          "p10_pcc": 0.22607837371790598,
+          "mae": 0.07721784201332071,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9428873342553488
+      },
+      {
+        "mode": "freeze_mean",
+        "space": "raw",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.027826738862845733,
+          "mas_pcc": 0.4874613293954547,
+          "within_tissue": 0.33488486371629167,
+          "bias_fraction": 0.39057480424605545,
+          "severe": 0.186722962862963,
+          "p10_pcc": 0.1365259835106946,
+          "mae": 0.11083370286990732,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01513286030920367,
+          "mas_pcc": 0.6125765629105542,
+          "within_tissue": 0.3913183614463083,
+          "bias_fraction": 0.0736028444411365,
+          "severe": 0.10337525131796611,
+          "p10_pcc": 0.2069901009054103,
+          "mae": 0.08118036724747721,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9947199155359644
+      },
+      {
+        "mode": "freeze_mean",
+        "space": "learned",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.027484425171728194,
+          "mas_pcc": 0.4990583944334976,
+          "within_tissue": 0.3418394434668228,
+          "bias_fraction": 0.39542234389437164,
+          "severe": 0.18276820613899175,
+          "p10_pcc": 0.13713830364609936,
+          "mae": 0.10941988134829948,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.013379209241350236,
+          "mas_pcc": 0.6621594212599723,
+          "within_tissue": 0.4169298191101042,
+          "bias_fraction": 0.08239921312229065,
+          "severe": 0.0893307647610379,
+          "p10_pcc": 0.2316416448846929,
+          "mae": 0.07584227270621641,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9317957337152172
+      },
+      {
+        "mode": "freeze_mean",
+        "space": "learned",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.02762949679562461,
+          "mas_pcc": 0.49313588379074347,
+          "within_tissue": 0.3394460531414118,
+          "bias_fraction": 0.39322100579138564,
+          "severe": 0.18352408306439233,
+          "p10_pcc": 0.13487923690811812,
+          "mae": 0.10970851419270594,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.013997828061147124,
+          "mas_pcc": 0.6433707259879241,
+          "within_tissue": 0.40858775829104693,
+          "bias_fraction": 0.07909989661317689,
+          "severe": 0.09422725365193327,
+          "p10_pcc": 0.22713915138144555,
+          "mae": 0.07754770257998568,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9544345284253392
+      },
+      {
+        "mode": "freeze_cpg",
+        "space": "none",
+        "blend": 0.0,
+        "double_ood": {
+          "mse": 0.026928345253923812,
+          "mas_pcc": 0.5038569012166298,
+          "within_tissue": 0.3412426843164202,
+          "bias_fraction": 0.38680179482557525,
+          "severe": 0.17996847378625933,
+          "p10_pcc": 0.14038953872887103,
+          "mae": 0.10823665089358653,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01571503400048417,
+          "mas_pcc": 0.6241130711029123,
+          "within_tissue": 0.39417655199547275,
+          "bias_fraction": 0.15413920683965443,
+          "severe": 0.10739552016559539,
+          "p10_pcc": 0.1879982403106148,
+          "mae": 0.08272103186404446,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 0.9972293790381114
+      },
+      {
+        "mode": "freeze_cpg",
+        "space": "raw",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.026896895078497744,
+          "mas_pcc": 0.5051970238010889,
+          "within_tissue": 0.3425681751102744,
+          "bias_fraction": 0.3872525194887313,
+          "severe": 0.18090711571925466,
+          "p10_pcc": 0.14157197564255591,
+          "mae": 0.1085743464536382,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.016242298257771678,
+          "mas_pcc": 0.6125776026931414,
+          "within_tissue": 0.3892675243971248,
+          "bias_fraction": 0.14958506587735135,
+          "severe": 0.1117186127162854,
+          "p10_pcc": 0.18506202365252392,
+          "mae": 0.08442543714221348,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0137081817204123
+      },
+      {
+        "mode": "freeze_cpg",
+        "space": "raw",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.027316943444265544,
+          "mas_pcc": 0.4905805217867914,
+          "within_tissue": 0.3349040494896627,
+          "bias_fraction": 0.38140088818278095,
+          "severe": 0.18402534579534463,
+          "p10_pcc": 0.13813438152914323,
+          "mae": 0.1097238314916044,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.01731420940832538,
+          "mas_pcc": 0.5770662707578693,
+          "within_tissue": 0.372519469829091,
+          "bias_fraction": 0.14094389862813672,
+          "severe": 0.11976979859219296,
+          "p10_pcc": 0.1746077333306272,
+          "mae": 0.08731891835643425,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0559989212727523
+      },
+      {
+        "mode": "freeze_cpg",
+        "space": "learned",
+        "blend": 0.25,
+        "double_ood": {
+          "mse": 0.026891945677886626,
+          "mas_pcc": 0.5047876609529202,
+          "within_tissue": 0.3425488499891502,
+          "bias_fraction": 0.3872151540100211,
+          "severe": 0.17996947880944839,
+          "p10_pcc": 0.14109066868500986,
+          "mae": 0.10822356199145042,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.015959867006207766,
+          "mas_pcc": 0.6180925608886397,
+          "within_tissue": 0.392683064944821,
+          "bias_fraction": 0.15199161770745329,
+          "severe": 0.10927668847119149,
+          "p10_pcc": 0.18770299614016903,
+          "mae": 0.08340561887263775,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0044854007196877
+      },
+      {
+        "mode": "freeze_cpg",
+        "space": "learned",
+        "blend": 0.5,
+        "double_ood": {
+          "mse": 0.02704954262827279,
+          "mas_pcc": 0.4992926402667609,
+          "within_tissue": 0.33985822815448713,
+          "bias_fraction": 0.3848938861043681,
+          "severe": 0.18087330398120577,
+          "p10_pcc": 0.13940671704084917,
+          "mae": 0.10855799708941925,
+          "rows": 7291276.666666667
+        },
+        "known_loci": {
+          "mse": 0.016437484185450237,
+          "mas_pcc": 0.6028640058759779,
+          "within_tissue": 0.3857071443844564,
+          "bias_fraction": 0.14787641951624309,
+          "severe": 0.11276611769993797,
+          "p10_pcc": 0.1852636167939596,
+          "mae": 0.08461125719473789,
+          "rows": 2993801.3333333335
+        },
+        "admissible": false,
+        "balanced_mse_ratio": 1.0227921463757332
+      }
+    ],
+    "guardrails_passed": false,
+    "selection_data": "3 internal genomic folds x 3 seeds only",
+    "rule": "Double MSE >=0.5% better, known MSE/MAE <=+1%; double MAE no worse, PCC/WT >=-0.002, severe <=+0.001",
+    "code_sha256": {
+      "scripts/search_alphagenome_architecture.py": "60a5ab76dd8be31bff3881e5b693fb2930573f538e40a797f11f3ec5fea8bf1d",
+      "src/methylation_predictor/modeling/alphagenome_transfer.py": "4a8b08b6ea61cf06bf67b4f83dceac52cf38d4d7fec2856e2b742fb1f0c07a20",
+      "src/methylation_predictor/modeling/alphagenome.py": "6bf88daaca15fa8e9f05e92f29a0f5cdbb04362f6ec6b9bbcba79cf8e1a62023",
+      "src/methylation_predictor/modeling/factory.py": "d9b86b51816c938633f0e5a72dfe23fab65406a8f9a2f71a385983c894937b4c"
+    }
+  },
+  "dev": {
+    "v1": {
+      "double_ood": {
+        "mse": 0.026422265381079207,
+        "mas_pcc": 0.5268574509587297,
+        "within_tissue": 0.3625205421051889,
+        "bias_fraction": 0.3793025996858583,
+        "severe": 0.17473606242858764,
+        "p10_pcc": 0.1461585100422993,
+        "mae": 0.10629944518209855,
+        "rows": 3232109.0
+      },
+      "known_loci": {
+        "mse": 0.017171570650248477,
+        "mas_pcc": 0.5848964330272746,
+        "within_tissue": 0.3853052103336419,
+        "bias_fraction": 0.19190203798649488,
+        "severe": 0.11636039589681228,
+        "p10_pcc": 0.15097315653937518,
+        "mae": 0.0852215762470042,
+        "rows": 3319013.0
+      }
+    },
+    "v2": {
+      "double_ood": {
+        "mse": 0.02563274141640066,
+        "mas_pcc": 0.5272357654728468,
+        "within_tissue": 0.3624457789180979,
+        "bias_fraction": 0.37033997430697907,
+        "severe": 0.1745243327705429,
+        "p10_pcc": 0.14604727974506804,
+        "mae": 0.10651404756789527,
+        "rows": 3232109.0
+      },
+      "known_loci": {
+        "mse": 0.017861378211626488,
+        "mas_pcc": 0.584079089971078,
+        "within_tissue": 0.38531382035995737,
+        "bias_fraction": 0.2203630166260071,
+        "severe": 0.12297812632851997,
+        "p10_pcc": 0.15056181326909526,
+        "mae": 0.08855955094896872,
+        "rows": 3319013.0
+      }
+    },
+    "candidate": {
+      "double_ood": {
+        "mse": 0.02666794266024027,
+        "mas_pcc": 0.5229979690004171,
+        "within_tissue": 0.3629676584416684,
+        "bias_fraction": 0.3894803981253096,
+        "severe": 0.17927458510836114,
+        "p10_pcc": 0.1462051816020494,
+        "mae": 0.10822590330097463,
+        "rows": 3232109.0
+      },
+      "known_loci": {
+        "mse": 0.014343559877303997,
+        "mas_pcc": 0.6318859793988499,
+        "within_tissue": 0.4110458842295726,
+        "bias_fraction": 0.12364442963926107,
+        "severe": 0.09529258648078008,
+        "p10_pcc": 0.18339141148215535,
+        "mae": 0.07837503178756673,
+        "rows": 3319013.0
+      }
+    }
+  },
+  "retrieval": [
+    {
+      "mode": "v2_early",
+      "space": "raw",
+      "delta_mse": 0.0004629023319793337
+    },
+    {
+      "mode": "v2_early",
+      "space": "learned",
+      "delta_mse": 0.00017962520467234582
+    },
+    {
+      "mode": "v2_early",
+      "space": "random",
+      "delta_mse": 0.000937766213851511
+    },
+    {
+      "mode": "joint",
+      "space": "raw",
+      "delta_mse": 0.00026457582202725905
+    },
+    {
+      "mode": "joint",
+      "space": "learned",
+      "delta_mse": 6.84020789842684e-05
+    },
+    {
+      "mode": "joint",
+      "space": "random",
+      "delta_mse": 0.0007270317457548837
+    },
+    {
+      "mode": "freeze_mean",
+      "space": "raw",
+      "delta_mse": 0.0002704636736701842
+    },
+    {
+      "mode": "freeze_mean",
+      "space": "learned",
+      "delta_mse": 7.322160644905865e-05
+    },
+    {
+      "mode": "freeze_mean",
+      "space": "random",
+      "delta_mse": 0.0007318528939849579
+    },
+    {
+      "mode": "freeze_cpg",
+      "space": "raw",
+      "delta_mse": 0.0003885981903417304
+    },
+    {
+      "mode": "freeze_cpg",
+      "space": "learned",
+      "delta_mse": 0.00012119737434897386
+    },
+    {
+      "mode": "freeze_cpg",
+      "space": "random",
+      "delta_mse": 0.0008656092775255051
+    }
+  ],
+  "audit": {
+    "cpgs": 3972,
+    "fraction_improved_vs_v1": 0.48011077542799596,
+    "fraction_improved_vs_v2": 0.40558912386706947,
+    "delta_mse_vs_v1": 0.000245677279161065,
+    "delta_bias2_vs_v1": 0.00036461261878058786,
+    "delta_centered_mse_vs_v1": -0.00011893533961951957
+  },
+  "complete": {
+    "complete": true,
+    "selected": null,
+    "best_balanced": {
+      "mode": "joint",
+      "space": "none",
+      "blend": 0.0,
+      "double_ood": {
+        "mse": 0.027488447543317487,
+        "mas_pcc": 0.4964907490325674,
+        "within_tissue": 0.33917360258114737,
+        "bias_fraction": 0.39210149947653394,
+        "severe": 0.1825275004253125,
+        "p10_pcc": 0.13597457080964248,
+        "mae": 0.10932597726232426,
+        "rows": 7291276.666666667
+      },
+      "known_loci": {
+        "mse": 0.01299040359681307,
+        "mas_pcc": 0.6696159184554824,
+        "within_tissue": 0.41942481394520353,
+        "bias_fraction": 0.07959541870787601,
+        "severe": 0.08616161500557763,
+        "p10_pcc": 0.23234671072051455,
+        "mae": 0.07434144722381114,
+        "rows": 2993801.3333333335
+      },
+      "admissible": false,
+      "balanced_mse_ratio": 0.9192960967417088
+    },
+    "official_holdout_used": false,
+    "code_sha256": {
+      "scripts/search_alphagenome_architecture.py": "60a5ab76dd8be31bff3881e5b693fb2930573f538e40a797f11f3ec5fea8bf1d",
+      "src/methylation_predictor/modeling/alphagenome_transfer.py": "4a8b08b6ea61cf06bf67b4f83dceac52cf38d4d7fec2856e2b742fb1f0c07a20",
+      "src/methylation_predictor/modeling/alphagenome.py": "6bf88daaca15fa8e9f05e92f29a0f5cdbb04362f6ec6b9bbcba79cf8e1a62023",
+      "src/methylation_predictor/modeling/factory.py": "d9b86b51816c938633f0e5a72dfe23fab65406a8f9a2f71a385983c894937b4c"
+    }
+  }
+}

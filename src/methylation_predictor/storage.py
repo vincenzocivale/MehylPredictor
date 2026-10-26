@@ -378,7 +378,7 @@ class GenomicFMLocusCache:
 
     def get(self, cpg_ids: np.ndarray) -> dict[str, np.ndarray]:
         rows = self.index.positions_of(np.asarray(cpg_ids, dtype=np.int64))
-        dense = np.asarray(self._h5["embedding"][...][rows], dtype=np.float32)
+        dense = read_h5_rows(self._h5["embedding"], rows)
         offsets = np.zeros(len(rows) + 1, dtype=np.int64)
         return {
             "track_indices": np.empty(0, dtype=np.int64),

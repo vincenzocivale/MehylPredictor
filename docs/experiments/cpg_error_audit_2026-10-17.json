@@ -1,0 +1,3799 @@
+{
+  "protocol": {
+    "date": "2026-10-17",
+    "seed": 17,
+    "steps": 2000,
+    "weights": "EMA0.99",
+    "sample_count": 825,
+    "seen_cpgs": 3972,
+    "novel_cpgs": 3972,
+    "within": "pooled group-centered correlation excluding NA, groups>=20; different from mean of tissue medians",
+    "target_strata": "posthoc using validation labels, never usable as deployment features",
+    "inference_seconds": {
+      "baseline": 2.9030263423919678,
+      "candidate": 1.677379846572876,
+      "cheap": 1.3393206596374512
+    }
+  },
+  "overall": {
+    "double_ood": {
+      "cpgs": 3972,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03339539819926492,
+        "rmse": 0.18274407842462342,
+        "median_corr": 0.4522941687262347,
+        "p10_corr": 0.12877669404221112,
+        "fraction_negative_corr": 0.010322255790533736,
+        "median_std_ratio": 0.6583874633512354,
+        "squared_bias_fraction_of_sse": 0.45141704077884837,
+        "fraction_abs_error_gt_0p2": 0.21552800354195975,
+        "median_within_corr": 0.35482267938389683
+      },
+      "candidate": {
+        "mse": 0.032556372591276965,
+        "rmse": 0.180433845470513,
+        "median_corr": 0.45922637704833225,
+        "p10_corr": 0.1232795384352792,
+        "fraction_negative_corr": 0.012588116817724069,
+        "median_std_ratio": 0.6309663262346377,
+        "squared_bias_fraction_of_sse": 0.44715382819507604,
+        "fraction_abs_error_gt_0p2": 0.21579160851320298,
+        "median_within_corr": 0.3625663605281102
+      },
+      "delta_median_corr": 0.006932208322097566,
+      "fraction_cpg_mse_improved": 0.48967774420946625,
+      "fraction_cpg_corr_improved": 0.5302114803625377,
+      "top10pct_cpg_fraction_sse": 0.3651669429889354,
+      "oracle_allocation": {
+        "warning": "Uses validation targets to select CpGs; NOT deployable performance. MAC ratio counts only pair FFNs and assumes routing before model execution.",
+        "cheap_mse": 0.033122934107870004,
+        "cheap_median_corr": 0.4523094003416952,
+        "curve": [
+          {
+            "max_expensive_fraction": 0,
+            "used_expensive_fraction": 0.0,
+            "mse": 0.033122934107870004,
+            "relative_pair_ffn_macs": 0.4
+          },
+          {
+            "max_expensive_fraction": 0.1,
+            "used_expensive_fraction": 0.0999496475327291,
+            "mse": 0.031452376797822146,
+            "relative_pair_ffn_macs": 0.4599697885196375
+          },
+          {
+            "max_expensive_fraction": 0.25,
+            "used_expensive_fraction": 0.25,
+            "mse": 0.031038770906194137,
+            "relative_pair_ffn_macs": 0.55
+          },
+          {
+            "max_expensive_fraction": 0.5,
+            "used_expensive_fraction": 0.46576032225579056,
+            "mse": 0.030956005147375308,
+            "relative_pair_ffn_macs": 0.6794561933534744
+          },
+          {
+            "max_expensive_fraction": 1.0,
+            "used_expensive_fraction": 0.46576032225579056,
+            "mse": 0.030956005147375308,
+            "relative_pair_ffn_macs": 0.6794561933534744
+          }
+        ]
+      }
+    },
+    "seen_cpg_new_patient": {
+      "cpgs": 3972,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.020588759569588225,
+        "rmse": 0.14348783770615622,
+        "median_corr": 0.5160816789062272,
+        "p10_corr": 0.12969289603162798,
+        "fraction_negative_corr": 0.008559919436052367,
+        "median_std_ratio": 0.6666632805176758,
+        "squared_bias_fraction_of_sse": 0.24746725632700287,
+        "fraction_abs_error_gt_0p2": 0.1416327577512303,
+        "median_within_corr": 0.38637416733562224
+      },
+      "candidate": {
+        "mse": 0.022420592681980545,
+        "rmse": 0.14973507498906374,
+        "median_corr": 0.5090661958954162,
+        "p10_corr": 0.12244957863988672,
+        "fraction_negative_corr": 0.008811681772406849,
+        "median_std_ratio": 0.6434204300491013,
+        "squared_bias_fraction_of_sse": 0.2972011528687989,
+        "fraction_abs_error_gt_0p2": 0.1576264628653903,
+        "median_within_corr": 0.3912199403081696
+      },
+      "delta_median_corr": -0.007015483010811008,
+      "fraction_cpg_mse_improved": 0.297583081570997,
+      "fraction_cpg_corr_improved": 0.4033232628398791,
+      "top10pct_cpg_fraction_sse": 0.3041935098869697,
+      "oracle_allocation": {
+        "warning": "Uses validation targets to select CpGs; NOT deployable performance. MAC ratio counts only pair FFNs and assumes routing before model execution.",
+        "cheap_mse": 0.022037134167921756,
+        "cheap_median_corr": 0.4973148937136385,
+        "curve": [
+          {
+            "max_expensive_fraction": 0,
+            "used_expensive_fraction": 0.0,
+            "mse": 0.022037134167921756,
+            "relative_pair_ffn_macs": 0.4
+          },
+          {
+            "max_expensive_fraction": 0.1,
+            "used_expensive_fraction": 0.0999496475327291,
+            "mse": 0.02082803470040705,
+            "relative_pair_ffn_macs": 0.4599697885196375
+          },
+          {
+            "max_expensive_fraction": 0.25,
+            "used_expensive_fraction": 0.25,
+            "mse": 0.020322585145152814,
+            "relative_pair_ffn_macs": 0.55
+          },
+          {
+            "max_expensive_fraction": 0.5,
+            "used_expensive_fraction": 0.5,
+            "mse": 0.020090090396505108,
+            "relative_pair_ffn_macs": 0.7
+          },
+          {
+            "max_expensive_fraction": 1.0,
+            "used_expensive_fraction": 0.6137965760322256,
+            "mse": 0.020079751296019414,
+            "relative_pair_ffn_macs": 0.7682779456193354
+          }
+        ]
+      }
+    }
+  },
+  "strata": {
+    "double_ood/context/island": {
+      "cpgs": 1069,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.016886796251131975,
+        "rmse": 0.12994920642748065,
+        "median_corr": 0.3002946307659394,
+        "p10_corr": 0.0684040442519074,
+        "fraction_negative_corr": 0.01777362020579981,
+        "median_std_ratio": 0.842300499304344,
+        "squared_bias_fraction_of_sse": 0.35395339037874385,
+        "fraction_abs_error_gt_0p2": 0.10462412754456689,
+        "median_within_corr": 0.22876939974546137
+      },
+      "candidate": {
+        "mse": 0.016854039095302715,
+        "rmse": 0.1298231069390296,
+        "median_corr": 0.29405000504581713,
+        "p10_corr": 0.06256614117224359,
+        "fraction_negative_corr": 0.02245088868101029,
+        "median_std_ratio": 0.8714429906606542,
+        "squared_bias_fraction_of_sse": 0.35681583196882644,
+        "fraction_abs_error_gt_0p2": 0.10491646267665232,
+        "median_within_corr": 0.22778607441929388
+      },
+      "delta_median_corr": -0.006244625720122243,
+      "fraction_cpg_mse_improved": 0.4059869036482694,
+      "fraction_cpg_corr_improved": 0.4368568755846586
+    },
+    "double_ood/context/open_sea": {
+      "cpgs": 1701,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.04105319755322647,
+        "rmse": 0.20261588672467534,
+        "median_corr": 0.4871943901239957,
+        "p10_corr": 0.24522971920231484,
+        "fraction_negative_corr": 0.00411522633744856,
+        "median_std_ratio": 0.625432078750508,
+        "squared_bias_fraction_of_sse": 0.448137713474847,
+        "fraction_abs_error_gt_0p2": 0.26784894164975903,
+        "median_within_corr": 0.3892391109696946
+      },
+      "candidate": {
+        "mse": 0.039884836625954656,
+        "rmse": 0.19971188403786755,
+        "median_corr": 0.49525797317993675,
+        "p10_corr": 0.2469533047207423,
+        "fraction_negative_corr": 0.005878894767783657,
+        "median_std_ratio": 0.5852774565526386,
+        "squared_bias_fraction_of_sse": 0.44343146009697504,
+        "fraction_abs_error_gt_0p2": 0.2687580299163435,
+        "median_within_corr": 0.3982009864419277
+      },
+      "delta_median_corr": 0.00806358305594107,
+      "fraction_cpg_mse_improved": 0.5196942974720753,
+      "fraction_cpg_corr_improved": 0.569077013521458
+    },
+    "double_ood/context/shelf": {
+      "cpgs": 368,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03646459287643851,
+        "rmse": 0.19095704458447849,
+        "median_corr": 0.48661112299131276,
+        "p10_corr": 0.27515990696885084,
+        "fraction_negative_corr": 0.008152173913043478,
+        "median_std_ratio": 0.6331936631829023,
+        "squared_bias_fraction_of_sse": 0.4610827523319846,
+        "fraction_abs_error_gt_0p2": 0.23570727362892044,
+        "median_within_corr": 0.3752851113691644
+      },
+      "candidate": {
+        "mse": 0.035329231262987246,
+        "rmse": 0.18796071734005285,
+        "median_corr": 0.49155920660453356,
+        "p10_corr": 0.2870897663289033,
+        "fraction_negative_corr": 0.008152173913043478,
+        "median_std_ratio": 0.5985761023443603,
+        "squared_bias_fraction_of_sse": 0.45419189640865304,
+        "fraction_abs_error_gt_0p2": 0.2339260593670617,
+        "median_within_corr": 0.3891390169219531
+      },
+      "delta_median_corr": 0.0049480836132207995,
+      "fraction_cpg_mse_improved": 0.5244565217391305,
+      "fraction_cpg_corr_improved": 0.5516304347826086
+    },
+    "double_ood/context/shore": {
+      "cpgs": 834,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03790043710102668,
+        "rmse": 0.1946803459546615,
+        "median_corr": 0.44401135478841425,
+        "p10_corr": 0.10899485241258176,
+        "fraction_negative_corr": 0.014388489208633094,
+        "median_std_ratio": 0.6265858611717869,
+        "squared_bias_fraction_of_sse": 0.5106544646514907,
+        "fraction_abs_error_gt_0p2": 0.24421191858329047,
+        "median_within_corr": 0.3616224761831487
+      },
+      "candidate": {
+        "mse": 0.036814851821482954,
+        "rmse": 0.1918719672632846,
+        "median_corr": 0.45418584691229846,
+        "p10_corr": 0.10670832501395404,
+        "fraction_negative_corr": 0.015587529976019185,
+        "median_std_ratio": 0.6084382022039763,
+        "squared_bias_fraction_of_sse": 0.5057999143756883,
+        "fraction_abs_error_gt_0p2": 0.24402380777426702,
+        "median_within_corr": 0.3694221203797904
+      },
+      "delta_median_corr": 0.010174492123884216,
+      "fraction_cpg_mse_improved": 0.5203836930455635,
+      "fraction_cpg_corr_improved": 0.5611510791366906
+    },
+    "double_ood/region/exon": {
+      "cpgs": 809,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03086341179322708,
+        "rmse": 0.17567985596882496,
+        "median_corr": 0.48997742585296944,
+        "p10_corr": 0.19021441270578954,
+        "fraction_negative_corr": 0.006180469715698393,
+        "median_std_ratio": 0.6777907192040794,
+        "squared_bias_fraction_of_sse": 0.441816075767693,
+        "fraction_abs_error_gt_0p2": 0.19895345017838573,
+        "median_within_corr": 0.3465618174507238
+      },
+      "candidate": {
+        "mse": 0.03040915177363398,
+        "rmse": 0.174382200277534,
+        "median_corr": 0.4954926106399955,
+        "p10_corr": 0.1867841149837491,
+        "fraction_negative_corr": 0.006180469715698393,
+        "median_std_ratio": 0.6573308882456561,
+        "squared_bias_fraction_of_sse": 0.44088212898279805,
+        "fraction_abs_error_gt_0p2": 0.19888836246891306,
+        "median_within_corr": 0.34777097374161126
+      },
+      "delta_median_corr": 0.005515184787026062,
+      "fraction_cpg_mse_improved": 0.49938195302843014,
+      "fraction_cpg_corr_improved": 0.5339925834363412
+    },
+    "double_ood/region/intergenic": {
+      "cpgs": 270,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.04791733484275236,
+        "rmse": 0.21890028515913898,
+        "median_corr": 0.4975580782684432,
+        "p10_corr": 0.27866226437410996,
+        "fraction_negative_corr": 0.011111111111111112,
+        "median_std_ratio": 0.6149739256576223,
+        "squared_bias_fraction_of_sse": 0.46146112903194086,
+        "fraction_abs_error_gt_0p2": 0.32840940880803116,
+        "median_within_corr": 0.43216117128600817
+      },
+      "candidate": {
+        "mse": 0.046207046639352704,
+        "rmse": 0.2149582439436848,
+        "median_corr": 0.5135725407306987,
+        "p10_corr": 0.2761537163544845,
+        "fraction_negative_corr": 0.014814814814814815,
+        "median_std_ratio": 0.5673818542223155,
+        "squared_bias_fraction_of_sse": 0.45732538264009487,
+        "fraction_abs_error_gt_0p2": 0.3277627710948356,
+        "median_within_corr": 0.43496778790045865
+      },
+      "delta_median_corr": 0.016014462462255463,
+      "fraction_cpg_mse_improved": 0.5851851851851851,
+      "fraction_cpg_corr_improved": 0.6259259259259259
+    },
+    "double_ood/region/intron": {
+      "cpgs": 1377,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.04056289580979904,
+        "rmse": 0.20140232324826604,
+        "median_corr": 0.4690777096557618,
+        "p10_corr": 0.23543477926527392,
+        "fraction_negative_corr": 0.005809731299927378,
+        "median_std_ratio": 0.6221170343590541,
+        "squared_bias_fraction_of_sse": 0.44537008731951233,
+        "fraction_abs_error_gt_0p2": 0.26301487427026843,
+        "median_within_corr": 0.37389692457045903
+      },
+      "candidate": {
+        "mse": 0.03910244815487913,
+        "rmse": 0.19774338966164995,
+        "median_corr": 0.47390047094729965,
+        "p10_corr": 0.23744277933776675,
+        "fraction_negative_corr": 0.007988380537400145,
+        "median_std_ratio": 0.5805160587805601,
+        "squared_bias_fraction_of_sse": 0.4362392709055952,
+        "fraction_abs_error_gt_0p2": 0.26240442682126547,
+        "median_within_corr": 0.38319502625001844
+      },
+      "delta_median_corr": 0.004822761291537858,
+      "fraction_cpg_mse_improved": 0.5279593318809005,
+      "fraction_cpg_corr_improved": 0.5715323166303559
+    },
+    "double_ood/region/promoter": {
+      "cpgs": 1516,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.025748675178334318,
+        "rmse": 0.16046393731407166,
+        "median_corr": 0.3709747907034439,
+        "p10_corr": 0.08070879519477644,
+        "fraction_negative_corr": 0.016490765171503958,
+        "median_std_ratio": 0.74785449861058,
+        "squared_bias_fraction_of_sse": 0.46282383482675865,
+        "fraction_abs_error_gt_0p2": 0.16182671036262156,
+        "median_within_corr": 0.2814242233829135
+      },
+      "candidate": {
+        "mse": 0.025416324546351544,
+        "rmse": 0.15942498093571014,
+        "median_corr": 0.3800810151614309,
+        "p10_corr": 0.07356308191386536,
+        "fraction_negative_corr": 0.01978891820580475,
+        "median_std_ratio": 0.7236108200046536,
+        "squared_bias_fraction_of_sse": 0.4629912991434364,
+        "fraction_abs_error_gt_0p2": 0.16321116860861945,
+        "median_within_corr": 0.2866121562474358
+      },
+      "delta_median_corr": 0.009106224457986978,
+      "fraction_cpg_mse_improved": 0.43271767810026385,
+      "fraction_cpg_corr_improved": 0.4736147757255937
+    },
+    "double_ood/ccre/CA": {
+      "cpgs": 31,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03126336036575684,
+        "rmse": 0.17681448007942346,
+        "median_corr": 0.5310127391202837,
+        "p10_corr": 0.38685160945296954,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.7676253860319875,
+        "squared_bias_fraction_of_sse": 0.495843418347369,
+        "fraction_abs_error_gt_0p2": 0.2046028627561044,
+        "median_within_corr": 0.45352816685839253
+      },
+      "candidate": {
+        "mse": 0.029937075354377847,
+        "rmse": 0.17302333760038802,
+        "median_corr": 0.5365561881508172,
+        "p10_corr": 0.36441162014782913,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.676753669482819,
+        "squared_bias_fraction_of_sse": 0.47246523272286955,
+        "fraction_abs_error_gt_0p2": 0.1956617617577483,
+        "median_within_corr": 0.48723610021843233
+      },
+      "delta_median_corr": 0.005543449030533498,
+      "fraction_cpg_mse_improved": 0.45161290322580644,
+      "fraction_cpg_corr_improved": 0.45161290322580644
+    },
+    "double_ood/ccre/CA-H3K4me3": {
+      "cpgs": 47,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03872944360664051,
+        "rmse": 0.19679797663248602,
+        "median_corr": 0.5277848847354618,
+        "p10_corr": 0.34780225268721393,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.7070383852414305,
+        "squared_bias_fraction_of_sse": 0.5371493125821962,
+        "fraction_abs_error_gt_0p2": 0.261067086549134,
+        "median_within_corr": 0.416359266894181
+      },
+      "candidate": {
+        "mse": 0.03718939007315395,
+        "rmse": 0.1928455083043262,
+        "median_corr": 0.533174735992762,
+        "p10_corr": 0.3577465863488662,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.7247747261685521,
+        "squared_bias_fraction_of_sse": 0.5182897268370094,
+        "fraction_abs_error_gt_0p2": 0.2576340311298108,
+        "median_within_corr": 0.41684512797810397
+      },
+      "delta_median_corr": 0.005389851257300182,
+      "fraction_cpg_mse_improved": 0.6170212765957447,
+      "fraction_cpg_corr_improved": 0.46808510638297873
+    },
+    "double_ood/ccre/PLS": {
+      "cpgs": 723,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.021391996779302622,
+        "rmse": 0.14626003138008217,
+        "median_corr": 0.2409983617354892,
+        "p10_corr": 0.05452024413195903,
+        "fraction_negative_corr": 0.02074688796680498,
+        "median_std_ratio": 0.8624423195956648,
+        "squared_bias_fraction_of_sse": 0.45888531694920265,
+        "fraction_abs_error_gt_0p2": 0.13097189063785591,
+        "median_within_corr": 0.1845906084801874
+      },
+      "candidate": {
+        "mse": 0.020879158943105425,
+        "rmse": 0.14449622466730896,
+        "median_corr": 0.2390254936660509,
+        "p10_corr": 0.05119606581307691,
+        "fraction_negative_corr": 0.030428769017980636,
+        "median_std_ratio": 0.8863541465145716,
+        "squared_bias_fraction_of_sse": 0.45004641124256084,
+        "fraction_abs_error_gt_0p2": 0.1308875895277789,
+        "median_within_corr": 0.18518249827443253
+      },
+      "delta_median_corr": -0.001972868069438305,
+      "fraction_cpg_mse_improved": 0.4315352697095436,
+      "fraction_cpg_corr_improved": 0.41217150760719223
+    },
+    "double_ood/ccre/TF": {
+      "cpgs": 24,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03871257719525553,
+        "rmse": 0.1967551198705018,
+        "median_corr": 0.5001034017562103,
+        "p10_corr": 0.20245927319553758,
+        "fraction_negative_corr": 0.041666666666666664,
+        "median_std_ratio": 0.675961086419126,
+        "squared_bias_fraction_of_sse": 0.5248403261431632,
+        "fraction_abs_error_gt_0p2": 0.22659507923269392,
+        "median_within_corr": 0.37450600539890055
+      },
+      "candidate": {
+        "mse": 0.03809784099403722,
+        "rmse": 0.19518668241977274,
+        "median_corr": 0.5033964600397762,
+        "p10_corr": 0.23190757336014275,
+        "fraction_negative_corr": 0.041666666666666664,
+        "median_std_ratio": 0.6188847813884254,
+        "squared_bias_fraction_of_sse": 0.5289634077171099,
+        "fraction_abs_error_gt_0p2": 0.22049624687239366,
+        "median_within_corr": 0.37725517813610654
+      },
+      "delta_median_corr": 0.003293058283565964,
+      "fraction_cpg_mse_improved": 0.5416666666666666,
+      "fraction_cpg_corr_improved": 0.625
+    },
+    "double_ood/ccre/dELS": {
+      "cpgs": 992,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.041330200586434766,
+        "rmse": 0.20329830443571034,
+        "median_corr": 0.48580213797763805,
+        "p10_corr": 0.2644363290086636,
+        "fraction_negative_corr": 0.006048387096774193,
+        "median_std_ratio": 0.6193234979379355,
+        "squared_bias_fraction_of_sse": 0.4223717574211822,
+        "fraction_abs_error_gt_0p2": 0.27809415715044977,
+        "median_within_corr": 0.38940218563050644
+      },
+      "candidate": {
+        "mse": 0.04026598086796846,
+        "rmse": 0.2006638504264494,
+        "median_corr": 0.492571036391824,
+        "p10_corr": 0.2680854210706114,
+        "fraction_negative_corr": 0.007056451612903226,
+        "median_std_ratio": 0.571634791439057,
+        "squared_bias_fraction_of_sse": 0.4190698729361515,
+        "fraction_abs_error_gt_0p2": 0.2789211863522797,
+        "median_within_corr": 0.39745071811035415
+      },
+      "delta_median_corr": 0.006768898414185931,
+      "fraction_cpg_mse_improved": 0.5393145161290323,
+      "fraction_cpg_corr_improved": 0.5796370967741935
+    },
+    "double_ood/ccre/none": {
+      "cpgs": 1334,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.033399950950122034,
+        "rmse": 0.18275653463042582,
+        "median_corr": 0.47740262808244316,
+        "p10_corr": 0.18270437966069575,
+        "fraction_negative_corr": 0.008245877061469266,
+        "median_std_ratio": 0.6466101766191618,
+        "squared_bias_fraction_of_sse": 0.46514574742606424,
+        "fraction_abs_error_gt_0p2": 0.21145025686125796,
+        "median_within_corr": 0.3678674150938218
+      },
+      "candidate": {
+        "mse": 0.03249415146981642,
+        "rmse": 0.1802613421391742,
+        "median_corr": 0.48454017085320006,
+        "p10_corr": 0.18074152751946487,
+        "fraction_negative_corr": 0.008995502248875561,
+        "median_std_ratio": 0.6231321877411213,
+        "squared_bias_fraction_of_sse": 0.4602631882021749,
+        "fraction_abs_error_gt_0p2": 0.21044886285428702,
+        "median_within_corr": 0.3744925073193296
+      },
+      "delta_median_corr": 0.0071375427707568995,
+      "fraction_cpg_mse_improved": 0.48950524737631185,
+      "fraction_cpg_corr_improved": 0.5352323838080959
+    },
+    "double_ood/ccre/pELS": {
+      "cpgs": 797,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.033097012015463584,
+        "rmse": 0.18192584207710455,
+        "median_corr": 0.42946905456911505,
+        "p10_corr": 0.11624608327892767,
+        "fraction_negative_corr": 0.00878293601003764,
+        "median_std_ratio": 0.6548461328358535,
+        "squared_bias_fraction_of_sse": 0.4495869320173389,
+        "fraction_abs_error_gt_0p2": 0.21398857754939032,
+        "median_within_corr": 0.3572478559973782
+      },
+      "candidate": {
+        "mse": 0.032481986121515954,
+        "rmse": 0.1802275953385495,
+        "median_corr": 0.4391013985947997,
+        "p10_corr": 0.1122608125171369,
+        "fraction_negative_corr": 0.00878293601003764,
+        "median_std_ratio": 0.6336843838112654,
+        "squared_bias_fraction_of_sse": 0.4499422894876663,
+        "fraction_abs_error_gt_0p2": 0.21668490380486724,
+        "median_within_corr": 0.36138353595902356
+      },
+      "delta_median_corr": 0.009632344025684636,
+      "fraction_cpg_mse_improved": 0.47051442910915936,
+      "fraction_cpg_corr_improved": 0.5671267252195734
+    },
+    "double_ood/track_bin/1-10": {
+      "cpgs": 96,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.030592591612946002,
+        "rmse": 0.17490738009857104,
+        "median_corr": 0.5340897915388456,
+        "p10_corr": 0.3455771752869854,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6936699968109855,
+        "squared_bias_fraction_of_sse": 0.3971656817342545,
+        "fraction_abs_error_gt_0p2": 0.19592776065842338,
+        "median_within_corr": 0.4539565066210264
+      },
+      "candidate": {
+        "mse": 0.030799992827220787,
+        "rmse": 0.1754992673124899,
+        "median_corr": 0.5393909105685133,
+        "p10_corr": 0.361259962261868,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6961862414513131,
+        "squared_bias_fraction_of_sse": 0.40837174029337703,
+        "fraction_abs_error_gt_0p2": 0.198346140344034,
+        "median_within_corr": 0.45313405440915655
+      },
+      "delta_median_corr": 0.005301119029667678,
+      "fraction_cpg_mse_improved": 0.53125,
+      "fraction_cpg_corr_improved": 0.5208333333333334
+    },
+    "double_ood/track_bin/11-50": {
+      "cpgs": 527,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03905447184291024,
+        "rmse": 0.19762204290744048,
+        "median_corr": 0.5132042109086752,
+        "p10_corr": 0.3002386480294436,
+        "fraction_negative_corr": 0.0056925996204933585,
+        "median_std_ratio": 0.6431287384414418,
+        "squared_bias_fraction_of_sse": 0.4715904076511249,
+        "fraction_abs_error_gt_0p2": 0.24195020083343524,
+        "median_within_corr": 0.4334238372414375
+      },
+      "candidate": {
+        "mse": 0.037293119342496545,
+        "rmse": 0.1931142649896598,
+        "median_corr": 0.5226084817021125,
+        "p10_corr": 0.3219054662795125,
+        "fraction_negative_corr": 0.0056925996204933585,
+        "median_std_ratio": 0.6232117211726176,
+        "squared_bias_fraction_of_sse": 0.4585304913386934,
+        "fraction_abs_error_gt_0p2": 0.23622856444072357,
+        "median_within_corr": 0.43865930025208466
+      },
+      "delta_median_corr": 0.009404270793437308,
+      "fraction_cpg_mse_improved": 0.5464895635673624,
+      "fraction_cpg_corr_improved": 0.5806451612903226
+    },
+    "double_ood/track_bin/>50": {
+      "cpgs": 3344,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.032600672500568285,
+        "rmse": 0.18055656316115537,
+        "median_corr": 0.4334883510030934,
+        "p10_corr": 0.11509496254527106,
+        "fraction_negative_corr": 0.011363636363636364,
+        "median_std_ratio": 0.6600031883899782,
+        "squared_bias_fraction_of_sse": 0.4491316728228035,
+        "fraction_abs_error_gt_0p2": 0.2119783377979892,
+        "median_within_corr": 0.3367686873660789
+      },
+      "candidate": {
+        "mse": 0.03186897859972231,
+        "rmse": 0.1785188466233252,
+        "median_corr": 0.4423005173393679,
+        "p10_corr": 0.10706724931140639,
+        "fraction_negative_corr": 0.014055023923444977,
+        "median_std_ratio": 0.632817832472236,
+        "squared_bias_fraction_of_sse": 0.44604585378977923,
+        "fraction_abs_error_gt_0p2": 0.21300957424719005,
+        "median_within_corr": 0.3440722908960072
+      },
+      "delta_median_corr": 0.008812166336274518,
+      "fraction_cpg_mse_improved": 0.47996411483253587,
+      "fraction_cpg_corr_improved": 0.5218301435406698
+    },
+    "double_ood/tss_bin/10-100kb": {
+      "cpgs": 1147,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03917058973962556,
+        "rmse": 0.19791561267273877,
+        "median_corr": 0.4875309325466177,
+        "p10_corr": 0.2613818840549887,
+        "fraction_negative_corr": 0.004359197907585004,
+        "median_std_ratio": 0.6290834895432819,
+        "squared_bias_fraction_of_sse": 0.4215427731020354,
+        "fraction_abs_error_gt_0p2": 0.2570615097776403,
+        "median_within_corr": 0.3825287343323627
+      },
+      "candidate": {
+        "mse": 0.03809604904007144,
+        "rmse": 0.19518209200659634,
+        "median_corr": 0.4949801902353223,
+        "p10_corr": 0.2745395896087097,
+        "fraction_negative_corr": 0.006974716652136007,
+        "median_std_ratio": 0.5913767563242067,
+        "squared_bias_fraction_of_sse": 0.41752988573675315,
+        "fraction_abs_error_gt_0p2": 0.2561206911365433,
+        "median_within_corr": 0.3889786664411619
+      },
+      "delta_median_corr": 0.00744925768870458,
+      "fraction_cpg_mse_improved": 0.5204882301656495,
+      "fraction_cpg_corr_improved": 0.5797733217088056
+    },
+    "double_ood/tss_bin/2-10kb": {
+      "cpgs": 905,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.038559065431654056,
+        "rmse": 0.19636462367660334,
+        "median_corr": 0.47187014441704017,
+        "p10_corr": 0.22648670768685267,
+        "fraction_negative_corr": 0.011049723756906077,
+        "median_std_ratio": 0.6332354396186871,
+        "squared_bias_fraction_of_sse": 0.46991740256430237,
+        "fraction_abs_error_gt_0p2": 0.2500893800165387,
+        "median_within_corr": 0.3645498532831582
+      },
+      "candidate": {
+        "mse": 0.03731610045910639,
+        "rmse": 0.19317375716982468,
+        "median_corr": 0.48095049339256396,
+        "p10_corr": 0.23679849299488315,
+        "fraction_negative_corr": 0.012154696132596685,
+        "median_std_ratio": 0.6010561279254094,
+        "squared_bias_fraction_of_sse": 0.4626596007219689,
+        "fraction_abs_error_gt_0p2": 0.2506038268292883,
+        "median_within_corr": 0.3757476288590508
+      },
+      "delta_median_corr": 0.009080348975523789,
+      "fraction_cpg_mse_improved": 0.5303867403314917,
+      "fraction_cpg_corr_improved": 0.5734806629834254
+    },
+    "double_ood/tss_bin/<=2kb": {
+      "cpgs": 1908,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.027451544663633125,
+        "rmse": 0.16568507676804548,
+        "median_corr": 0.3934518695345107,
+        "p10_corr": 0.08571271053307496,
+        "fraction_negative_corr": 0.013626834381551363,
+        "median_std_ratio": 0.7129000243329433,
+        "squared_bias_fraction_of_sse": 0.4673521334553854,
+        "fraction_abs_error_gt_0p2": 0.17397240498776156,
+        "median_within_corr": 0.30380364104937196
+      },
+      "candidate": {
+        "mse": 0.02692751084023764,
+        "rmse": 0.16409604151300433,
+        "median_corr": 0.40163909133498293,
+        "p10_corr": 0.07959181001204951,
+        "fraction_negative_corr": 0.016247379454926623,
+        "median_std_ratio": 0.6818668670348964,
+        "squared_bias_fraction_of_sse": 0.4644078467278693,
+        "fraction_abs_error_gt_0p2": 0.1747827398042493,
+        "median_within_corr": 0.3131085600622264
+      },
+      "delta_median_corr": 0.00818722180047221,
+      "fraction_cpg_mse_improved": 0.45020964360587,
+      "fraction_cpg_corr_improved": 0.47955974842767296
+    },
+    "double_ood/distance_bin/0.1-1Mb": {
+      "cpgs": 1474,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03251595056365323,
+        "rmse": 0.18032179725050776,
+        "median_corr": 0.45902098485508147,
+        "p10_corr": 0.13219171218048384,
+        "fraction_negative_corr": 0.005427408412483039,
+        "median_std_ratio": 0.6660001924215666,
+        "squared_bias_fraction_of_sse": 0.4360788334048824,
+        "fraction_abs_error_gt_0p2": 0.21172129404553927,
+        "median_within_corr": 0.35383622396113645
+      },
+      "candidate": {
+        "mse": 0.031667798252150485,
+        "rmse": 0.17795448365284447,
+        "median_corr": 0.4635943543731642,
+        "p10_corr": 0.1317530768346796,
+        "fraction_negative_corr": 0.009497964721845319,
+        "median_std_ratio": 0.637734450845215,
+        "squared_bias_fraction_of_sse": 0.43181638943986184,
+        "fraction_abs_error_gt_0p2": 0.21079149589095927,
+        "median_within_corr": 0.3642054374792566
+      },
+      "delta_median_corr": 0.004573369518082737,
+      "fraction_cpg_mse_improved": 0.49864314789687925,
+      "fraction_cpg_corr_improved": 0.5359565807327001
+    },
+    "double_ood/distance_bin/1-100kb": {
+      "cpgs": 192,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03429969410048327,
+        "rmse": 0.18520176592161122,
+        "median_corr": 0.4399021117278714,
+        "p10_corr": 0.0950100343834416,
+        "fraction_negative_corr": 0.03125,
+        "median_std_ratio": 0.648725064310895,
+        "squared_bias_fraction_of_sse": 0.3488013433335307,
+        "fraction_abs_error_gt_0p2": 0.2355318769732152,
+        "median_within_corr": 0.3703406260385731
+      },
+      "candidate": {
+        "mse": 0.032917101006532945,
+        "rmse": 0.18143070579847542,
+        "median_corr": 0.4542747754928193,
+        "p10_corr": 0.08358841118887628,
+        "fraction_negative_corr": 0.03125,
+        "median_std_ratio": 0.6154192170852326,
+        "squared_bias_fraction_of_sse": 0.34112374760668723,
+        "fraction_abs_error_gt_0p2": 0.23266753233526835,
+        "median_within_corr": 0.37490198091773075
+      },
+      "delta_median_corr": 0.01437266376494789,
+      "fraction_cpg_mse_improved": 0.5260416666666666,
+      "fraction_cpg_corr_improved": 0.6666666666666666
+    },
+    "double_ood/distance_bin/>1Mb": {
+      "cpgs": 2304,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.03391059668947396,
+        "rmse": 0.18414830080528563,
+        "median_corr": 0.4492653606059549,
+        "p10_corr": 0.12839409259246537,
+        "fraction_negative_corr": 0.01171875,
+        "median_std_ratio": 0.6550416309370629,
+        "squared_bias_fraction_of_sse": 0.4695231848514104,
+        "fraction_abs_error_gt_0p2": 0.21647662698687953,
+        "median_within_corr": 0.35365008698663525
+      },
+      "candidate": {
+        "mse": 0.033121805845928214,
+        "rmse": 0.1819939720043722,
+        "median_corr": 0.45791077990708207,
+        "p10_corr": 0.12119359367650796,
+        "fraction_negative_corr": 0.013020833333333334,
+        "median_std_ratio": 0.6265276101889988,
+        "squared_bias_fraction_of_sse": 0.4653599125648599,
+        "fraction_abs_error_gt_0p2": 0.2177662645331,
+        "median_within_corr": 0.3599103132343948
+      },
+      "delta_median_corr": 0.008645419301127166,
+      "fraction_cpg_mse_improved": 0.4813368055555556,
+      "fraction_cpg_corr_improved": 0.515625
+    },
+    "double_ood/target_sd_bin/0.05-0.15": {
+      "cpgs": 1309,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.024484407734382672,
+        "rmse": 0.15647494283233554,
+        "median_corr": 0.4635804736709155,
+        "p10_corr": 0.23344732676745936,
+        "fraction_negative_corr": 0.006875477463712758,
+        "median_std_ratio": 0.7280840248808129,
+        "squared_bias_fraction_of_sse": 0.5648588094766755,
+        "fraction_abs_error_gt_0p2": 0.15853012405847638,
+        "median_within_corr": 0.3394965497164262
+      },
+      "candidate": {
+        "mse": 0.024307994943870776,
+        "rmse": 0.15591021436670138,
+        "median_corr": 0.4704759752467017,
+        "p10_corr": 0.23141983257889065,
+        "fraction_negative_corr": 0.008403361344537815,
+        "median_std_ratio": 0.7113748272708826,
+        "squared_bias_fraction_of_sse": 0.5776279867409186,
+        "fraction_abs_error_gt_0p2": 0.16002002821987454,
+        "median_within_corr": 0.3464435813545896
+      },
+      "delta_median_corr": 0.006895501575786223,
+      "fraction_cpg_mse_improved": 0.45683728036669213,
+      "fraction_cpg_corr_improved": 0.5668449197860963
+    },
+    "double_ood/target_sd_bin/<0.05": {
+      "cpgs": 815,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.004074783560726248,
+        "rmse": 0.06383403136827759,
+        "median_corr": 0.1614018333144825,
+        "p10_corr": 0.042135404416306414,
+        "fraction_negative_corr": 0.02822085889570552,
+        "median_std_ratio": 1.6296789700129561,
+        "squared_bias_fraction_of_sse": 0.6464587096980284,
+        "fraction_abs_error_gt_0p2": 0.018826416845003816,
+        "median_within_corr": 0.11174126544843582
+      },
+      "candidate": {
+        "mse": 0.0043358678209341325,
+        "rmse": 0.06584730686166392,
+        "median_corr": 0.14728083214082457,
+        "p10_corr": 0.03768756055223219,
+        "fraction_negative_corr": 0.0392638036809816,
+        "median_std_ratio": 1.7303950574669837,
+        "squared_bias_fraction_of_sse": 0.6511923046510918,
+        "fraction_abs_error_gt_0p2": 0.020384310321605485,
+        "median_within_corr": 0.10392195585266106
+      },
+      "delta_median_corr": -0.014121001173657916,
+      "fraction_cpg_mse_improved": 0.2588957055214724,
+      "fraction_cpg_corr_improved": 0.3030674846625767
+    },
+    "double_ood/target_sd_bin/>0.15": {
+      "cpgs": 1848,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.052788515474432904,
+        "rmse": 0.22975751451134935,
+        "median_corr": 0.5129269794127509,
+        "p10_corr": 0.3153371263026739,
+        "fraction_negative_corr": 0.00487012987012987,
+        "median_std_ratio": 0.5414593699536402,
+        "squared_bias_fraction_of_sse": 0.4073524538652558,
+        "fraction_abs_error_gt_0p2": 0.34365389912371674,
+        "median_within_corr": 0.43327443536859456
+      },
+      "candidate": {
+        "mse": 0.05098880327626342,
+        "rmse": 0.22580700448892949,
+        "median_corr": 0.5238119113378181,
+        "p10_corr": 0.32080466853596007,
+        "fraction_negative_corr": 0.003787878787878788,
+        "median_std_ratio": 0.5044018989537296,
+        "squared_bias_fraction_of_sse": 0.3952618565284028,
+        "fraction_abs_error_gt_0p2": 0.3424700930571608,
+        "median_within_corr": 0.44298184552114755
+      },
+      "delta_median_corr": 0.010884931925067232,
+      "fraction_cpg_mse_improved": 0.6147186147186147,
+      "fraction_cpg_corr_improved": 0.6044372294372294
+    },
+    "double_ood/target_mean_bin/0.2-0.8": {
+      "cpgs": 1694,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.05360433146297911,
+        "rmse": 0.23152609240208566,
+        "median_corr": 0.5118743145238884,
+        "p10_corr": 0.31376729433070216,
+        "fraction_negative_corr": 0.0029515938606847697,
+        "median_std_ratio": 0.5594258454563097,
+        "squared_bias_fraction_of_sse": 0.43351758211703156,
+        "fraction_abs_error_gt_0p2": 0.35020586415000043,
+        "median_within_corr": 0.4327366614106901
+      },
+      "candidate": {
+        "mse": 0.05137333912030151,
+        "rmse": 0.22665687529898912,
+        "median_corr": 0.5232689995429394,
+        "p10_corr": 0.3217687161156718,
+        "fraction_negative_corr": 0.0023612750885478157,
+        "median_std_ratio": 0.5214868694901201,
+        "squared_bias_fraction_of_sse": 0.41830959551316044,
+        "fraction_abs_error_gt_0p2": 0.3452612019444501,
+        "median_within_corr": 0.4431412222458714
+      },
+      "delta_median_corr": 0.011394685019050943,
+      "fraction_cpg_mse_improved": 0.6499409681227863,
+      "fraction_cpg_corr_improved": 0.6097992916174735
+    },
+    "double_ood/target_mean_bin/<0.2": {
+      "cpgs": 1207,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.012108196678701508,
+        "rmse": 0.11003725132291113,
+        "median_corr": 0.2131990035982709,
+        "p10_corr": 0.050478825303713004,
+        "fraction_negative_corr": 0.02568351284175642,
+        "median_std_ratio": 0.9965226667523085,
+        "squared_bias_fraction_of_sse": 0.463996380338728,
+        "fraction_abs_error_gt_0p2": 0.068885385518496,
+        "median_within_corr": 0.16596888925530476
+      },
+      "candidate": {
+        "mse": 0.012281585495507669,
+        "rmse": 0.11082231497089234,
+        "median_corr": 0.21278701706488892,
+        "p10_corr": 0.04637425672428449,
+        "fraction_negative_corr": 0.033140016570008285,
+        "median_std_ratio": 1.0531162153869151,
+        "squared_bias_fraction_of_sse": 0.4732342237610523,
+        "fraction_abs_error_gt_0p2": 0.07179572227014357,
+        "median_within_corr": 0.15653067793382833
+      },
+      "delta_median_corr": -0.00041198653338198055,
+      "fraction_cpg_mse_improved": 0.3371996685998343,
+      "fraction_cpg_corr_improved": 0.3976801988400994
+    },
+    "double_ood/target_mean_bin/>0.8": {
+      "cpgs": 1071,
+      "genomic_5mb_blocks": 5,
+      "baseline": {
+        "mse": 0.025583500416755656,
+        "rmse": 0.15994843049169208,
+        "median_corr": 0.484851307552647,
+        "p10_corr": 0.2775373423540168,
+        "fraction_negative_corr": 0.004668534080298786,
+        "median_std_ratio": 0.7595667794942542,
+        "squared_bias_fraction_of_sse": 0.5042015404073622,
+        "fraction_abs_error_gt_0p2": 0.1689207278232693,
+        "median_within_corr": 0.31649329451552116
+      },
+      "candidate": {
+        "mse": 0.025800420948617925,
+        "rmse": 0.16062509439255723,
+        "median_corr": 0.48906536821505403,
+        "p10_corr": 0.28961192120249557,
+        "fraction_negative_corr": 0.0056022408963585435,
+        "median_std_ratio": 0.7452604592498703,
+        "squared_bias_fraction_of_sse": 0.52422536763624,
+        "fraction_abs_error_gt_0p2": 0.17443779252790267,
+        "median_within_corr": 0.3213336267816947
+      },
+      "delta_median_corr": 0.004214060662407038,
+      "fraction_cpg_mse_improved": 0.4080298786181139,
+      "fraction_cpg_corr_improved": 0.5536881419234361
+    },
+    "double_ood/block/2": {
+      "cpgs": 1043,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.03450685169937328,
+        "rmse": 0.1857601994491104,
+        "median_corr": 0.470753415345441,
+        "p10_corr": 0.17689466377988963,
+        "fraction_negative_corr": 0.005752636625119847,
+        "median_std_ratio": 0.6689493667875196,
+        "squared_bias_fraction_of_sse": 0.45982533425327493,
+        "fraction_abs_error_gt_0p2": 0.2268512895736324,
+        "median_within_corr": 0.36057917142045526
+      },
+      "candidate": {
+        "mse": 0.033466675317952374,
+        "rmse": 0.18293899343210668,
+        "median_corr": 0.47411038619083323,
+        "p10_corr": 0.17731482959778241,
+        "fraction_negative_corr": 0.004793863854266539,
+        "median_std_ratio": 0.6437647416198907,
+        "squared_bias_fraction_of_sse": 0.45338164650694845,
+        "fraction_abs_error_gt_0p2": 0.2269255758067426,
+        "median_within_corr": 0.3744403081310532
+      },
+      "delta_median_corr": 0.0033569708453922154,
+      "fraction_cpg_mse_improved": 0.5033557046979866,
+      "fraction_cpg_corr_improved": 0.5493767976989453
+    },
+    "double_ood/block/4": {
+      "cpgs": 1158,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.03371705813968183,
+        "rmse": 0.18362205243293037,
+        "median_corr": 0.45350284658188655,
+        "p10_corr": 0.13701711237195208,
+        "fraction_negative_corr": 0.009499136442141624,
+        "median_std_ratio": 0.679906282461644,
+        "squared_bias_fraction_of_sse": 0.4786293976137249,
+        "fraction_abs_error_gt_0p2": 0.2195784704280205,
+        "median_within_corr": 0.36084231412115003
+      },
+      "candidate": {
+        "mse": 0.03299915669124463,
+        "rmse": 0.1816567001000641,
+        "median_corr": 0.4609468591554714,
+        "p10_corr": 0.13055506369384687,
+        "fraction_negative_corr": 0.012089810017271158,
+        "median_std_ratio": 0.6531883911079069,
+        "squared_bias_fraction_of_sse": 0.47683975894847797,
+        "fraction_abs_error_gt_0p2": 0.21970680446135768,
+        "median_within_corr": 0.3707512307799374
+      },
+      "delta_median_corr": 0.007444012573584846,
+      "fraction_cpg_mse_improved": 0.47063903281519864,
+      "fraction_cpg_corr_improved": 0.5371329879101899
+    },
+    "double_ood/block/32": {
+      "cpgs": 851,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.0319441974448421,
+        "rmse": 0.17872939725977396,
+        "median_corr": 0.4313663717331046,
+        "p10_corr": 0.09313962320584614,
+        "fraction_negative_corr": 0.01645123384253819,
+        "median_std_ratio": 0.6398069536109963,
+        "squared_bias_fraction_of_sse": 0.43908904507729896,
+        "fraction_abs_error_gt_0p2": 0.1987423326610953,
+        "median_within_corr": 0.33816042885129943
+      },
+      "candidate": {
+        "mse": 0.031231091801444077,
+        "rmse": 0.17672320674275938,
+        "median_corr": 0.4360268822616633,
+        "p10_corr": 0.08979676330062772,
+        "fraction_negative_corr": 0.01880141010575793,
+        "median_std_ratio": 0.6070749682843698,
+        "squared_bias_fraction_of_sse": 0.43495116911223575,
+        "fraction_abs_error_gt_0p2": 0.19930389440906815,
+        "median_within_corr": 0.3382215695707348
+      },
+      "delta_median_corr": 0.004660510528558703,
+      "fraction_cpg_mse_improved": 0.4806110458284371,
+      "fraction_cpg_corr_improved": 0.481786133960047
+    },
+    "double_ood/block/35": {
+      "cpgs": 491,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.03210991625391027,
+        "rmse": 0.17919240010086998,
+        "median_corr": 0.4662805620908461,
+        "p10_corr": 0.09919494100829944,
+        "fraction_negative_corr": 0.018329938900203666,
+        "median_std_ratio": 0.6624083068790988,
+        "squared_bias_fraction_of_sse": 0.43188020102871655,
+        "fraction_abs_error_gt_0p2": 0.21236566531759107,
+        "median_within_corr": 0.3519417004816772
+      },
+      "candidate": {
+        "mse": 0.03109273386955241,
+        "rmse": 0.17633131845917902,
+        "median_corr": 0.47230098908970264,
+        "p10_corr": 0.10195317164562659,
+        "fraction_negative_corr": 0.026476578411405296,
+        "median_std_ratio": 0.6346270743097143,
+        "squared_bias_fraction_of_sse": 0.4264053302813426,
+        "fraction_abs_error_gt_0p2": 0.21210318303514514,
+        "median_within_corr": 0.3627195169039083
+      },
+      "delta_median_corr": 0.006020426998856521,
+      "fraction_cpg_mse_improved": 0.5254582484725051,
+      "fraction_cpg_corr_improved": 0.5478615071283096
+    },
+    "double_ood/block/47": {
+      "cpgs": 429,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.034180654571862895,
+        "rmse": 0.1848801086430417,
+        "median_corr": 0.434821298437686,
+        "p10_corr": 0.11988817780784762,
+        "fraction_negative_corr": 0.002331002331002331,
+        "median_std_ratio": 0.6032820731994839,
+        "squared_bias_fraction_of_sse": 0.4020973777185265,
+        "fraction_abs_error_gt_0p2": 0.2140089769492148,
+        "median_within_corr": 0.3467021010966398
+      },
+      "candidate": {
+        "mse": 0.03345765591103826,
+        "rmse": 0.18291434036465884,
+        "median_corr": 0.44351003986480403,
+        "p10_corr": 0.11730007269744697,
+        "fraction_negative_corr": 0.004662004662004662,
+        "median_std_ratio": 0.5852774565526386,
+        "squared_bias_fraction_of_sse": 0.3975473980752192,
+        "fraction_abs_error_gt_0p2": 0.21511100652034162,
+        "median_within_corr": 0.344774251421876
+      },
+      "delta_median_corr": 0.008688741427118007,
+      "fraction_cpg_mse_improved": 0.48484848484848486,
+      "fraction_cpg_corr_improved": 0.5407925407925408
+    },
+    "seen_cpg_new_patient/context/island": {
+      "cpgs": 1124,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.012845306727358122,
+        "rmse": 0.1133371374588141,
+        "median_corr": 0.31867530717241843,
+        "p10_corr": 0.07220680606508242,
+        "fraction_negative_corr": 0.018683274021352312,
+        "median_std_ratio": 0.8107639974883349,
+        "squared_bias_fraction_of_sse": 0.21794136814290854,
+        "fraction_abs_error_gt_0p2": 0.08538268147053062,
+        "median_within_corr": 0.23219192249773699
+      },
+      "candidate": {
+        "mse": 0.013400375351186062,
+        "rmse": 0.11575999028673967,
+        "median_corr": 0.3108335052758988,
+        "p10_corr": 0.06579729049493704,
+        "fraction_negative_corr": 0.018683274021352312,
+        "median_std_ratio": 0.8293097444504658,
+        "squared_bias_fraction_of_sse": 0.23980364157453785,
+        "fraction_abs_error_gt_0p2": 0.0902496014580197,
+        "median_within_corr": 0.23346050003989854
+      },
+      "delta_median_corr": -0.007841801896519618,
+      "fraction_cpg_mse_improved": 0.3238434163701068,
+      "fraction_cpg_corr_improved": 0.3683274021352313
+    },
+    "seen_cpg_new_patient/context/open_sea": {
+      "cpgs": 1442,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.023598658244499603,
+        "rmse": 0.1536185478531144,
+        "median_corr": 0.5650723143431293,
+        "p10_corr": 0.30552350298399933,
+        "fraction_negative_corr": 0.0013869625520110957,
+        "median_std_ratio": 0.6392770394540829,
+        "squared_bias_fraction_of_sse": 0.20078596457612424,
+        "fraction_abs_error_gt_0p2": 0.16274334585316022,
+        "median_within_corr": 0.4329912480575603
+      },
+      "candidate": {
+        "mse": 0.026400897774256388,
+        "rmse": 0.16248353077852656,
+        "median_corr": 0.557996978995149,
+        "p10_corr": 0.30916289929319124,
+        "fraction_negative_corr": 0.0020804438280166435,
+        "median_std_ratio": 0.6129387769572254,
+        "squared_bias_fraction_of_sse": 0.2722073724311004,
+        "fraction_abs_error_gt_0p2": 0.1863938923064425,
+        "median_within_corr": 0.4348523889374278
+      },
+      "delta_median_corr": -0.007075335347980327,
+      "fraction_cpg_mse_improved": 0.27947295423023577,
+      "fraction_cpg_corr_improved": 0.42163661581137307
+    },
+    "seen_cpg_new_patient/context/shelf": {
+      "cpgs": 368,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.021364508154822635,
+        "rmse": 0.1461660294145758,
+        "median_corr": 0.5449218727061471,
+        "p10_corr": 0.32386021960963723,
+        "fraction_negative_corr": 0.002717391304347826,
+        "median_std_ratio": 0.6438663796914447,
+        "squared_bias_fraction_of_sse": 0.21912139835846836,
+        "fraction_abs_error_gt_0p2": 0.14507129992010076,
+        "median_within_corr": 0.41775120115232445
+      },
+      "candidate": {
+        "mse": 0.023577725153077676,
+        "rmse": 0.15355039939081133,
+        "median_corr": 0.5435823676130571,
+        "p10_corr": 0.30383719500323353,
+        "fraction_negative_corr": 0.002717391304347826,
+        "median_std_ratio": 0.6245991373858035,
+        "squared_bias_fraction_of_sse": 0.2757620653568262,
+        "fraction_abs_error_gt_0p2": 0.16252386820687134,
+        "median_within_corr": 0.4197782395993457
+      },
+      "delta_median_corr": -0.0013395050930899988,
+      "fraction_cpg_mse_improved": 0.266304347826087,
+      "fraction_cpg_corr_improved": 0.43478260869565216
+    },
+    "seen_cpg_new_patient/context/shore": {
+      "cpgs": 1038,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.02466850333238137,
+        "rmse": 0.15706210024185138,
+        "median_corr": 0.4967036849483022,
+        "p10_corr": 0.11621317913461793,
+        "fraction_negative_corr": 0.009633911368015413,
+        "median_std_ratio": 0.6394081224340254,
+        "squared_bias_fraction_of_sse": 0.3341208761055932,
+        "fraction_abs_error_gt_0p2": 0.17307143136448683,
+        "median_within_corr": 0.38445855418486896
+      },
+      "candidate": {
+        "mse": 0.026434236102478813,
+        "rmse": 0.16258608828088217,
+        "median_corr": 0.48615211858466567,
+        "p10_corr": 0.11026508558440215,
+        "fraction_negative_corr": 0.009633911368015413,
+        "median_std_ratio": 0.6143573854946079,
+        "squared_bias_fraction_of_sse": 0.3699763583448394,
+        "fraction_abs_error_gt_0p2": 0.19023875231210208,
+        "median_within_corr": 0.3897960541351296
+      },
+      "delta_median_corr": -0.010551566363636522,
+      "fraction_cpg_mse_improved": 0.30539499036608864,
+      "fraction_cpg_corr_improved": 0.4046242774566474
+    },
+    "seen_cpg_new_patient/region/exon": {
+      "cpgs": 762,
+      "genomic_5mb_blocks": 39,
+      "baseline": {
+        "mse": 0.01925087492914106,
+        "rmse": 0.1387475222450515,
+        "median_corr": 0.5514774809281894,
+        "p10_corr": 0.23263807157058508,
+        "fraction_negative_corr": 0.0026246719160104987,
+        "median_std_ratio": 0.6767650261804705,
+        "squared_bias_fraction_of_sse": 0.24134124051673803,
+        "fraction_abs_error_gt_0p2": 0.13072887818324683,
+        "median_within_corr": 0.4021887493948837
+      },
+      "candidate": {
+        "mse": 0.02096245153943592,
+        "rmse": 0.1447841550012843,
+        "median_corr": 0.552094380252766,
+        "p10_corr": 0.2171033053326557,
+        "fraction_negative_corr": 0.0026246719160104987,
+        "median_std_ratio": 0.667833152081887,
+        "squared_bias_fraction_of_sse": 0.2921909217441467,
+        "fraction_abs_error_gt_0p2": 0.1436550822459521,
+        "median_within_corr": 0.4023926122434628
+      },
+      "delta_median_corr": 0.0006168993245766474,
+      "fraction_cpg_mse_improved": 0.3123359580052493,
+      "fraction_cpg_corr_improved": 0.43700787401574803
+    },
+    "seen_cpg_new_patient/region/intergenic": {
+      "cpgs": 249,
+      "genomic_5mb_blocks": 36,
+      "baseline": {
+        "mse": 0.02464738798934237,
+        "rmse": 0.15699486612415825,
+        "median_corr": 0.558613568507049,
+        "p10_corr": 0.34165492750030174,
+        "fraction_negative_corr": 0.008032128514056224,
+        "median_std_ratio": 0.656661542038048,
+        "squared_bias_fraction_of_sse": 0.19162409132107255,
+        "fraction_abs_error_gt_0p2": 0.17530463363796697,
+        "median_within_corr": 0.45983840836667
+      },
+      "candidate": {
+        "mse": 0.027061862161273337,
+        "rmse": 0.16450490011325905,
+        "median_corr": 0.5496781379453747,
+        "p10_corr": 0.31861642067532214,
+        "fraction_negative_corr": 0.008032128514056224,
+        "median_std_ratio": 0.6210519418268221,
+        "squared_bias_fraction_of_sse": 0.25784691754193206,
+        "fraction_abs_error_gt_0p2": 0.1998757415424082,
+        "median_within_corr": 0.4628691103346695
+      },
+      "delta_median_corr": -0.00893543056167434,
+      "fraction_cpg_mse_improved": 0.30522088353413657,
+      "fraction_cpg_corr_improved": 0.43373493975903615
+    },
+    "seen_cpg_new_patient/region/intron": {
+      "cpgs": 1245,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.024151665677842875,
+        "rmse": 0.1554080618174066,
+        "median_corr": 0.5545463261250229,
+        "p10_corr": 0.26416732536628884,
+        "fraction_negative_corr": 0.0024096385542168677,
+        "median_std_ratio": 0.6342404745500503,
+        "squared_bias_fraction_of_sse": 0.22436520232092136,
+        "fraction_abs_error_gt_0p2": 0.1682304439704113,
+        "median_within_corr": 0.4209939775594743
+      },
+      "candidate": {
+        "mse": 0.026761155694043023,
+        "rmse": 0.1635883727348708,
+        "median_corr": 0.5385538461631351,
+        "p10_corr": 0.25795730881819884,
+        "fraction_negative_corr": 0.0024096385542168677,
+        "median_std_ratio": 0.6111667008366292,
+        "squared_bias_fraction_of_sse": 0.2858592550209193,
+        "fraction_abs_error_gt_0p2": 0.1904040212556646,
+        "median_within_corr": 0.42081713453360137
+      },
+      "delta_median_corr": -0.015992479961887796,
+      "fraction_cpg_mse_improved": 0.26345381526104417,
+      "fraction_cpg_corr_improved": 0.41445783132530123
+    },
+    "seen_cpg_new_patient/region/promoter": {
+      "cpgs": 1716,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.018048359085185442,
+        "rmse": 0.13434418143405186,
+        "median_corr": 0.41775207505602097,
+        "p10_corr": 0.08104842957519137,
+        "fraction_negative_corr": 0.015734265734265736,
+        "median_std_ratio": 0.6995320997569824,
+        "squared_bias_fraction_of_sse": 0.28343459722300834,
+        "fraction_abs_error_gt_0p2": 0.1225936871632307,
+        "median_within_corr": 0.3159787358986167
+      },
+      "candidate": {
+        "mse": 0.01929268466996329,
+        "rmse": 0.138898108950278,
+        "median_corr": 0.41326424748907475,
+        "p10_corr": 0.07488973261551464,
+        "fraction_negative_corr": 0.016317016317016316,
+        "median_std_ratio": 0.6830934760444616,
+        "squared_bias_fraction_of_sse": 0.31878784043598624,
+        "fraction_abs_error_gt_0p2": 0.13429340164726256,
+        "median_within_corr": 0.3230937784150642
+      },
+      "delta_median_corr": -0.004487827566946212,
+      "fraction_cpg_mse_improved": 0.3146853146853147,
+      "fraction_cpg_corr_improved": 0.3758741258741259
+    },
+    "seen_cpg_new_patient/ccre/CA": {
+      "cpgs": 35,
+      "genomic_5mb_blocks": 18,
+      "baseline": {
+        "mse": 0.017287258916719995,
+        "rmse": 0.13148102112746157,
+        "median_corr": 0.583675266241659,
+        "p10_corr": 0.30162548136046147,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6820427584797695,
+        "squared_bias_fraction_of_sse": 0.13748757600190792,
+        "fraction_abs_error_gt_0p2": 0.11362650079560249,
+        "median_within_corr": 0.4788622500908171
+      },
+      "candidate": {
+        "mse": 0.01859256831732261,
+        "rmse": 0.1363545683771637,
+        "median_corr": 0.5909359023328434,
+        "p10_corr": 0.3202101710939451,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.699204673355598,
+        "squared_bias_fraction_of_sse": 0.20015357308908807,
+        "fraction_abs_error_gt_0p2": 0.12056994069145088,
+        "median_within_corr": 0.48749740381635887
+      },
+      "delta_median_corr": 0.007260636091184436,
+      "fraction_cpg_mse_improved": 0.34285714285714286,
+      "fraction_cpg_corr_improved": 0.6285714285714286
+    },
+    "seen_cpg_new_patient/ccre/CA-CTCF": {
+      "cpgs": 20,
+      "genomic_5mb_blocks": 13,
+      "baseline": {
+        "mse": 0.022358583883406623,
+        "rmse": 0.14952786992198686,
+        "median_corr": 0.5856009321439124,
+        "p10_corr": 0.38758217521976557,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6745235828446039,
+        "squared_bias_fraction_of_sse": 0.2996837596540109,
+        "fraction_abs_error_gt_0p2": 0.1628541957405497,
+        "median_within_corr": 0.45324744471598516
+      },
+      "candidate": {
+        "mse": 0.025659222440769472,
+        "rmse": 0.16018496321680595,
+        "median_corr": 0.5840568069227123,
+        "p10_corr": 0.3586691399147732,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6435939138970244,
+        "squared_bias_fraction_of_sse": 0.3919499037335463,
+        "fraction_abs_error_gt_0p2": 0.17480735392269886,
+        "median_within_corr": 0.4475108527691533
+      },
+      "delta_median_corr": -0.0015441252212000656,
+      "fraction_cpg_mse_improved": 0.35,
+      "fraction_cpg_corr_improved": 0.45
+    },
+    "seen_cpg_new_patient/ccre/CA-H3K4me3": {
+      "cpgs": 46,
+      "genomic_5mb_blocks": 21,
+      "baseline": {
+        "mse": 0.024588889108936526,
+        "rmse": 0.15680844718616574,
+        "median_corr": 0.6129014368567278,
+        "p10_corr": 0.43350247736036385,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.618930447532561,
+        "squared_bias_fraction_of_sse": 0.15512146838949667,
+        "fraction_abs_error_gt_0p2": 0.1742376761043137,
+        "median_within_corr": 0.4947651367882892
+      },
+      "candidate": {
+        "mse": 0.02629629177828079,
+        "rmse": 0.16216131406189577,
+        "median_corr": 0.6082227416889714,
+        "p10_corr": 0.44867593427827235,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5894048408710755,
+        "squared_bias_fraction_of_sse": 0.20880822640909535,
+        "fraction_abs_error_gt_0p2": 0.1915415429054146,
+        "median_within_corr": 0.4969082860904852
+      },
+      "delta_median_corr": -0.00467869516775643,
+      "fraction_cpg_mse_improved": 0.2608695652173913,
+      "fraction_cpg_corr_improved": 0.5217391304347826
+    },
+    "seen_cpg_new_patient/ccre/PLS": {
+      "cpgs": 689,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.011251017998442777,
+        "rmse": 0.10607081596010647,
+        "median_corr": 0.24627268931099278,
+        "p10_corr": 0.05335865425745741,
+        "fraction_negative_corr": 0.02902757619738752,
+        "median_std_ratio": 0.9284554757761183,
+        "squared_bias_fraction_of_sse": 0.21730470799688711,
+        "fraction_abs_error_gt_0p2": 0.07307749590428436,
+        "median_within_corr": 0.17906289048185
+      },
+      "candidate": {
+        "mse": 0.011940660455184311,
+        "rmse": 0.10927332911183914,
+        "median_corr": 0.2348914501428856,
+        "p10_corr": 0.051906113723860094,
+        "fraction_negative_corr": 0.03193033381712627,
+        "median_std_ratio": 0.961668639303413,
+        "squared_bias_fraction_of_sse": 0.249172701867058,
+        "fraction_abs_error_gt_0p2": 0.07893206431160063,
+        "median_within_corr": 0.16883589298100418
+      },
+      "delta_median_corr": -0.011381239168107182,
+      "fraction_cpg_mse_improved": 0.32801161103047893,
+      "fraction_cpg_corr_improved": 0.35123367198838895
+    },
+    "seen_cpg_new_patient/ccre/TF": {
+      "cpgs": 23,
+      "genomic_5mb_blocks": 15,
+      "baseline": {
+        "mse": 0.014421801795815222,
+        "rmse": 0.12009080645834311,
+        "median_corr": 0.5645024667988022,
+        "p10_corr": 0.4300121492850731,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6754341884651526,
+        "squared_bias_fraction_of_sse": 0.13892458951432768,
+        "fraction_abs_error_gt_0p2": 0.08962664403903267,
+        "median_within_corr": 0.35276096941860324
+      },
+      "candidate": {
+        "mse": 0.01486549191837994,
+        "rmse": 0.12192412361128514,
+        "median_corr": 0.5490490252927391,
+        "p10_corr": 0.4527475919573779,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6989553454996622,
+        "squared_bias_fraction_of_sse": 0.15916455056389256,
+        "fraction_abs_error_gt_0p2": 0.08808867204072975,
+        "median_within_corr": 0.34526075740386747
+      },
+      "delta_median_corr": -0.015453441506063093,
+      "fraction_cpg_mse_improved": 0.4782608695652174,
+      "fraction_cpg_corr_improved": 0.6086956521739131
+    },
+    "seen_cpg_new_patient/ccre/dELS": {
+      "cpgs": 992,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.02665197382525414,
+        "rmse": 0.16325432253160754,
+        "median_corr": 0.5621757605419867,
+        "p10_corr": 0.3488163532378836,
+        "fraction_negative_corr": 0.0020161290322580645,
+        "median_std_ratio": 0.6298049563251942,
+        "squared_bias_fraction_of_sse": 0.2387573869769836,
+        "fraction_abs_error_gt_0p2": 0.18839932087270844,
+        "median_within_corr": 0.43422305111455356
+      },
+      "candidate": {
+        "mse": 0.0296690504851162,
+        "rmse": 0.17224706234103443,
+        "median_corr": 0.5526176802166154,
+        "p10_corr": 0.32437913183027456,
+        "fraction_negative_corr": 0.0030241935483870967,
+        "median_std_ratio": 0.5989688130633962,
+        "squared_bias_fraction_of_sse": 0.3010594227809748,
+        "fraction_abs_error_gt_0p2": 0.2161743325732153,
+        "median_within_corr": 0.43595391470305933
+      },
+      "delta_median_corr": -0.00955808032537131,
+      "fraction_cpg_mse_improved": 0.2691532258064516,
+      "fraction_cpg_corr_improved": 0.39919354838709675
+    },
+    "seen_cpg_new_patient/ccre/none": {
+      "cpgs": 1310,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.019809276838602983,
+        "rmse": 0.1407454327450912,
+        "median_corr": 0.5331753108405809,
+        "p10_corr": 0.17288442784461075,
+        "fraction_negative_corr": 0.004580152671755725,
+        "median_std_ratio": 0.6617779270360526,
+        "squared_bias_fraction_of_sse": 0.23035243104243255,
+        "fraction_abs_error_gt_0p2": 0.13292994716209305,
+        "median_within_corr": 0.39503683730900496
+      },
+      "candidate": {
+        "mse": 0.021596387814958255,
+        "rmse": 0.1469570951501092,
+        "median_corr": 0.529750898148926,
+        "p10_corr": 0.16914628166855505,
+        "fraction_negative_corr": 0.003816793893129771,
+        "median_std_ratio": 0.6411066588454415,
+        "squared_bias_fraction_of_sse": 0.2835699033057612,
+        "fraction_abs_error_gt_0p2": 0.14739976895252163,
+        "median_within_corr": 0.3975586070361255
+      },
+      "delta_median_corr": -0.0034244126916549433,
+      "fraction_cpg_mse_improved": 0.29465648854961835,
+      "fraction_cpg_corr_improved": 0.4297709923664122
+    },
+    "seen_cpg_new_patient/ccre/pELS": {
+      "cpgs": 844,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.022469565392189292,
+        "rmse": 0.14989851697795176,
+        "median_corr": 0.4821925918989731,
+        "p10_corr": 0.1140454110825424,
+        "fraction_negative_corr": 0.0071090047393364926,
+        "median_std_ratio": 0.6424336791448976,
+        "squared_bias_fraction_of_sse": 0.3061786965085273,
+        "fraction_abs_error_gt_0p2": 0.1574404965522863,
+        "median_within_corr": 0.3841176789387971
+      },
+      "candidate": {
+        "mse": 0.023952181659548617,
+        "rmse": 0.1547649238669687,
+        "median_corr": 0.4773929183801492,
+        "p10_corr": 0.10370888242709596,
+        "fraction_negative_corr": 0.005924170616113744,
+        "median_std_ratio": 0.6246356053091127,
+        "squared_bias_fraction_of_sse": 0.33946902514998517,
+        "fraction_abs_error_gt_0p2": 0.17119787125333163,
+        "median_within_corr": 0.38447051244728986
+      },
+      "delta_median_corr": -0.0047996735188239326,
+      "fraction_cpg_mse_improved": 0.3068720379146919,
+      "fraction_cpg_corr_improved": 0.38388625592417064
+    },
+    "seen_cpg_new_patient/track_bin/1-10": {
+      "cpgs": 85,
+      "genomic_5mb_blocks": 32,
+      "baseline": {
+        "mse": 0.01816451683470003,
+        "rmse": 0.13477580211113577,
+        "median_corr": 0.5303836692516655,
+        "p10_corr": 0.2225651991205933,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6484248874807876,
+        "squared_bias_fraction_of_sse": 0.12524925204808968,
+        "fraction_abs_error_gt_0p2": 0.12119483962453183,
+        "median_within_corr": 0.4280684797692576
+      },
+      "candidate": {
+        "mse": 0.02113887621024502,
+        "rmse": 0.14539214631555936,
+        "median_corr": 0.5331832574114072,
+        "p10_corr": 0.2323003875876831,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6453159080657865,
+        "squared_bias_fraction_of_sse": 0.23914614501561493,
+        "fraction_abs_error_gt_0p2": 0.12779173538433083,
+        "median_within_corr": 0.42063084699690584
+      },
+      "delta_median_corr": 0.002799588159741684,
+      "fraction_cpg_mse_improved": 0.3176470588235294,
+      "fraction_cpg_corr_improved": 0.5058823529411764
+    },
+    "seen_cpg_new_patient/track_bin/11-50": {
+      "cpgs": 539,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.019054509645244473,
+        "rmse": 0.13803807317274633,
+        "median_corr": 0.5917543368393832,
+        "p10_corr": 0.3549438469015643,
+        "fraction_negative_corr": 0.0018552875695732839,
+        "median_std_ratio": 0.6737025036598461,
+        "squared_bias_fraction_of_sse": 0.11544730618693812,
+        "fraction_abs_error_gt_0p2": 0.12576530788725443,
+        "median_within_corr": 0.47885278748996246
+      },
+      "candidate": {
+        "mse": 0.020927694293020035,
+        "rmse": 0.14466407395417852,
+        "median_corr": 0.5871126317950748,
+        "p10_corr": 0.35106048603607004,
+        "fraction_negative_corr": 0.0018552875695732839,
+        "median_std_ratio": 0.6556080514713998,
+        "squared_bias_fraction_of_sse": 0.18693124438048725,
+        "fraction_abs_error_gt_0p2": 0.13925548081512928,
+        "median_within_corr": 0.4834028736539365
+      },
+      "delta_median_corr": -0.004641705044308386,
+      "fraction_cpg_mse_improved": 0.29684601113172543,
+      "fraction_cpg_corr_improved": 0.45640074211502785
+    },
+    "seen_cpg_new_patient/track_bin/>50": {
+      "cpgs": 3344,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.020897130387983905,
+        "rmse": 0.14455839784662775,
+        "median_corr": 0.4975177462975835,
+        "p10_corr": 0.11543203032053075,
+        "fraction_negative_corr": 0.009868421052631578,
+        "median_std_ratio": 0.6669627988341345,
+        "squared_bias_fraction_of_sse": 0.26907463111436036,
+        "fraction_abs_error_gt_0p2": 0.14469903606800488,
+        "median_within_corr": 0.3681443437881495
+      },
+      "candidate": {
+        "mse": 0.022690609609418114,
+        "rmse": 0.15063402540401724,
+        "median_corr": 0.48821063863870806,
+        "p10_corr": 0.1075656668928348,
+        "fraction_negative_corr": 0.010167464114832535,
+        "median_std_ratio": 0.6405184093219256,
+        "squared_bias_fraction_of_sse": 0.3144439162601672,
+        "fraction_abs_error_gt_0p2": 0.16126588163291727,
+        "median_within_corr": 0.3750250306666749
+      },
+      "delta_median_corr": -0.009307107658875435,
+      "fraction_cpg_mse_improved": 0.29754784688995217,
+      "fraction_cpg_corr_improved": 0.3923444976076555
+    },
+    "seen_cpg_new_patient/tss_bin/10-100kb": {
+      "cpgs": 912,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.023479993015538075,
+        "rmse": 0.15323182768451885,
+        "median_corr": 0.5629111882365181,
+        "p10_corr": 0.3259074708118154,
+        "fraction_negative_corr": 0.0010964912280701754,
+        "median_std_ratio": 0.6470283525894519,
+        "squared_bias_fraction_of_sse": 0.21821215548260164,
+        "fraction_abs_error_gt_0p2": 0.16149289099526065,
+        "median_within_corr": 0.4314577228245261
+      },
+      "candidate": {
+        "mse": 0.026440743391821675,
+        "rmse": 0.16260609887646182,
+        "median_corr": 0.5585109493727676,
+        "p10_corr": 0.31742536345699385,
+        "fraction_negative_corr": 0.0021929824561403508,
+        "median_std_ratio": 0.6254804691385762,
+        "squared_bias_fraction_of_sse": 0.2912726512942747,
+        "fraction_abs_error_gt_0p2": 0.1855259574004467,
+        "median_within_corr": 0.43678816520263
+      },
+      "delta_median_corr": -0.004400238863750516,
+      "fraction_cpg_mse_improved": 0.2708333333333333,
+      "fraction_cpg_corr_improved": 0.41885964912280704
+    },
+    "seen_cpg_new_patient/tss_bin/2-10kb": {
+      "cpgs": 951,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.022592744644153378,
+        "rmse": 0.15030883089211153,
+        "median_corr": 0.5546264501067947,
+        "p10_corr": 0.2630814978354832,
+        "fraction_negative_corr": 0.004206098843322818,
+        "median_std_ratio": 0.6494079757985167,
+        "squared_bias_fraction_of_sse": 0.23878883549441127,
+        "fraction_abs_error_gt_0p2": 0.1572208976102382,
+        "median_within_corr": 0.41395478163712734
+      },
+      "candidate": {
+        "mse": 0.02444404467323453,
+        "rmse": 0.15634591351626217,
+        "median_corr": 0.5462051789574083,
+        "p10_corr": 0.2648816376873971,
+        "fraction_negative_corr": 0.0031545741324921135,
+        "median_std_ratio": 0.6266235276349355,
+        "squared_bias_fraction_of_sse": 0.2865826708543085,
+        "fraction_abs_error_gt_0p2": 0.17287356441384402,
+        "median_within_corr": 0.41570079512002794
+      },
+      "delta_median_corr": -0.0084212711493864,
+      "fraction_cpg_mse_improved": 0.29442691903259727,
+      "fraction_cpg_corr_improved": 0.444794952681388
+    },
+    "seen_cpg_new_patient/tss_bin/<=2kb": {
+      "cpgs": 2077,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.01834418577678189,
+        "rmse": 0.13544070945170766,
+        "median_corr": 0.4425132610595958,
+        "p10_corr": 0.08640422249972028,
+        "fraction_negative_corr": 0.013962445835339432,
+        "median_std_ratio": 0.6879566064996929,
+        "squared_bias_fraction_of_sse": 0.2694430109953757,
+        "fraction_abs_error_gt_0p2": 0.1253984996617,
+        "median_within_corr": 0.34355855039858635
+      },
+      "candidate": {
+        "mse": 0.019643269065980153,
+        "rmse": 0.14015444718588188,
+        "median_corr": 0.4391357104360798,
+        "p10_corr": 0.08230927501402734,
+        "fraction_negative_corr": 0.014443909484833895,
+        "median_std_ratio": 0.6729227806286519,
+        "squared_bias_fraction_of_sse": 0.30637424224093635,
+        "fraction_abs_error_gt_0p2": 0.13776166544051385,
+        "median_within_corr": 0.345800801882098
+      },
+      "delta_median_corr": -0.0033775506235160235,
+      "fraction_cpg_mse_improved": 0.3100625902744343,
+      "fraction_cpg_corr_improved": 0.37746750120365913
+    },
+    "seen_cpg_new_patient/tss_bin/>100kb": {
+      "cpgs": 32,
+      "genomic_5mb_blocks": 16,
+      "baseline": {
+        "mse": 0.026030407824972037,
+        "rmse": 0.16133941807559626,
+        "median_corr": 0.5297954786933519,
+        "p10_corr": 0.20050514936752056,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6525430915407966,
+        "squared_bias_fraction_of_sse": 0.20534262433899778,
+        "fraction_abs_error_gt_0p2": 0.17816395306346178,
+        "median_within_corr": 0.3825906779833351
+      },
+      "candidate": {
+        "mse": 0.030202947122375468,
+        "rmse": 0.17378995115476462,
+        "median_corr": 0.5067005753952627,
+        "p10_corr": 0.18747864909646594,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6310783922570566,
+        "squared_bias_fraction_of_sse": 0.31040427819455113,
+        "fraction_abs_error_gt_0p2": 0.2145844329855049,
+        "median_within_corr": 0.40080957702057296
+      },
+      "delta_median_corr": -0.023094903298089164,
+      "fraction_cpg_mse_improved": 0.34375,
+      "fraction_cpg_corr_improved": 0.40625
+    },
+    "seen_cpg_new_patient/distance_bin/<=1kb": {
+      "cpgs": 3972,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.020588759569588225,
+        "rmse": 0.14348783770615622,
+        "median_corr": 0.5160816789062272,
+        "p10_corr": 0.12969289603162798,
+        "fraction_negative_corr": 0.008559919436052367,
+        "median_std_ratio": 0.6666632805176758,
+        "squared_bias_fraction_of_sse": 0.24746725632700287,
+        "fraction_abs_error_gt_0p2": 0.1416327577512303,
+        "median_within_corr": 0.38637416733562224
+      },
+      "candidate": {
+        "mse": 0.022420592681980545,
+        "rmse": 0.14973507498906374,
+        "median_corr": 0.5090661958954162,
+        "p10_corr": 0.12244957863988672,
+        "fraction_negative_corr": 0.008811681772406849,
+        "median_std_ratio": 0.6434204300491013,
+        "squared_bias_fraction_of_sse": 0.2972011528687989,
+        "fraction_abs_error_gt_0p2": 0.1576264628653903,
+        "median_within_corr": 0.3912199403081696
+      },
+      "delta_median_corr": -0.007015483010811008,
+      "fraction_cpg_mse_improved": 0.297583081570997,
+      "fraction_cpg_corr_improved": 0.4033232628398791
+    },
+    "seen_cpg_new_patient/target_sd_bin/0.05-0.15": {
+      "cpgs": 1307,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.014333710886516695,
+        "rmse": 0.11972347675588399,
+        "median_corr": 0.5056324858154675,
+        "p10_corr": 0.256120404860792,
+        "fraction_negative_corr": 0.0038255547054322878,
+        "median_std_ratio": 0.6929403023746818,
+        "squared_bias_fraction_of_sse": 0.36857368390931317,
+        "fraction_abs_error_gt_0p2": 0.08692471094709787,
+        "median_within_corr": 0.35978880558719395
+      },
+      "candidate": {
+        "mse": 0.016183903779754594,
+        "rmse": 0.12721597297413006,
+        "median_corr": 0.5022569037082695,
+        "p10_corr": 0.25444822883589424,
+        "fraction_negative_corr": 0.0045906656465187455,
+        "median_std_ratio": 0.6859614329186396,
+        "squared_bias_fraction_of_sse": 0.4365143690700865,
+        "fraction_abs_error_gt_0p2": 0.1021384681964023,
+        "median_within_corr": 0.3665385156217272
+      },
+      "delta_median_corr": -0.0033755821071980163,
+      "fraction_cpg_mse_improved": 0.31981637337413926,
+      "fraction_cpg_corr_improved": 0.46977811782708495
+    },
+    "seen_cpg_new_patient/target_sd_bin/<0.05": {
+      "cpgs": 885,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.0021497129052488666,
+        "rmse": 0.04636499655180475,
+        "median_corr": 0.15921002984670535,
+        "p10_corr": 0.04275275677346238,
+        "fraction_negative_corr": 0.030508474576271188,
+        "median_std_ratio": 1.5163516033319795,
+        "squared_bias_fraction_of_sse": 0.4681684270750099,
+        "fraction_abs_error_gt_0p2": 0.005432484438769537,
+        "median_within_corr": 0.11095015837165549
+      },
+      "candidate": {
+        "mse": 0.0025281325652448164,
+        "rmse": 0.050280538633200984,
+        "median_corr": 0.1486155475228891,
+        "p10_corr": 0.03971830125892117,
+        "fraction_negative_corr": 0.030508474576271188,
+        "median_std_ratio": 1.6395281592888233,
+        "squared_bias_fraction_of_sse": 0.49648459892098246,
+        "fraction_abs_error_gt_0p2": 0.006612920332285129,
+        "median_within_corr": 0.104382569323867
+      },
+      "delta_median_corr": -0.01059448232381624,
+      "fraction_cpg_mse_improved": 0.22033898305084745,
+      "fraction_cpg_corr_improved": 0.2994350282485876
+    },
+    "seen_cpg_new_patient/target_sd_bin/>0.15": {
+      "cpgs": 1780,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.034552663595088136,
+        "rmse": 0.18588346778314668,
+        "median_corr": 0.5995613985086243,
+        "p10_corr": 0.4003333517528757,
+        "fraction_negative_corr": 0.0011235955056179776,
+        "median_std_ratio": 0.5775822486531391,
+        "squared_bias_fraction_of_sse": 0.20335026118882996,
+        "fraction_abs_error_gt_0p2": 0.25106886041694276,
+        "median_within_corr": 0.48341164711745455
+      },
+      "candidate": {
+        "mse": 0.03710686486574814,
+        "rmse": 0.1926314223218739,
+        "median_corr": 0.5925758713862459,
+        "p10_corr": 0.3896068289186823,
+        "fraction_negative_corr": 0.0011235955056179776,
+        "median_std_ratio": 0.5372590593192359,
+        "squared_bias_fraction_of_sse": 0.24537904826922824,
+        "fraction_abs_error_gt_0p2": 0.275140364214623,
+        "median_within_corr": 0.48728465282688693
+      },
+      "delta_median_corr": -0.006985527122378432,
+      "fraction_cpg_mse_improved": 0.3196629213483146,
+      "fraction_cpg_corr_improved": 0.4061797752808989
+    },
+    "seen_cpg_new_patient/target_mean_bin/0.2-0.8": {
+      "cpgs": 1617,
+      "genomic_5mb_blocks": 41,
+      "baseline": {
+        "mse": 0.034677565807924984,
+        "rmse": 0.18621913383947683,
+        "median_corr": 0.5988645619266776,
+        "p10_corr": 0.40460861791917174,
+        "fraction_negative_corr": 0.0006184291898577613,
+        "median_std_ratio": 0.5894491553055927,
+        "squared_bias_fraction_of_sse": 0.22197298682861302,
+        "fraction_abs_error_gt_0p2": 0.2562179452251384,
+        "median_within_corr": 0.4820565666280498
+      },
+      "candidate": {
+        "mse": 0.03692984634227992,
+        "rmse": 0.19217139834605962,
+        "median_corr": 0.5901865831498911,
+        "p10_corr": 0.39471389228869247,
+        "fraction_negative_corr": 0.0006184291898577613,
+        "median_std_ratio": 0.5468187013746234,
+        "squared_bias_fraction_of_sse": 0.25754557586647464,
+        "fraction_abs_error_gt_0p2": 0.27726176342607267,
+        "median_within_corr": 0.48532020290182765
+      },
+      "delta_median_corr": -0.008677978776786444,
+      "fraction_cpg_mse_improved": 0.36178107606679033,
+      "fraction_cpg_corr_improved": 0.42424242424242425
+    },
+    "seen_cpg_new_patient/target_mean_bin/<0.2": {
+      "cpgs": 1266,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.007489582973532807,
+        "rmse": 0.08654237674996457,
+        "median_corr": 0.20671450837827693,
+        "p10_corr": 0.05107502676277845,
+        "fraction_negative_corr": 0.02527646129541864,
+        "median_std_ratio": 1.0063967025710998,
+        "squared_bias_fraction_of_sse": 0.27498169488811663,
+        "fraction_abs_error_gt_0p2": 0.042092600832509874,
+        "median_within_corr": 0.15502313476108776
+      },
+      "candidate": {
+        "mse": 0.008263677599226377,
+        "rmse": 0.09090477214770618,
+        "median_corr": 0.19671674157987273,
+        "p10_corr": 0.04989552736723592,
+        "fraction_negative_corr": 0.026066350710900472,
+        "median_std_ratio": 1.0741664146828311,
+        "squared_bias_fraction_of_sse": 0.3291222943445894,
+        "fraction_abs_error_gt_0p2": 0.047369465263612076,
+        "median_within_corr": 0.14375006436891458
+      },
+      "delta_median_corr": -0.009997766798404195,
+      "fraction_cpg_mse_improved": 0.2843601895734597,
+      "fraction_cpg_corr_improved": 0.34360189573459715
+    },
+    "seen_cpg_new_patient/target_mean_bin/>0.8": {
+      "cpgs": 1089,
+      "genomic_5mb_blocks": 40,
+      "baseline": {
+        "mse": 0.015176775522758739,
+        "rmse": 0.12319405636133075,
+        "median_corr": 0.5383845249332208,
+        "p10_corr": 0.3162439662211883,
+        "fraction_negative_corr": 0.0009182736455463728,
+        "median_std_ratio": 0.7035334363321999,
+        "squared_bias_fraction_of_sse": 0.3177787082303259,
+        "fraction_abs_error_gt_0p2": 0.08935285304586921,
+        "median_within_corr": 0.34553247234334683
+      },
+      "candidate": {
+        "mse": 0.017634738582279683,
+        "rmse": 0.1327958530311835,
+        "median_corr": 0.5350974438107259,
+        "p10_corr": 0.3172310323944734,
+        "fraction_negative_corr": 0.0009182736455463728,
+        "median_std_ratio": 0.7099724807516671,
+        "squared_bias_fraction_of_sse": 0.4026336632260022,
+        "fraction_abs_error_gt_0p2": 0.11051905310661708,
+        "median_within_corr": 0.3554684692122374
+      },
+      "delta_median_corr": -0.0032870811224948726,
+      "fraction_cpg_mse_improved": 0.21763085399449036,
+      "fraction_cpg_corr_improved": 0.44168962350780533
+    },
+    "seen_cpg_new_patient/block/0": {
+      "cpgs": 377,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.02170504081870761,
+        "rmse": 0.14732630728660653,
+        "median_corr": 0.6141203162859993,
+        "p10_corr": 0.36097616670063665,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.69384348122126,
+        "squared_bias_fraction_of_sse": 0.24802599632681377,
+        "fraction_abs_error_gt_0p2": 0.15268330044656767,
+        "median_within_corr": 0.4816743275565532
+      },
+      "candidate": {
+        "mse": 0.02465277281004968,
+        "rmse": 0.1570120148588944,
+        "median_corr": 0.607372949292122,
+        "p10_corr": 0.34116468108544684,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6654144250442996,
+        "squared_bias_fraction_of_sse": 0.3278733045361747,
+        "fraction_abs_error_gt_0p2": 0.17896134074151002,
+        "median_within_corr": 0.4812440835644966
+      },
+      "delta_median_corr": -0.006747366993877235,
+      "fraction_cpg_mse_improved": 0.2625994694960212,
+      "fraction_cpg_corr_improved": 0.4350132625994695
+    },
+    "seen_cpg_new_patient/block/1": {
+      "cpgs": 199,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.018155779210992457,
+        "rmse": 0.13474338280966697,
+        "median_corr": 0.5187990251129986,
+        "p10_corr": 0.21390670702904338,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6825755065780094,
+        "squared_bias_fraction_of_sse": 0.24022025692829221,
+        "fraction_abs_error_gt_0p2": 0.12172059130733973,
+        "median_within_corr": 0.4018455164662804
+      },
+      "candidate": {
+        "mse": 0.020543772841450994,
+        "rmse": 0.1433309905130464,
+        "median_corr": 0.5300284811319856,
+        "p10_corr": 0.20386562932174676,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6672806054636811,
+        "squared_bias_fraction_of_sse": 0.31396679441054975,
+        "fraction_abs_error_gt_0p2": 0.14242617874390198,
+        "median_within_corr": 0.4014828519016551
+      },
+      "delta_median_corr": 0.01122945601898706,
+      "fraction_cpg_mse_improved": 0.27638190954773867,
+      "fraction_cpg_corr_improved": 0.4371859296482412
+    },
+    "seen_cpg_new_patient/block/3": {
+      "cpgs": 181,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.02119726518221243,
+        "rmse": 0.14559280607987618,
+        "median_corr": 0.5400971231710282,
+        "p10_corr": 0.17994253879033545,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6769960227588103,
+        "squared_bias_fraction_of_sse": 0.24910641267138697,
+        "fraction_abs_error_gt_0p2": 0.15342009398318054,
+        "median_within_corr": 0.380918654883155
+      },
+      "candidate": {
+        "mse": 0.022836335755921564,
+        "rmse": 0.15111696051708282,
+        "median_corr": 0.5282937567543333,
+        "p10_corr": 0.15704738658787112,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6398304367908325,
+        "squared_bias_fraction_of_sse": 0.2945756010442088,
+        "fraction_abs_error_gt_0p2": 0.1673144373874301,
+        "median_within_corr": 0.38948753843209494
+      },
+      "delta_median_corr": -0.011803366416694883,
+      "fraction_cpg_mse_improved": 0.30939226519337015,
+      "fraction_cpg_corr_improved": 0.4198895027624309
+    },
+    "seen_cpg_new_patient/block/5": {
+      "cpgs": 158,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.018444740999716866,
+        "rmse": 0.135811417044801,
+        "median_corr": 0.4626180723004497,
+        "p10_corr": 0.12859098845206526,
+        "fraction_negative_corr": 0.012658227848101266,
+        "median_std_ratio": 0.6998261385122746,
+        "squared_bias_fraction_of_sse": 0.31038505899438723,
+        "fraction_abs_error_gt_0p2": 0.12806731267448784,
+        "median_within_corr": 0.32222038235542244
+      },
+      "candidate": {
+        "mse": 0.019933865524377016,
+        "rmse": 0.14118734194104307,
+        "median_corr": 0.46294328580729227,
+        "p10_corr": 0.1235214432890582,
+        "fraction_negative_corr": 0.012658227848101266,
+        "median_std_ratio": 0.6753029207080177,
+        "squared_bias_fraction_of_sse": 0.35149621801734765,
+        "fraction_abs_error_gt_0p2": 0.139451073801109,
+        "median_within_corr": 0.3345076664283978
+      },
+      "delta_median_corr": 0.0003252135068425588,
+      "fraction_cpg_mse_improved": 0.26582278481012656,
+      "fraction_cpg_corr_improved": 0.43037974683544306
+    },
+    "seen_cpg_new_patient/block/6": {
+      "cpgs": 148,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.0179317030214647,
+        "rmse": 0.13390930894252534,
+        "median_corr": 0.5131580234156923,
+        "p10_corr": 0.14595820624782863,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.7117575186864389,
+        "squared_bias_fraction_of_sse": 0.2355498574923057,
+        "fraction_abs_error_gt_0p2": 0.12575678948278846,
+        "median_within_corr": 0.3853737430194829
+      },
+      "candidate": {
+        "mse": 0.01991751476591331,
+        "rmse": 0.14112942558486274,
+        "median_corr": 0.5084896066606386,
+        "p10_corr": 0.1256902717601589,
+        "fraction_negative_corr": 0.006756756756756757,
+        "median_std_ratio": 0.6901544317841926,
+        "squared_bias_fraction_of_sse": 0.2939060787912544,
+        "fraction_abs_error_gt_0p2": 0.14433983245607532,
+        "median_within_corr": 0.3903261545079707
+      },
+      "delta_median_corr": -0.004668416755053695,
+      "fraction_cpg_mse_improved": 0.2635135135135135,
+      "fraction_cpg_corr_improved": 0.3310810810810811
+    },
+    "seen_cpg_new_patient/block/7": {
+      "cpgs": 142,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.018068293924336006,
+        "rmse": 0.13441835412002337,
+        "median_corr": 0.5065113820565403,
+        "p10_corr": 0.0891807655894036,
+        "fraction_negative_corr": 0.02112676056338028,
+        "median_std_ratio": 0.6781032847124384,
+        "squared_bias_fraction_of_sse": 0.25019664402419034,
+        "fraction_abs_error_gt_0p2": 0.12531955874627912,
+        "median_within_corr": 0.3306939710371637
+      },
+      "candidate": {
+        "mse": 0.0193751143706594,
+        "rmse": 0.13919451990168077,
+        "median_corr": 0.49544797690800507,
+        "p10_corr": 0.0855270929726695,
+        "fraction_negative_corr": 0.014084507042253521,
+        "median_std_ratio": 0.6531197124572049,
+        "squared_bias_fraction_of_sse": 0.28109996242885826,
+        "fraction_abs_error_gt_0p2": 0.13940640868499388,
+        "median_within_corr": 0.33894427850671616
+      },
+      "delta_median_corr": -0.011063405148535266,
+      "fraction_cpg_mse_improved": 0.23943661971830985,
+      "fraction_cpg_corr_improved": 0.28169014084507044
+    },
+    "seen_cpg_new_patient/block/8": {
+      "cpgs": 185,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.01981523805325286,
+        "rmse": 0.14076660844551472,
+        "median_corr": 0.45948375995158297,
+        "p10_corr": 0.12156922647377816,
+        "fraction_negative_corr": 0.016216216216216217,
+        "median_std_ratio": 0.6997996267962403,
+        "squared_bias_fraction_of_sse": 0.353120430087542,
+        "fraction_abs_error_gt_0p2": 0.14316644113667118,
+        "median_within_corr": 0.3629658922149213
+      },
+      "candidate": {
+        "mse": 0.02132636795086832,
+        "rmse": 0.14603550236455629,
+        "median_corr": 0.4635154641917033,
+        "p10_corr": 0.09701061085136337,
+        "fraction_negative_corr": 0.016216216216216217,
+        "median_std_ratio": 0.6635644149671132,
+        "squared_bias_fraction_of_sse": 0.39211900375960773,
+        "fraction_abs_error_gt_0p2": 0.15942440344565828,
+        "median_within_corr": 0.37343281695481007
+      },
+      "delta_median_corr": 0.004031704240120337,
+      "fraction_cpg_mse_improved": 0.35135135135135137,
+      "fraction_cpg_corr_improved": 0.43783783783783786
+    },
+    "seen_cpg_new_patient/block/9": {
+      "cpgs": 88,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.01996855232162658,
+        "rmse": 0.14131012816364785,
+        "median_corr": 0.4731123877190643,
+        "p10_corr": 0.05254397790119314,
+        "fraction_negative_corr": 0.011363636363636364,
+        "median_std_ratio": 0.6678408858347293,
+        "squared_bias_fraction_of_sse": 0.2564138572498413,
+        "fraction_abs_error_gt_0p2": 0.14266150228247337,
+        "median_within_corr": 0.3646746401061236
+      },
+      "candidate": {
+        "mse": 0.02126813342744499,
+        "rmse": 0.14583598125101016,
+        "median_corr": 0.45771998515665224,
+        "p10_corr": 0.054483717152497765,
+        "fraction_negative_corr": 0.011363636363636364,
+        "median_std_ratio": 0.6610852472585425,
+        "squared_bias_fraction_of_sse": 0.29234541515013623,
+        "fraction_abs_error_gt_0p2": 0.15818232120625259,
+        "median_within_corr": 0.35915676130073326
+      },
+      "delta_median_corr": -0.015392402562412033,
+      "fraction_cpg_mse_improved": 0.29545454545454547,
+      "fraction_cpg_corr_improved": 0.3181818181818182
+    },
+    "seen_cpg_new_patient/block/10": {
+      "cpgs": 127,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.02179565875828583,
+        "rmse": 0.1476335285708698,
+        "median_corr": 0.5353947897642898,
+        "p10_corr": 0.1370321035142039,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6627259853397829,
+        "squared_bias_fraction_of_sse": 0.3196797883191317,
+        "fraction_abs_error_gt_0p2": 0.1501577287066246,
+        "median_within_corr": 0.37989196198407355
+      },
+      "candidate": {
+        "mse": 0.023756760785458318,
+        "rmse": 0.15413228339792517,
+        "median_corr": 0.5312431062361707,
+        "p10_corr": 0.13278209886885164,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6557618424045638,
+        "squared_bias_fraction_of_sse": 0.36211522009362773,
+        "fraction_abs_error_gt_0p2": 0.1625916039796166,
+        "median_within_corr": 0.3952282565101023
+      },
+      "delta_median_corr": -0.004151683528119121,
+      "fraction_cpg_mse_improved": 0.2755905511811024,
+      "fraction_cpg_corr_improved": 0.4094488188976378
+    },
+    "seen_cpg_new_patient/block/11": {
+      "cpgs": 53,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.019197031785202507,
+        "rmse": 0.13855335356895013,
+        "median_corr": 0.5463982366488911,
+        "p10_corr": 0.13946236435367898,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6879862537496223,
+        "squared_bias_fraction_of_sse": 0.184351746783658,
+        "fraction_abs_error_gt_0p2": 0.13023662211306852,
+        "median_within_corr": 0.33957124754954576
+      },
+      "candidate": {
+        "mse": 0.020944827987402014,
+        "rmse": 0.14472328073741977,
+        "median_corr": 0.5298953465634486,
+        "p10_corr": 0.13262541961815089,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6467294272618302,
+        "squared_bias_fraction_of_sse": 0.23434484332895913,
+        "fraction_abs_error_gt_0p2": 0.14355547159117743,
+        "median_within_corr": 0.33071026070799875
+      },
+      "delta_median_corr": -0.01650289008544248,
+      "fraction_cpg_mse_improved": 0.32075471698113206,
+      "fraction_cpg_corr_improved": 0.3018867924528302
+    },
+    "seen_cpg_new_patient/block/12": {
+      "cpgs": 65,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.022763837710437756,
+        "rmse": 0.15087689588017694,
+        "median_corr": 0.511138459726039,
+        "p10_corr": 0.16813522858145782,
+        "fraction_negative_corr": 0.015384615384615385,
+        "median_std_ratio": 0.5708242996532129,
+        "squared_bias_fraction_of_sse": 0.19776049608714755,
+        "fraction_abs_error_gt_0p2": 0.15690234419236723,
+        "median_within_corr": 0.3830874220308901
+      },
+      "candidate": {
+        "mse": 0.023976369856765004,
+        "rmse": 0.15484304910703936,
+        "median_corr": 0.4765633113583956,
+        "p10_corr": 0.17071881545369283,
+        "fraction_negative_corr": 0.015384615384615385,
+        "median_std_ratio": 0.5631972640190974,
+        "squared_bias_fraction_of_sse": 0.22763691337625322,
+        "fraction_abs_error_gt_0p2": 0.16764184062511797,
+        "median_within_corr": 0.3791403247106139
+      },
+      "delta_median_corr": -0.034575148367643416,
+      "fraction_cpg_mse_improved": 0.26153846153846155,
+      "fraction_cpg_corr_improved": 0.5230769230769231
+    },
+    "seen_cpg_new_patient/block/13": {
+      "cpgs": 48,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.026327779135963774,
+        "rmse": 0.1622583715435471,
+        "median_corr": 0.49061608356200925,
+        "p10_corr": 0.19127671144841926,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5928165206469418,
+        "squared_bias_fraction_of_sse": 0.27789249417888595,
+        "fraction_abs_error_gt_0p2": 0.17760397783187445,
+        "median_within_corr": 0.3915935370817703
+      },
+      "candidate": {
+        "mse": 0.028436638805431572,
+        "rmse": 0.16863166608152685,
+        "median_corr": 0.45905646033745373,
+        "p10_corr": 0.18706448237335657,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5934240364677716,
+        "squared_bias_fraction_of_sse": 0.31867456839851366,
+        "fraction_abs_error_gt_0p2": 0.19606878334282904,
+        "median_within_corr": 0.3974992883972788
+      },
+      "delta_median_corr": -0.03155962322455552,
+      "fraction_cpg_mse_improved": 0.25,
+      "fraction_cpg_corr_improved": 0.3541666666666667
+    },
+    "seen_cpg_new_patient/block/14": {
+      "cpgs": 34,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.017042319909646,
+        "rmse": 0.13054623667362458,
+        "median_corr": 0.4386203503982209,
+        "p10_corr": 0.08555581963360441,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6974061234035278,
+        "squared_bias_fraction_of_sse": 0.1868032795509426,
+        "fraction_abs_error_gt_0p2": 0.11445311042280852,
+        "median_within_corr": 0.325948676191806
+      },
+      "candidate": {
+        "mse": 0.018733178758631924,
+        "rmse": 0.13686920310512488,
+        "median_corr": 0.4327526869465454,
+        "p10_corr": 0.08497882236732673,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6235594790025003,
+        "squared_bias_fraction_of_sse": 0.2677244894114609,
+        "fraction_abs_error_gt_0p2": 0.13658245325969326,
+        "median_within_corr": 0.3372139620936108
+      },
+      "delta_median_corr": -0.005867663451675498,
+      "fraction_cpg_mse_improved": 0.4411764705882353,
+      "fraction_cpg_corr_improved": 0.47058823529411764
+    },
+    "seen_cpg_new_patient/block/15": {
+      "cpgs": 44,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.021111008958058765,
+        "rmse": 0.14529627991816846,
+        "median_corr": 0.5294875867253863,
+        "p10_corr": 0.12240233928737504,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.7107155067906034,
+        "squared_bias_fraction_of_sse": 0.16757770090915516,
+        "fraction_abs_error_gt_0p2": 0.15266122219093214,
+        "median_within_corr": 0.42490202533272825
+      },
+      "candidate": {
+        "mse": 0.023000831457654167,
+        "rmse": 0.1516602500909654,
+        "median_corr": 0.5179832207543993,
+        "p10_corr": 0.11324835054895249,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6943263983919834,
+        "squared_bias_fraction_of_sse": 0.22295379168530802,
+        "fraction_abs_error_gt_0p2": 0.1712756969867643,
+        "median_within_corr": 0.4379747980630437
+      },
+      "delta_median_corr": -0.01150436597098703,
+      "fraction_cpg_mse_improved": 0.1590909090909091,
+      "fraction_cpg_corr_improved": 0.4090909090909091
+    },
+    "seen_cpg_new_patient/block/16": {
+      "cpgs": 34,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.02154899788126324,
+        "rmse": 0.14679576928938803,
+        "median_corr": 0.43741713626975476,
+        "p10_corr": 0.26687768240776044,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5422949617357061,
+        "squared_bias_fraction_of_sse": 0.19380966732023722,
+        "fraction_abs_error_gt_0p2": 0.13447650087033813,
+        "median_within_corr": 0.36226866921829626
+      },
+      "candidate": {
+        "mse": 0.022508368690286825,
+        "rmse": 0.15002789304088365,
+        "median_corr": 0.43791245411967483,
+        "p10_corr": 0.2594627922429814,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5892079487210793,
+        "squared_bias_fraction_of_sse": 0.23189484416317094,
+        "fraction_abs_error_gt_0p2": 0.14558720047405652,
+        "median_within_corr": 0.37942362733765955
+      },
+      "delta_median_corr": 0.0004953178499200739,
+      "fraction_cpg_mse_improved": 0.35294117647058826,
+      "fraction_cpg_corr_improved": 0.5
+    },
+    "seen_cpg_new_patient/block/17": {
+      "cpgs": 62,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.020295847462267584,
+        "rmse": 0.1424634951918125,
+        "median_corr": 0.443018581666949,
+        "p10_corr": 0.11237079647733483,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5862161890232089,
+        "squared_bias_fraction_of_sse": 0.24634771345373918,
+        "fraction_abs_error_gt_0p2": 0.13296903460837886,
+        "median_within_corr": 0.32580527435993356
+      },
+      "candidate": {
+        "mse": 0.02141209259969946,
+        "rmse": 0.14632871420093685,
+        "median_corr": 0.4395450250875998,
+        "p10_corr": 0.10330916056506832,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5808971749594235,
+        "squared_bias_fraction_of_sse": 0.27318400827004236,
+        "fraction_abs_error_gt_0p2": 0.13921415560759823,
+        "median_within_corr": 0.32974254902584943
+      },
+      "delta_median_corr": -0.003473556579349224,
+      "fraction_cpg_mse_improved": 0.3064516129032258,
+      "fraction_cpg_corr_improved": 0.4838709677419355
+    },
+    "seen_cpg_new_patient/block/18": {
+      "cpgs": 69,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.023126783249301813,
+        "rmse": 0.15207492643201184,
+        "median_corr": 0.5142292164356392,
+        "p10_corr": 0.10503592979384077,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6862905993167882,
+        "squared_bias_fraction_of_sse": 0.30508203748688756,
+        "fraction_abs_error_gt_0p2": 0.16433342483301308,
+        "median_within_corr": 0.35276096941860324
+      },
+      "candidate": {
+        "mse": 0.02447458108446356,
+        "rmse": 0.15644353960603027,
+        "median_corr": 0.5081223872704623,
+        "p10_corr": 0.0929129375096136,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6487402591104356,
+        "squared_bias_fraction_of_sse": 0.3418112300674531,
+        "fraction_abs_error_gt_0p2": 0.17952237167169915,
+        "median_within_corr": 0.3663134468365754
+      },
+      "delta_median_corr": -0.006106829165176908,
+      "fraction_cpg_mse_improved": 0.3333333333333333,
+      "fraction_cpg_corr_improved": 0.5217391304347826
+    },
+    "seen_cpg_new_patient/block/19": {
+      "cpgs": 36,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.016290321694419095,
+        "rmse": 0.1276335445500872,
+        "median_corr": 0.4438718116632089,
+        "p10_corr": 0.16223914837586995,
+        "fraction_negative_corr": 0.027777777777777776,
+        "median_std_ratio": 0.6262649852229689,
+        "squared_bias_fraction_of_sse": 0.14020257571942565,
+        "fraction_abs_error_gt_0p2": 0.10257225637764116,
+        "median_within_corr": 0.3554607476553336
+      },
+      "candidate": {
+        "mse": 0.01652061641204226,
+        "rmse": 0.12853255000987984,
+        "median_corr": 0.4254306207213117,
+        "p10_corr": 0.16087724990995625,
+        "fraction_negative_corr": 0.027777777777777776,
+        "median_std_ratio": 0.6167967262913552,
+        "squared_bias_fraction_of_sse": 0.15587866158422398,
+        "fraction_abs_error_gt_0p2": 0.10660024026570561,
+        "median_within_corr": 0.35405999827449786
+      },
+      "delta_median_corr": -0.018441190941897168,
+      "fraction_cpg_mse_improved": 0.4722222222222222,
+      "fraction_cpg_corr_improved": 0.4444444444444444
+    },
+    "seen_cpg_new_patient/block/20": {
+      "cpgs": 30,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.012018053629516344,
+        "rmse": 0.10962688369882792,
+        "median_corr": 0.26809298950630894,
+        "p10_corr": 0.1295240867773109,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.8812899426905705,
+        "squared_bias_fraction_of_sse": 0.15405616759507448,
+        "fraction_abs_error_gt_0p2": 0.07761648821363579,
+        "median_within_corr": 0.17553874815525722
+      },
+      "candidate": {
+        "mse": 0.012441870637165809,
+        "rmse": 0.11154313352764396,
+        "median_corr": 0.2783103445586459,
+        "p10_corr": 0.12129157375099953,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.9343535170070392,
+        "squared_bias_fraction_of_sse": 0.16276234189722477,
+        "fraction_abs_error_gt_0p2": 0.0808751957340556,
+        "median_within_corr": 0.18481270060598448
+      },
+      "delta_median_corr": 0.010217355052336952,
+      "fraction_cpg_mse_improved": 0.26666666666666666,
+      "fraction_cpg_corr_improved": 0.2
+    },
+    "seen_cpg_new_patient/block/21": {
+      "cpgs": 75,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.01732487978601765,
+        "rmse": 0.1316240091549321,
+        "median_corr": 0.4098478122285139,
+        "p10_corr": 0.0891938699183645,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6962135205531416,
+        "squared_bias_fraction_of_sse": 0.27782091048580476,
+        "fraction_abs_error_gt_0p2": 0.1141467436108821,
+        "median_within_corr": 0.2553040426320526
+      },
+      "candidate": {
+        "mse": 0.01775022660925825,
+        "rmse": 0.1332299763914197,
+        "median_corr": 0.4186856940041002,
+        "p10_corr": 0.08116225582403075,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6684486671232762,
+        "squared_bias_fraction_of_sse": 0.2990600341656398,
+        "fraction_abs_error_gt_0p2": 0.11637262984336356,
+        "median_within_corr": 0.2643277042577973
+      },
+      "delta_median_corr": 0.00883788177558631,
+      "fraction_cpg_mse_improved": 0.3333333333333333,
+      "fraction_cpg_corr_improved": 0.4266666666666667
+    },
+    "seen_cpg_new_patient/block/22": {
+      "cpgs": 129,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.019214886491508747,
+        "rmse": 0.13861777119658483,
+        "median_corr": 0.5530170117104807,
+        "p10_corr": 0.13047167005990085,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6821939845220936,
+        "squared_bias_fraction_of_sse": 0.28475218131756025,
+        "fraction_abs_error_gt_0p2": 0.13476078956172632,
+        "median_within_corr": 0.4359766116457083
+      },
+      "candidate": {
+        "mse": 0.020961761616485,
+        "rmse": 0.14478177239032888,
+        "median_corr": 0.5533669331126575,
+        "p10_corr": 0.13491174742088768,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6318622461817148,
+        "squared_bias_fraction_of_sse": 0.33567830767190526,
+        "fraction_abs_error_gt_0p2": 0.1465564211633131,
+        "median_within_corr": 0.4342603037494783
+      },
+      "delta_median_corr": 0.00034992140217682266,
+      "fraction_cpg_mse_improved": 0.2868217054263566,
+      "fraction_cpg_corr_improved": 0.4728682170542636
+    },
+    "seen_cpg_new_patient/block/23": {
+      "cpgs": 78,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.025507006665839348,
+        "rmse": 0.15970913144162843,
+        "median_corr": 0.49835554793031844,
+        "p10_corr": 0.2699815966387615,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6062508963964885,
+        "squared_bias_fraction_of_sse": 0.26306290295078877,
+        "fraction_abs_error_gt_0p2": 0.17566179375740815,
+        "median_within_corr": 0.41468224615965094
+      },
+      "candidate": {
+        "mse": 0.028061325226833765,
+        "rmse": 0.1675151492457735,
+        "median_corr": 0.4901669795513002,
+        "p10_corr": 0.2905647960594398,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.581647656838831,
+        "squared_bias_fraction_of_sse": 0.3234116955486851,
+        "fraction_abs_error_gt_0p2": 0.1890003951007507,
+        "median_within_corr": 0.41538884731752757
+      },
+      "delta_median_corr": -0.008188568379018268,
+      "fraction_cpg_mse_improved": 0.32051282051282054,
+      "fraction_cpg_corr_improved": 0.4358974358974359
+    },
+    "seen_cpg_new_patient/block/29": {
+      "cpgs": 32,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.015865148449857498,
+        "rmse": 0.12595693093219404,
+        "median_corr": 0.5213435684829448,
+        "p10_corr": 0.08970497851424424,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.7288828287557498,
+        "squared_bias_fraction_of_sse": 0.21527821242043874,
+        "fraction_abs_error_gt_0p2": 0.11521821631878558,
+        "median_within_corr": 0.37710886796020454
+      },
+      "candidate": {
+        "mse": 0.01770567341201595,
+        "rmse": 0.133062667236216,
+        "median_corr": 0.5092968977521735,
+        "p10_corr": 0.1004144071026489,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6662313320358587,
+        "squared_bias_fraction_of_sse": 0.2902876949509359,
+        "fraction_abs_error_gt_0p2": 0.13036053130929792,
+        "median_within_corr": 0.3891336096563016
+      },
+      "delta_median_corr": -0.01204667073077137,
+      "fraction_cpg_mse_improved": 0.3125,
+      "fraction_cpg_corr_improved": 0.4375
+    },
+    "seen_cpg_new_patient/block/30": {
+      "cpgs": 206,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.019754561933929184,
+        "rmse": 0.14055092292094415,
+        "median_corr": 0.49305088716907974,
+        "p10_corr": 0.08411388218302053,
+        "fraction_negative_corr": 0.03398058252427184,
+        "median_std_ratio": 0.6791706784389484,
+        "squared_bias_fraction_of_sse": 0.27294375838801765,
+        "fraction_abs_error_gt_0p2": 0.133026725269981,
+        "median_within_corr": 0.3674223424747807
+      },
+      "candidate": {
+        "mse": 0.020966725420529738,
+        "rmse": 0.1447989137408487,
+        "median_corr": 0.47928076284535737,
+        "p10_corr": 0.06878571464022532,
+        "fraction_negative_corr": 0.038834951456310676,
+        "median_std_ratio": 0.6538742343206416,
+        "squared_bias_fraction_of_sse": 0.3030565731739872,
+        "fraction_abs_error_gt_0p2": 0.14345419767225717,
+        "median_within_corr": 0.37498075776116596
+      },
+      "delta_median_corr": -0.013770124323722377,
+      "fraction_cpg_mse_improved": 0.2669902912621359,
+      "fraction_cpg_corr_improved": 0.34951456310679613
+    },
+    "seen_cpg_new_patient/block/31": {
+      "cpgs": 188,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.021165938657507946,
+        "rmse": 0.14548518363568141,
+        "median_corr": 0.48958278149390067,
+        "p10_corr": 0.07016851921192006,
+        "fraction_negative_corr": 0.010638297872340425,
+        "median_std_ratio": 0.6748899513307663,
+        "squared_bias_fraction_of_sse": 0.25878115385106465,
+        "fraction_abs_error_gt_0p2": 0.1445479645647139,
+        "median_within_corr": 0.3642880672310157
+      },
+      "candidate": {
+        "mse": 0.02272313564577328,
+        "rmse": 0.15074195051734365,
+        "median_corr": 0.4878169030295375,
+        "p10_corr": 0.0827035570685885,
+        "fraction_negative_corr": 0.015957446808510637,
+        "median_std_ratio": 0.6557262694754624,
+        "squared_bias_fraction_of_sse": 0.30249390178182933,
+        "fraction_abs_error_gt_0p2": 0.15944570209759099,
+        "median_within_corr": 0.3755661417263372
+      },
+      "delta_median_corr": -0.0017658784643631575,
+      "fraction_cpg_mse_improved": 0.35106382978723405,
+      "fraction_cpg_corr_improved": 0.5
+    },
+    "seen_cpg_new_patient/block/33": {
+      "cpgs": 89,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.015864427007217585,
+        "rmse": 0.12595406705310308,
+        "median_corr": 0.4580219777933683,
+        "p10_corr": 0.0960933785992775,
+        "fraction_negative_corr": 0.011235955056179775,
+        "median_std_ratio": 0.6847324949484692,
+        "squared_bias_fraction_of_sse": 0.1780665733633051,
+        "fraction_abs_error_gt_0p2": 0.10193248735174587,
+        "median_within_corr": 0.337434593240619
+      },
+      "candidate": {
+        "mse": 0.017209663737853872,
+        "rmse": 0.1311856079676954,
+        "median_corr": 0.44982260604845115,
+        "p10_corr": 0.08878941479672778,
+        "fraction_negative_corr": 0.011235955056179775,
+        "median_std_ratio": 0.6907404097641336,
+        "squared_bias_fraction_of_sse": 0.22433493384874895,
+        "fraction_abs_error_gt_0p2": 0.11429045367836112,
+        "median_within_corr": 0.34140539228043787
+      },
+      "delta_median_corr": -0.008199371744917139,
+      "fraction_cpg_mse_improved": 0.2808988764044944,
+      "fraction_cpg_corr_improved": 0.34831460674157305
+    },
+    "seen_cpg_new_patient/block/34": {
+      "cpgs": 59,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.018185005442704887,
+        "rmse": 0.13485179065442507,
+        "median_corr": 0.41798435881621365,
+        "p10_corr": 0.07163346043630177,
+        "fraction_negative_corr": 0.01694915254237288,
+        "median_std_ratio": 0.5804176201697487,
+        "squared_bias_fraction_of_sse": 0.1398975817298267,
+        "fraction_abs_error_gt_0p2": 0.12366840375881627,
+        "median_within_corr": 0.2552263400119146
+      },
+      "candidate": {
+        "mse": 0.020517196255649562,
+        "rmse": 0.14323824997412374,
+        "median_corr": 0.4401638812067055,
+        "p10_corr": 0.06186006390474148,
+        "fraction_negative_corr": 0.01694915254237288,
+        "median_std_ratio": 0.6003396193172256,
+        "squared_bias_fraction_of_sse": 0.2108120659725934,
+        "fraction_abs_error_gt_0p2": 0.14371821435298548,
+        "median_within_corr": 0.25944638524033864
+      },
+      "delta_median_corr": 0.022179522390491868,
+      "fraction_cpg_mse_improved": 0.3389830508474576,
+      "fraction_cpg_corr_improved": 0.3728813559322034
+    },
+    "seen_cpg_new_patient/block/36": {
+      "cpgs": 92,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.01828935771796848,
+        "rmse": 0.13523815185800372,
+        "median_corr": 0.4850903290767113,
+        "p10_corr": 0.11549308572895944,
+        "fraction_negative_corr": 0.010869565217391304,
+        "median_std_ratio": 0.6477330073252647,
+        "squared_bias_fraction_of_sse": 0.19681179331540474,
+        "fraction_abs_error_gt_0p2": 0.12655694250977104,
+        "median_within_corr": 0.37086401233832833
+      },
+      "candidate": {
+        "mse": 0.02047377527026627,
+        "rmse": 0.14308660059651382,
+        "median_corr": 0.491098251156936,
+        "p10_corr": 0.10753362963935935,
+        "fraction_negative_corr": 0.010869565217391304,
+        "median_std_ratio": 0.6351141956857591,
+        "squared_bias_fraction_of_sse": 0.2735959726573006,
+        "fraction_abs_error_gt_0p2": 0.14989924671706584,
+        "median_within_corr": 0.371127408750906
+      },
+      "delta_median_corr": 0.006007922080224715,
+      "fraction_cpg_mse_improved": 0.29347826086956524,
+      "fraction_cpg_corr_improved": 0.45652173913043476
+    },
+    "seen_cpg_new_patient/block/39": {
+      "cpgs": 32,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.026234130884404478,
+        "rmse": 0.161969536902482,
+        "median_corr": 0.4834840547298546,
+        "p10_corr": 0.15933471395258467,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5753434715489714,
+        "squared_bias_fraction_of_sse": 0.1459672652539719,
+        "fraction_abs_error_gt_0p2": 0.1701175609160802,
+        "median_within_corr": 0.37215778396207017
+      },
+      "candidate": {
+        "mse": 0.027510044145512638,
+        "rmse": 0.16586152099119505,
+        "median_corr": 0.5092068553181275,
+        "p10_corr": 0.142048335365525,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.5516669124584163,
+        "squared_bias_fraction_of_sse": 0.1827468370088081,
+        "fraction_abs_error_gt_0p2": 0.18162958141805313,
+        "median_within_corr": 0.3872996288654408
+      },
+      "delta_median_corr": 0.025722800588272865,
+      "fraction_cpg_mse_improved": 0.3125,
+      "fraction_cpg_corr_improved": 0.4375
+    },
+    "seen_cpg_new_patient/block/40": {
+      "cpgs": 158,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.02809128923295405,
+        "rmse": 0.16760456208872732,
+        "median_corr": 0.5720118944752179,
+        "p10_corr": 0.2124500128261545,
+        "fraction_negative_corr": 0.012658227848101266,
+        "median_std_ratio": 0.6102963243241861,
+        "squared_bias_fraction_of_sse": 0.33590503861842214,
+        "fraction_abs_error_gt_0p2": 0.1927180159679099,
+        "median_within_corr": 0.44494429889158027
+      },
+      "candidate": {
+        "mse": 0.030297721428752956,
+        "rmse": 0.17406240670734435,
+        "median_corr": 0.5635302043700505,
+        "p10_corr": 0.2030661152695879,
+        "fraction_negative_corr": 0.012658227848101266,
+        "median_std_ratio": 0.5819730468810078,
+        "squared_bias_fraction_of_sse": 0.3675761038985894,
+        "fraction_abs_error_gt_0p2": 0.20874763759787093,
+        "median_within_corr": 0.4526971931219811
+      },
+      "delta_median_corr": -0.008481690105167417,
+      "fraction_cpg_mse_improved": 0.310126582278481,
+      "fraction_cpg_corr_improved": 0.4050632911392405
+    },
+    "seen_cpg_new_patient/block/41": {
+      "cpgs": 108,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.023890503788715173,
+        "rmse": 0.154565532343777,
+        "median_corr": 0.5462643212767997,
+        "p10_corr": 0.15877859252336435,
+        "fraction_negative_corr": 0.018518518518518517,
+        "median_std_ratio": 0.5952581716216361,
+        "squared_bias_fraction_of_sse": 0.19544303020794937,
+        "fraction_abs_error_gt_0p2": 0.16761807679238871,
+        "median_within_corr": 0.4202163823251974
+      },
+      "candidate": {
+        "mse": 0.02648714772224256,
+        "rmse": 0.16274872571618668,
+        "median_corr": 0.5382668522382447,
+        "p10_corr": 0.17804565589884502,
+        "fraction_negative_corr": 0.018518518518518517,
+        "median_std_ratio": 0.5695352862093701,
+        "squared_bias_fraction_of_sse": 0.2512258705666553,
+        "fraction_abs_error_gt_0p2": 0.18818665760561784,
+        "median_within_corr": 0.41817126402603905
+      },
+      "delta_median_corr": -0.007997469038555027,
+      "fraction_cpg_mse_improved": 0.32407407407407407,
+      "fraction_cpg_corr_improved": 0.4074074074074074
+    },
+    "seen_cpg_new_patient/block/42": {
+      "cpgs": 78,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.01775330896249382,
+        "rmse": 0.13324154368099245,
+        "median_corr": 0.5074834347284143,
+        "p10_corr": 0.17260682147080186,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6655463232614178,
+        "squared_bias_fraction_of_sse": 0.21154541472564123,
+        "fraction_abs_error_gt_0p2": 0.11294661223456438,
+        "median_within_corr": 0.3890848412857063
+      },
+      "candidate": {
+        "mse": 0.018972846952274757,
+        "rmse": 0.1377419578497226,
+        "median_corr": 0.5042380026150688,
+        "p10_corr": 0.17952162981443923,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6578101076767853,
+        "squared_bias_fraction_of_sse": 0.25478544996326735,
+        "fraction_abs_error_gt_0p2": 0.12690275008702806,
+        "median_within_corr": 0.3910355323696287
+      },
+      "delta_median_corr": -0.003245432113345492,
+      "fraction_cpg_mse_improved": 0.3974358974358974,
+      "fraction_cpg_corr_improved": 0.4230769230769231
+    },
+    "seen_cpg_new_patient/block/43": {
+      "cpgs": 46,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.026908147009053782,
+        "rmse": 0.16403702938377598,
+        "median_corr": 0.5503239208984076,
+        "p10_corr": 0.126934734389253,
+        "fraction_negative_corr": 0.021739130434782608,
+        "median_std_ratio": 0.6100222155671671,
+        "squared_bias_fraction_of_sse": 0.15497411976769881,
+        "fraction_abs_error_gt_0p2": 0.18361114282452334,
+        "median_within_corr": 0.4434888918243737
+      },
+      "candidate": {
+        "mse": 0.02985815657687894,
+        "rmse": 0.17279512891536886,
+        "median_corr": 0.5469564587110222,
+        "p10_corr": 0.12312482106948687,
+        "fraction_negative_corr": 0.021739130434782608,
+        "median_std_ratio": 0.5732428639910594,
+        "squared_bias_fraction_of_sse": 0.22602138936359714,
+        "fraction_abs_error_gt_0p2": 0.20573124785934468,
+        "median_within_corr": 0.43124872496025096
+      },
+      "delta_median_corr": -0.0033674621873854838,
+      "fraction_cpg_mse_improved": 0.30434782608695654,
+      "fraction_cpg_corr_improved": 0.3695652173913043
+    },
+    "seen_cpg_new_patient/block/44": {
+      "cpgs": 92,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.02196543222277223,
+        "rmse": 0.14820739597864957,
+        "median_corr": 0.46334432205091225,
+        "p10_corr": 0.10592306741588019,
+        "fraction_negative_corr": 0.043478260869565216,
+        "median_std_ratio": 0.6040661807866712,
+        "squared_bias_fraction_of_sse": 0.1878715143789976,
+        "fraction_abs_error_gt_0p2": 0.14695215323858904,
+        "median_within_corr": 0.3343146068152953
+      },
+      "candidate": {
+        "mse": 0.023126586340857517,
+        "rmse": 0.15207427902461848,
+        "median_corr": 0.4559442999639495,
+        "p10_corr": 0.0967348451481488,
+        "fraction_negative_corr": 0.043478260869565216,
+        "median_std_ratio": 0.5894150691195337,
+        "squared_bias_fraction_of_sse": 0.21142796944724812,
+        "fraction_abs_error_gt_0p2": 0.1570265695940682,
+        "median_within_corr": 0.3421453706398696
+      },
+      "delta_median_corr": -0.007400022086962776,
+      "fraction_cpg_mse_improved": 0.358695652173913,
+      "fraction_cpg_corr_improved": 0.358695652173913
+    },
+    "seen_cpg_new_patient/block/45": {
+      "cpgs": 147,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.020915400574571547,
+        "rmse": 0.1446215771403823,
+        "median_corr": 0.5110974373964723,
+        "p10_corr": 0.17569064566796477,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6863322416373691,
+        "squared_bias_fraction_of_sse": 0.26878177736633696,
+        "fraction_abs_error_gt_0p2": 0.14678434012282582,
+        "median_within_corr": 0.37284382676264666
+      },
+      "candidate": {
+        "mse": 0.023337399375189864,
+        "rmse": 0.15276583183156456,
+        "median_corr": 0.5006616851774037,
+        "p10_corr": 0.1772933448542118,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6756977301556888,
+        "squared_bias_fraction_of_sse": 0.32872804147639934,
+        "fraction_abs_error_gt_0p2": 0.17151571056983536,
+        "median_within_corr": 0.3840888425325175
+      },
+      "delta_median_corr": -0.010435752219068561,
+      "fraction_cpg_mse_improved": 0.29931972789115646,
+      "fraction_cpg_corr_improved": 0.3401360544217687
+    },
+    "seen_cpg_new_patient/block/46": {
+      "cpgs": 108,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.018509619068982235,
+        "rmse": 0.1360500608929751,
+        "median_corr": 0.46151916697433176,
+        "p10_corr": 0.13805698961623233,
+        "fraction_negative_corr": 0.009259259259259259,
+        "median_std_ratio": 0.6281208112261847,
+        "squared_bias_fraction_of_sse": 0.18614264687008777,
+        "fraction_abs_error_gt_0p2": 0.11758246892813756,
+        "median_within_corr": 0.35164435096456503
+      },
+      "candidate": {
+        "mse": 0.019965253743960323,
+        "rmse": 0.14129845626885074,
+        "median_corr": 0.4492776525401651,
+        "p10_corr": 0.1262031713407879,
+        "fraction_negative_corr": 0.009259259259259259,
+        "median_std_ratio": 0.6336656494675519,
+        "squared_bias_fraction_of_sse": 0.22375919367933758,
+        "fraction_abs_error_gt_0p2": 0.12941547518923466,
+        "median_within_corr": 0.3382651069363623
+      },
+      "delta_median_corr": -0.012241514434166656,
+      "fraction_cpg_mse_improved": 0.2777777777777778,
+      "fraction_cpg_corr_improved": 0.3055555555555556
+    },
+    "seen_cpg_new_patient/block/48": {
+      "cpgs": 68,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.022279579064997442,
+        "rmse": 0.1492634552226279,
+        "median_corr": 0.5476827399745221,
+        "p10_corr": 0.16444037885089252,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6591264715126877,
+        "squared_bias_fraction_of_sse": 0.17398572347201147,
+        "fraction_abs_error_gt_0p2": 0.1540067535674086,
+        "median_within_corr": 0.4675460591620515
+      },
+      "candidate": {
+        "mse": 0.023983150337765106,
+        "rmse": 0.1548649422489322,
+        "median_corr": 0.5430182433527758,
+        "p10_corr": 0.14461481990891722,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6310824341879082,
+        "squared_bias_fraction_of_sse": 0.22779246475046117,
+        "fraction_abs_error_gt_0p2": 0.1662249010566065,
+        "median_within_corr": 0.47157819393923905
+      },
+      "delta_median_corr": -0.0046644966217462835,
+      "fraction_cpg_mse_improved": 0.29411764705882354,
+      "fraction_cpg_corr_improved": 0.35294117647058826
+    },
+    "seen_cpg_new_patient/block/49": {
+      "cpgs": 75,
+      "genomic_5mb_blocks": 1,
+      "baseline": {
+        "mse": 0.024175301737978407,
+        "rmse": 0.15548408837555824,
+        "median_corr": 0.5405921493202351,
+        "p10_corr": 0.12725849885229423,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6944668450250786,
+        "squared_bias_fraction_of_sse": 0.17380196454132546,
+        "fraction_abs_error_gt_0p2": 0.16235186575691293,
+        "median_within_corr": 0.3864431669508489
+      },
+      "candidate": {
+        "mse": 0.026440244773800487,
+        "rmse": 0.16260456566099393,
+        "median_corr": 0.5245521646367118,
+        "p10_corr": 0.12598030901779075,
+        "fraction_negative_corr": 0.0,
+        "median_std_ratio": 0.6677286671864513,
+        "squared_bias_fraction_of_sse": 0.23483996956238476,
+        "fraction_abs_error_gt_0p2": 0.17913225164049493,
+        "median_within_corr": 0.40082816615369493
+      },
+      "delta_median_corr": -0.0160399846835233,
+      "fraction_cpg_mse_improved": 0.26666666666666666,
+      "fraction_cpg_corr_improved": 0.3333333333333333
+    }
+  },
+  "tissues": {
+    "seen_cpg_new_patient/TCGA-BLCA": {
+      "patients": 36,
+      "tissue": "TCGA-BLCA",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.35415903006898564,
+        "mse": 0.02321299640049035,
+        "eligible_cpgs": 3958
+      },
+      "candidate": {
+        "median_corr": 0.35897368386780876,
+        "mse": 0.025389123159003605,
+        "eligible_cpgs": 3958
+      },
+      "cheap": {
+        "median_corr": 0.3497043795954503,
+        "mse": 0.025144929369767935,
+        "eligible_cpgs": 3958
+      }
+    },
+    "double_ood/TCGA-BLCA": {
+      "patients": 36,
+      "tissue": "TCGA-BLCA",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.3208096854605297,
+        "mse": 0.03946939791646218,
+        "eligible_cpgs": 3964
+      },
+      "candidate": {
+        "median_corr": 0.3204132009296821,
+        "mse": 0.03829073716159146,
+        "eligible_cpgs": 3964
+      },
+      "cheap": {
+        "median_corr": 0.32482929988611964,
+        "mse": 0.03865728995864358,
+        "eligible_cpgs": 3964
+      }
+    },
+    "seen_cpg_new_patient/TCGA-BRCA": {
+      "patients": 70,
+      "tissue": "TCGA-BRCA",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.30328779687067886,
+        "mse": 0.019072352986642647,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.31094981871224414,
+        "mse": 0.020812365463090655,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.29311768374389513,
+        "mse": 0.020763546898373102,
+        "eligible_cpgs": 3968
+      }
+    },
+    "double_ood/TCGA-BRCA": {
+      "patients": 70,
+      "tissue": "TCGA-BRCA",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.2756889079785253,
+        "mse": 0.03168988026420696,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.2783663732788284,
+        "mse": 0.03066230869333367,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.2734326440802697,
+        "mse": 0.03126220563680041,
+        "eligible_cpgs": 3968
+      }
+    },
+    "seen_cpg_new_patient/TCGA-CESC": {
+      "patients": 27,
+      "tissue": "TCGA-CESC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.30503503513233887,
+        "mse": 0.02033371511618485,
+        "eligible_cpgs": 3959
+      },
+      "candidate": {
+        "median_corr": 0.31597158819636934,
+        "mse": 0.022309856498667915,
+        "eligible_cpgs": 3959
+      },
+      "cheap": {
+        "median_corr": 0.2947909754239327,
+        "mse": 0.021911339673247147,
+        "eligible_cpgs": 3959
+      }
+    },
+    "double_ood/TCGA-CESC": {
+      "patients": 27,
+      "tissue": "TCGA-CESC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.2753766177532092,
+        "mse": 0.0340250606912985,
+        "eligible_cpgs": 3962
+      },
+      "candidate": {
+        "median_corr": 0.2861053108140654,
+        "mse": 0.033122724162873256,
+        "eligible_cpgs": 3962
+      },
+      "cheap": {
+        "median_corr": 0.27244614180461385,
+        "mse": 0.03367783005492101,
+        "eligible_cpgs": 3962
+      }
+    },
+    "seen_cpg_new_patient/TCGA-COAD": {
+      "patients": 26,
+      "tissue": "TCGA-COAD",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.4039413732552125,
+        "mse": 0.017980085321033065,
+        "eligible_cpgs": 3962
+      },
+      "candidate": {
+        "median_corr": 0.4226973224973789,
+        "mse": 0.020267783910334906,
+        "eligible_cpgs": 3962
+      },
+      "cheap": {
+        "median_corr": 0.4022736103506097,
+        "mse": 0.019699992226282066,
+        "eligible_cpgs": 3962
+      }
+    },
+    "double_ood/TCGA-COAD": {
+      "patients": 26,
+      "tissue": "TCGA-COAD",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.3670987465884762,
+        "mse": 0.03176738211963396,
+        "eligible_cpgs": 3967
+      },
+      "candidate": {
+        "median_corr": 0.38514217799018624,
+        "mse": 0.030516777138878837,
+        "eligible_cpgs": 3967
+      },
+      "cheap": {
+        "median_corr": 0.3679082685071172,
+        "mse": 0.031010477999964974,
+        "eligible_cpgs": 3967
+      }
+    },
+    "seen_cpg_new_patient/TCGA-HNSC": {
+      "patients": 45,
+      "tissue": "TCGA-HNSC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.39262779172511547,
+        "mse": 0.0155407675398682,
+        "eligible_cpgs": 3966
+      },
+      "candidate": {
+        "median_corr": 0.41313670529725066,
+        "mse": 0.017402454111664727,
+        "eligible_cpgs": 3966
+      },
+      "cheap": {
+        "median_corr": 0.392726752277444,
+        "mse": 0.01693079338667799,
+        "eligible_cpgs": 3966
+      }
+    },
+    "double_ood/TCGA-HNSC": {
+      "patients": 45,
+      "tissue": "TCGA-HNSC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.3745347016690535,
+        "mse": 0.028004177980382686,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.3834619459532978,
+        "mse": 0.027162220811093644,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.3773944485994178,
+        "mse": 0.02781178869296349,
+        "eligible_cpgs": 3968
+      }
+    },
+    "seen_cpg_new_patient/TCGA-KIRC": {
+      "patients": 28,
+      "tissue": "TCGA-KIRC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.36883857319180535,
+        "mse": 0.015649652670723317,
+        "eligible_cpgs": 3948
+      },
+      "candidate": {
+        "median_corr": 0.38709643140413635,
+        "mse": 0.01763022905812971,
+        "eligible_cpgs": 3948
+      },
+      "cheap": {
+        "median_corr": 0.36453931777929327,
+        "mse": 0.017077090448075632,
+        "eligible_cpgs": 3948
+      }
+    },
+    "double_ood/TCGA-KIRC": {
+      "patients": 28,
+      "tissue": "TCGA-KIRC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.346355989887929,
+        "mse": 0.02657534632412164,
+        "eligible_cpgs": 3955
+      },
+      "candidate": {
+        "median_corr": 0.36644321401314855,
+        "mse": 0.025769588726155954,
+        "eligible_cpgs": 3955
+      },
+      "cheap": {
+        "median_corr": 0.34810550617938746,
+        "mse": 0.026597316137901113,
+        "eligible_cpgs": 3955
+      }
+    },
+    "seen_cpg_new_patient/TCGA-KIRP": {
+      "patients": 25,
+      "tissue": "TCGA-KIRP",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.2997474837715877,
+        "mse": 0.01574678546496506,
+        "eligible_cpgs": 3944
+      },
+      "candidate": {
+        "median_corr": 0.3148485967281379,
+        "mse": 0.01765141369747187,
+        "eligible_cpgs": 3944
+      },
+      "cheap": {
+        "median_corr": 0.2967944222803399,
+        "mse": 0.017072836178680297,
+        "eligible_cpgs": 3944
+      }
+    },
+    "double_ood/TCGA-KIRP": {
+      "patients": 25,
+      "tissue": "TCGA-KIRP",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.29358499176217984,
+        "mse": 0.025253082267177866,
+        "eligible_cpgs": 3949
+      },
+      "candidate": {
+        "median_corr": 0.3106656004588315,
+        "mse": 0.02459360129576466,
+        "eligible_cpgs": 3949
+      },
+      "cheap": {
+        "median_corr": 0.2978680061406859,
+        "mse": 0.025589193308447694,
+        "eligible_cpgs": 3949
+      }
+    },
+    "seen_cpg_new_patient/TCGA-LGG": {
+      "patients": 46,
+      "tissue": "TCGA-LGG",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.3773117672938162,
+        "mse": 0.02338601406508,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.3842982544476048,
+        "mse": 0.024930191351071464,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.37911829810009096,
+        "mse": 0.02427634667083044,
+        "eligible_cpgs": 3968
+      }
+    },
+    "double_ood/TCGA-LGG": {
+      "patients": 46,
+      "tissue": "TCGA-LGG",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.37284372425068374,
+        "mse": 0.0328721494231441,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.3749343621890041,
+        "mse": 0.03240873597497216,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.3671596173402045,
+        "mse": 0.03282943158440913,
+        "eligible_cpgs": 3968
+      }
+    },
+    "seen_cpg_new_patient/TCGA-LIHC": {
+      "patients": 33,
+      "tissue": "TCGA-LIHC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.3432007100684572,
+        "mse": 0.02547376028096572,
+        "eligible_cpgs": 3950
+      },
+      "candidate": {
+        "median_corr": 0.35483665739602954,
+        "mse": 0.027281707721439584,
+        "eligible_cpgs": 3950
+      },
+      "cheap": {
+        "median_corr": 0.3413466798208915,
+        "mse": 0.02717130098628837,
+        "eligible_cpgs": 3950
+      }
+    },
+    "double_ood/TCGA-LIHC": {
+      "patients": 33,
+      "tissue": "TCGA-LIHC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.3312345508289149,
+        "mse": 0.03833088550261714,
+        "eligible_cpgs": 3961
+      },
+      "candidate": {
+        "median_corr": 0.3471334670830306,
+        "mse": 0.03755844015996162,
+        "eligible_cpgs": 3961
+      },
+      "cheap": {
+        "median_corr": 0.3320096253296413,
+        "mse": 0.03859746768972093,
+        "eligible_cpgs": 3961
+      }
+    },
+    "seen_cpg_new_patient/TCGA-LUSC": {
+      "patients": 33,
+      "tissue": "TCGA-LUSC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.38743806101415296,
+        "mse": 0.01535720800884691,
+        "eligible_cpgs": 3966
+      },
+      "candidate": {
+        "median_corr": 0.3829491264447631,
+        "mse": 0.01711067196010139,
+        "eligible_cpgs": 3966
+      },
+      "cheap": {
+        "median_corr": 0.36778559043064596,
+        "mse": 0.016715536816519626,
+        "eligible_cpgs": 3966
+      }
+    },
+    "double_ood/TCGA-LUSC": {
+      "patients": 33,
+      "tissue": "TCGA-LUSC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.33836164474238806,
+        "mse": 0.027960512252011276,
+        "eligible_cpgs": 3964
+      },
+      "candidate": {
+        "median_corr": 0.3443336136404342,
+        "mse": 0.02715283501143096,
+        "eligible_cpgs": 3964
+      },
+      "cheap": {
+        "median_corr": 0.334483892401505,
+        "mse": 0.027663470542657893,
+        "eligible_cpgs": 3964
+      }
+    },
+    "seen_cpg_new_patient/TCGA-PRAD": {
+      "patients": 45,
+      "tissue": "TCGA-PRAD",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.3293629438795567,
+        "mse": 0.017893636206371265,
+        "eligible_cpgs": 3965
+      },
+      "candidate": {
+        "median_corr": 0.33133240460426844,
+        "mse": 0.02056750461021309,
+        "eligible_cpgs": 3965
+      },
+      "cheap": {
+        "median_corr": 0.3257679668039963,
+        "mse": 0.02004499395211584,
+        "eligible_cpgs": 3965
+      }
+    },
+    "double_ood/TCGA-PRAD": {
+      "patients": 45,
+      "tissue": "TCGA-PRAD",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.30922108617503274,
+        "mse": 0.031942287422512164,
+        "eligible_cpgs": 3965
+      },
+      "candidate": {
+        "median_corr": 0.31246509959458607,
+        "mse": 0.03114568900496478,
+        "eligible_cpgs": 3965
+      },
+      "cheap": {
+        "median_corr": 0.3108374422618046,
+        "mse": 0.031411308549911685,
+        "eligible_cpgs": 3965
+      }
+    },
+    "seen_cpg_new_patient/TCGA-SARC": {
+      "patients": 23,
+      "tissue": "TCGA-SARC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.2785015779092001,
+        "mse": 0.026496868876969726,
+        "eligible_cpgs": 3899
+      },
+      "candidate": {
+        "median_corr": 0.27554149166255215,
+        "mse": 0.027999719633393233,
+        "eligible_cpgs": 3899
+      },
+      "cheap": {
+        "median_corr": 0.26655629085008964,
+        "mse": 0.027489668149895487,
+        "eligible_cpgs": 3899
+      }
+    },
+    "double_ood/TCGA-SARC": {
+      "patients": 23,
+      "tissue": "TCGA-SARC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.2692240011413879,
+        "mse": 0.039577736112529134,
+        "eligible_cpgs": 3924
+      },
+      "candidate": {
+        "median_corr": 0.2784388317427868,
+        "mse": 0.0388628095641209,
+        "eligible_cpgs": 3924
+      },
+      "cheap": {
+        "median_corr": 0.26334002213582297,
+        "mse": 0.03946424893444601,
+        "eligible_cpgs": 3924
+      }
+    },
+    "seen_cpg_new_patient/TCGA-SKCM": {
+      "patients": 42,
+      "tissue": "TCGA-SKCM",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.3675166689140947,
+        "mse": 0.024125977498949836,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.3728859958990029,
+        "mse": 0.025966722307954795,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.36033567508570474,
+        "mse": 0.02555134787133878,
+        "eligible_cpgs": 3968
+      }
+    },
+    "double_ood/TCGA-SKCM": {
+      "patients": 42,
+      "tissue": "TCGA-SKCM",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.34800350943731445,
+        "mse": 0.03997845694436894,
+        "eligible_cpgs": 3967
+      },
+      "candidate": {
+        "median_corr": 0.3502157365067165,
+        "mse": 0.03932363700318505,
+        "eligible_cpgs": 3967
+      },
+      "cheap": {
+        "median_corr": 0.34409785937861237,
+        "mse": 0.03995399542574589,
+        "eligible_cpgs": 3967
+      }
+    },
+    "seen_cpg_new_patient/TCGA-STAD": {
+      "patients": 30,
+      "tissue": "TCGA-STAD",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.4949185274025586,
+        "mse": 0.017426787111380328,
+        "eligible_cpgs": 3932
+      },
+      "candidate": {
+        "median_corr": 0.49207185831076306,
+        "mse": 0.019307587432355017,
+        "eligible_cpgs": 3932
+      },
+      "cheap": {
+        "median_corr": 0.4713277707141427,
+        "mse": 0.019038421009994363,
+        "eligible_cpgs": 3932
+      }
+    },
+    "double_ood/TCGA-STAD": {
+      "patients": 30,
+      "tissue": "TCGA-STAD",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.4540283317808418,
+        "mse": 0.030984699604537643,
+        "eligible_cpgs": 3944
+      },
+      "candidate": {
+        "median_corr": 0.45442940272292454,
+        "mse": 0.029994253943337934,
+        "eligible_cpgs": 3944
+      },
+      "cheap": {
+        "median_corr": 0.439046619660837,
+        "mse": 0.030798501725380484,
+        "eligible_cpgs": 3944
+      }
+    },
+    "seen_cpg_new_patient/TCGA-THCA": {
+      "patients": 45,
+      "tissue": "TCGA-THCA",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.1902367626019539,
+        "mse": 0.019128286812325365,
+        "eligible_cpgs": 3967
+      },
+      "candidate": {
+        "median_corr": 0.1920863294515646,
+        "mse": 0.0215786392147003,
+        "eligible_cpgs": 3967
+      },
+      "cheap": {
+        "median_corr": 0.17898233592451546,
+        "mse": 0.020550803965732035,
+        "eligible_cpgs": 3967
+      }
+    },
+    "double_ood/TCGA-THCA": {
+      "patients": 45,
+      "tissue": "TCGA-THCA",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.18062669537405474,
+        "mse": 0.0321371139740424,
+        "eligible_cpgs": 3967
+      },
+      "candidate": {
+        "median_corr": 0.18557978068171802,
+        "mse": 0.031562837789919466,
+        "eligible_cpgs": 3967
+      },
+      "cheap": {
+        "median_corr": 0.180983375595683,
+        "mse": 0.03183571139261496,
+        "eligible_cpgs": 3967
+      }
+    },
+    "seen_cpg_new_patient/TCGA-UCEC": {
+      "patients": 38,
+      "tissue": "TCGA-UCEC",
+      "view": "seen_cpg_new_patient",
+      "baseline": {
+        "median_corr": 0.3406072123781788,
+        "mse": 0.023010061326817665,
+        "eligible_cpgs": 3968
+      },
+      "candidate": {
+        "median_corr": 0.3447327110355347,
+        "mse": 0.024992705484446317,
+        "eligible_cpgs": 3968
+      },
+      "cheap": {
+        "median_corr": 0.3220854459748561,
+        "mse": 0.024978214080949142,
+        "eligible_cpgs": 3968
+      }
+    },
+    "double_ood/TCGA-UCEC": {
+      "patients": 38,
+      "tissue": "TCGA-UCEC",
+      "view": "double_ood",
+      "baseline": {
+        "median_corr": 0.32836203347812065,
+        "mse": 0.03852420160465814,
+        "eligible_cpgs": 3970
+      },
+      "candidate": {
+        "median_corr": 0.33213903031849357,
+        "mse": 0.03711868145424045,
+        "eligible_cpgs": 3970
+      },
+      "cheap": {
+        "median_corr": 0.3256891189782677,
+        "mse": 0.03765929493435134,
+        "eligible_cpgs": 3970
+      }
+    }
+  },
+  "provenance": {
+    "baseline": {
+      "path": "/data2/home/vcivale/projects/methylation/rna_training_round2_2026-10-17/mean_training/results/dev/baseline/seed17_step2000.pt",
+      "sha256": "498ff53e415a35340637e09c907ec152ee428865342275d6484287844949f6b5"
+    },
+    "candidate": {
+      "path": "/data2/home/vcivale/projects/methylation/rna_training_round2_2026-10-17/residual_loss/results/dev/wt_mse1_wt_pcc015/seed17_step2000.pt",
+      "sha256": "0bb6b135c2a024957b5f5f085f5f6ecf0f4fb210b6073e2c0f9ee975b1e7c1c9"
+    },
+    "cheap": {
+      "path": "/data2/home/vcivale/projects/methylation/training_hypotheses_lab/results/dev/random_ffn2_2k/seed17_step2000.pt",
+      "sha256": "4711b2fa14787a5dcb5a93566d0d9d67a7399718ea4fda2716bf899ec8b41f7a"
+    }
+  }
+}

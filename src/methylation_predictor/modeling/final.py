@@ -128,6 +128,11 @@ class EfficientSingleAttentionPredictor(nn.Module):
     def requires_cpg_positions(self) -> bool:
         return False
 
+    def _cpg_query(self, track_indices, offsets, dense) -> torch.Tensor:
+        """Shallow CpG representation h_c (n_loci, WIDTH); override to change it."""
+        peak = self.track_embedding(track_indices, offsets)
+        return self.locus_norm(peak + self.dense_encoder(dense))
+
     def _retrieve_and_predict(
         self,
         h_c_query_chunk: torch.Tensor,
@@ -178,12 +183,7 @@ class EfficientSingleAttentionPredictor(nn.Module):
 
         tokens = self.rna_encoder(rna)
 
-        peak = self.track_embedding(
-            functional_track_indices,
-            functional_offsets,
-        )
-        dense = self.dense_encoder(functional_dense)
-        h_c = self.locus_norm(peak + dense)
+        h_c = self._cpg_query(functional_track_indices, functional_offsets, functional_dense)
 
         h_c_deep = h_c
         for ffn in self.functional_ffn:

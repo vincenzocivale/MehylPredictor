@@ -1,5 +1,9 @@
 # Workflows
 
+For the current AlphaGenome mixed-source campaign use the separate
+[training and inference runbook](ALPHAGENOME_REPRODUCIBILITY_2026-10-18.md).
+The generic functional training commands below do not reproduce that campaign.
+
 The repository exposes two trainable model families:
 
 - `rna_methylation`: patient-specific CpG methylation prediction from bulk RNA

@@ -148,3 +148,13 @@ No `/raid/...` path is hardcoded in any Python module under
   cols), so `MethylationSource.block`/`finite_count` switch to
   column-grouped reads for it automatically (`_column_major`).
 The shared hg38 locus store, frozen 4,165-track peak contract, 18 annotations, five breadth values, aliases and views are part of the locus store.
+
+## AlphaGenome mixed-source campaign (2026-10-18)
+
+The [campaign dossier](ALPHAGENOME_RESEARCH_STATE_2026-10-18.md) records the
+released patient-split correction, auxiliary sequence-window eligibility and
+training exposure of test CpGs. That experiment uses canonical Array axes and
+the historical N-filtered auxiliary pools (71,748 EPIC and 1,999,446 WGBS CpGs),
+with immutable source matrices. Its feature contract is native 1Mb AlphaGenome,
+not the earlier 512kb Array-only cache. See the
+[runbook](ALPHAGENOME_REPRODUCIBILITY_2026-10-18.md) for paths and provenance.

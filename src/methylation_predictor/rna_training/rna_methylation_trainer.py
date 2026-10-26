@@ -284,6 +284,7 @@ class RNAMethylationTrainer:
             config=self.recipe.model,
             final_regressor_dropout=final_regressor_dropout,
             use_mean_proxy=use_mean_branch,
+            cpg_dim=getattr(self.functional, "embedding_dim", None),
         )
         self.model = self.model.to(self.device)
         self.train_model = (

@@ -1,0 +1,2485 @@
+{
+  "protocol": {
+    "status": "development pilot; official evaluation prohibited before freeze",
+    "source": "/data2/home/vcivale/projects/methylation/CpGRepresentationBenchmark/data/cache/representations/alphagenome_locus.h5",
+    "source_sha256": "3906d888964fe71e303e2437ae64445b3f91803dcc04d15484fc5d5565850e00",
+    "reference_build": "GRCh38",
+    "coordinate_convention": "1-based CpG cytosine",
+    "embedding_dim": 1536,
+    "window": 524288,
+    "resolution": 1,
+    "dummy": false,
+    "coordinate_alignment_chr1_exact": true,
+    "coverage": {
+      "array_train_cpg_idx": {
+        "required": 33885,
+        "missing": 0
+      },
+      "array_val_cpg_idx": {
+        "required": 6742,
+        "missing": 0
+      },
+      "epic_train_cpg_idx": {
+        "required": 71748,
+        "missing": 34523
+      },
+      "wgbs_train_cpg_idx": {
+        "required": 1999446,
+        "missing": 1962528
+      }
+    },
+    "selection_rule": {
+      "scope": "internal dev only; three predetermined steps 1000,2000,4000",
+      "reference": "functional EMA at the same step",
+      "required": [
+        "double-OOD MSE <= reference * 1.01",
+        "new-patient MAS-PCC >= reference - 0.01",
+        "double-OOD within-tissue MAS-PCC >= reference - 0.005",
+        "double-OOD MAS-PCC >= reference"
+      ],
+      "ranking": "highest double-OOD MAS-PCC among eligible AlphaGenome arms/checkpoints; ties lower MSE, then fewer steps",
+      "failure": "no final model adopted if none eligible"
+    },
+    "RNA": "canonical X, gene-wise mean/std fit on 7435 inner-train patients only",
+    "target_precision": "canonical float32",
+    "unknown_tissue": "excluded from within-tissue loss and metrics",
+    "inference_inputs": [
+      "RNA",
+      "fixed functional CpG features",
+      "frozen AlphaGenome reference embedding"
+    ]
+  },
+  "development": {
+    "alphagenome": {
+      "arm": "alphagenome",
+      "seed": 17,
+      "params": 11111859,
+      "train_seconds": 61.318599462509155,
+      "eval_seconds": 1.9612605571746826,
+      "evals": {
+        "1000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.37606894567733967,
+            "rows": 24249463,
+            "mse": 0.017308672816480894,
+            "mas_pcc": 0.582710413162456,
+            "mac_pcc": 0.9395828629589409,
+            "mas_pcc_mean": 0.5183407149281044,
+            "mas_pcc_highvar": 0.6517471052467873,
+            "mas_pcc_top10var": 0.6857879669910921
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4442317967229781,
+            "rows": 29128232,
+            "mse": 0.025904426039617828,
+            "mas_pcc": 0.5504547512261855,
+            "mac_pcc": 0.904450741541505,
+            "mas_pcc_mean": 0.5281941837193656,
+            "mas_pcc_highvar": 0.605960868319821,
+            "mas_pcc_top10var": 0.6323113889647423
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.35591163084468935,
+            "rows": 3232109,
+            "mse": 0.02631983256815724,
+            "mas_pcc": 0.524631531996972,
+            "mac_pcc": 0.9035523532782977,
+            "mas_pcc_mean": 0.4779672947899876,
+            "mas_pcc_highvar": 0.5868571328443659,
+            "mas_pcc_top10var": 0.6192234076026439
+          }
+        },
+        "2000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3996008810226422,
+            "rows": 24249463,
+            "mse": 0.013915755898465025,
+            "mas_pcc": 0.6314141268188983,
+            "mac_pcc": 0.9530369303133679,
+            "mas_pcc_mean": 0.5581172145210593,
+            "mas_pcc_highvar": 0.6956984601897711,
+            "mas_pcc_top10var": 0.7263447954322787
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.454642698765451,
+            "rows": 29128232,
+            "mse": 0.027362224062196287,
+            "mas_pcc": 0.5556513831006186,
+            "mac_pcc": 0.8993737357364142,
+            "mas_pcc_mean": 0.5292444328557709,
+            "mas_pcc_highvar": 0.6063714875738441,
+            "mas_pcc_top10var": 0.6384991554171973
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3603906656094671,
+            "rows": 3232109,
+            "mse": 0.027846467784783013,
+            "mas_pcc": 0.5248097188260544,
+            "mac_pcc": 0.8981921965678615,
+            "mas_pcc_mean": 0.4763651729026927,
+            "mas_pcc_highvar": 0.587147917934427,
+            "mas_pcc_top10var": 0.6143736411875413
+          }
+        },
+        "4000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.41338664680063486,
+            "rows": 24249463,
+            "mse": 0.012510785644738611,
+            "mas_pcc": 0.6614033303164896,
+            "mac_pcc": 0.9585016149219769,
+            "mas_pcc_mean": 0.585101296493219,
+            "mas_pcc_highvar": 0.7205858339015628,
+            "mas_pcc_top10var": 0.7482443764018162
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4569742933567559,
+            "rows": 29128232,
+            "mse": 0.02822992572303863,
+            "mas_pcc": 0.5517618187833572,
+            "mac_pcc": 0.895956223438264,
+            "mas_pcc_mean": 0.5233059980712323,
+            "mas_pcc_highvar": 0.6039234431088474,
+            "mas_pcc_top10var": 0.6312858441808284
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3578752113134543,
+            "rows": 3232109,
+            "mse": 0.02875644067029082,
+            "mas_pcc": 0.5141550097723259,
+            "mac_pcc": 0.8943393597742981,
+            "mas_pcc_mean": 0.4693890906074381,
+            "mas_pcc_highvar": 0.5802883625814964,
+            "mas_pcc_top10var": 0.6080185236726707
+          }
+        }
+      },
+      "protocol": "dev chr1, canonical FP32 targets, train-only RNA and distance stats, EMA0.99, no official evaluation"
+    },
+    "functional": {
+      "arm": "functional",
+      "seed": 17,
+      "params": 11787745,
+      "train_seconds": 61.76756286621094,
+      "eval_seconds": 2.4355051517486572,
+      "evals": {
+        "1000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.32779950187155016,
+            "rows": 24249463,
+            "mse": 0.02680482825754974,
+            "mas_pcc": 0.4725112362955534,
+            "mac_pcc": 0.9015621494239294,
+            "mas_pcc_mean": 0.4306351767828837,
+            "mas_pcc_highvar": 0.5471220755397829,
+            "mas_pcc_top10var": 0.5825429761008648
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.40879651694633934,
+            "rows": 29128232,
+            "mse": 0.032962877685603346,
+            "mas_pcc": 0.47775219112583944,
+            "mac_pcc": 0.8756258485709784,
+            "mas_pcc_mean": 0.4658237009849832,
+            "mas_pcc_highvar": 0.5229022453842738,
+            "mas_pcc_top10var": 0.5285636564544677
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3149596859417707,
+            "rows": 3232109,
+            "mse": 0.033196538334663545,
+            "mas_pcc": 0.4448920304987519,
+            "mac_pcc": 0.8757935833756368,
+            "mas_pcc_mean": 0.4147900012594542,
+            "mas_pcc_highvar": 0.5010549466155044,
+            "mas_pcc_top10var": 0.52205310182842
+          }
+        },
+        "2000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.34787030683447284,
+            "rows": 24249463,
+            "mse": 0.02139000138651846,
+            "mas_pcc": 0.5187420783645321,
+            "mac_pcc": 0.923824438488211,
+            "mas_pcc_mean": 0.46564941568444673,
+            "mas_pcc_highvar": 0.5967112839135389,
+            "mas_pcc_top10var": 0.6353724551701552
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4224736949735534,
+            "rows": 29128232,
+            "mse": 0.03340148572761854,
+            "mas_pcc": 0.49194029810956796,
+            "mac_pcc": 0.8752522436399847,
+            "mas_pcc_mean": 0.47955547641750323,
+            "mas_pcc_highvar": 0.5431308661129951,
+            "mas_pcc_top10var": 0.5518344093724787
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.32412602457145556,
+            "rows": 3232109,
+            "mse": 0.033710864229580625,
+            "mas_pcc": 0.4563063198963828,
+            "mac_pcc": 0.8756762391971215,
+            "mas_pcc_mean": 0.4255638895366405,
+            "mas_pcc_highvar": 0.5194860332359141,
+            "mas_pcc_top10var": 0.5379091089067372
+          }
+        },
+        "4000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3646979370710411,
+            "rows": 24249463,
+            "mse": 0.01713939391406624,
+            "mas_pcc": 0.5658189620460701,
+            "mac_pcc": 0.9409047725514911,
+            "mas_pcc_mean": 0.4987139265750441,
+            "mas_pcc_highvar": 0.6417245959523256,
+            "mas_pcc_top10var": 0.6742485070835983
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.42634331895377603,
+            "rows": 29128232,
+            "mse": 0.03489990779948276,
+            "mas_pcc": 0.48973116375782944,
+            "mac_pcc": 0.8709877944525706,
+            "mas_pcc_mean": 0.4791048947856463,
+            "mas_pcc_highvar": 0.540788512578844,
+            "mas_pcc_top10var": 0.5622401581410601
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3269951887066497,
+            "rows": 3232109,
+            "mse": 0.03524990785690618,
+            "mas_pcc": 0.45405796618679567,
+            "mac_pcc": 0.871174102561582,
+            "mas_pcc_mean": 0.4235255121620682,
+            "mas_pcc_highvar": 0.5189075946359973,
+            "mas_pcc_top10var": 0.5512751346632281
+          }
+        }
+      },
+      "protocol": "dev chr1, canonical FP32 targets, train-only RNA and distance stats, EMA0.99, no official evaluation"
+    },
+    "hybrid": {
+      "arm": "hybrid",
+      "seed": 17,
+      "params": 12184801,
+      "train_seconds": 75.87808156013489,
+      "eval_seconds": 2.6324477195739746,
+      "evals": {
+        "1000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3744751433376076,
+            "rows": 24249463,
+            "mse": 0.017154454296879097,
+            "mas_pcc": 0.5825779590183763,
+            "mac_pcc": 0.9401670378669164,
+            "mas_pcc_mean": 0.5173747940905254,
+            "mas_pcc_highvar": 0.6509504768496961,
+            "mas_pcc_top10var": 0.6848422988385803
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4432200497175992,
+            "rows": 29128232,
+            "mse": 0.02588637803784713,
+            "mas_pcc": 0.5494534122670032,
+            "mac_pcc": 0.9045280825846395,
+            "mas_pcc_mean": 0.52680600296253,
+            "mas_pcc_highvar": 0.6044026475199968,
+            "mas_pcc_top10var": 0.630169087316286
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.35230647184033026,
+            "rows": 3232109,
+            "mse": 0.026297856464237063,
+            "mas_pcc": 0.5222396108583518,
+            "mac_pcc": 0.9038585088835251,
+            "mas_pcc_mean": 0.47594591614928744,
+            "mas_pcc_highvar": 0.5819142915525696,
+            "mas_pcc_top10var": 0.6159539475779133
+          }
+        },
+        "2000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3974190305779884,
+            "rows": 24249463,
+            "mse": 0.013881217416248806,
+            "mas_pcc": 0.6318210668198291,
+            "mac_pcc": 0.9536263544109225,
+            "mas_pcc_mean": 0.5569601796037208,
+            "mas_pcc_highvar": 0.6953945102314575,
+            "mas_pcc_top10var": 0.7248776599286941
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.45372219992663004,
+            "rows": 29128232,
+            "mse": 0.027006846219569086,
+            "mas_pcc": 0.5512752862484704,
+            "mac_pcc": 0.9007401348532382,
+            "mas_pcc_mean": 0.5281710700409187,
+            "mas_pcc_highvar": 0.6035176524513257,
+            "mas_pcc_top10var": 0.6374200304635458
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.356319743968447,
+            "rows": 3232109,
+            "mse": 0.02748966902213323,
+            "mas_pcc": 0.519287273747573,
+            "mac_pcc": 0.8993345445389401,
+            "mas_pcc_mean": 0.4737483052717332,
+            "mas_pcc_highvar": 0.5822579482030452,
+            "mas_pcc_top10var": 0.6199083320679182
+          }
+        },
+        "4000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.4113818658096954,
+            "rows": 24249463,
+            "mse": 0.012529729182842625,
+            "mas_pcc": 0.6616867921035686,
+            "mac_pcc": 0.958572285923952,
+            "mas_pcc_mean": 0.5838185532623333,
+            "mas_pcc_highvar": 0.7200971403359198,
+            "mas_pcc_top10var": 0.7459580665020326
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4562759157596369,
+            "rows": 29128232,
+            "mse": 0.027681420571043152,
+            "mas_pcc": 0.5478055047359218,
+            "mac_pcc": 0.8983133811228476,
+            "mas_pcc_mean": 0.5229868399568554,
+            "mas_pcc_highvar": 0.5998933973371243,
+            "mas_pcc_top10var": 0.6326457999991458
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.35406059235987486,
+            "rows": 3232109,
+            "mse": 0.028205309626042747,
+            "mas_pcc": 0.5118961946460692,
+            "mac_pcc": 0.8972654571677405,
+            "mas_pcc_mean": 0.4676059022442239,
+            "mas_pcc_highvar": 0.574003629701046,
+            "mas_pcc_top10var": 0.6117277604198355
+          }
+        }
+      },
+      "protocol": "dev chr1, canonical FP32 targets, train-only RNA and distance stats, EMA0.99, no official evaluation"
+    },
+    "hybrid_separate_bias": {
+      "arm": "hybrid_separate_bias",
+      "seed": 17,
+      "params": 12218338,
+      "train_seconds": 89.64602947235107,
+      "eval_seconds": 2.1871001720428467,
+      "evals": {
+        "1000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.37440504673987907,
+            "rows": 24249463,
+            "mse": 0.017148432721785158,
+            "mas_pcc": 0.5826731994672535,
+            "mac_pcc": 0.9400753273610899,
+            "mas_pcc_mean": 0.5171939615680082,
+            "mas_pcc_highvar": 0.6508470529293878,
+            "mas_pcc_top10var": 0.6847645150525203
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4431154878107078,
+            "rows": 29128232,
+            "mse": 0.025889726802278606,
+            "mas_pcc": 0.5492182150865003,
+            "mac_pcc": 0.9045183671814018,
+            "mas_pcc_mean": 0.5266189008740052,
+            "mas_pcc_highvar": 0.6043593717281894,
+            "mas_pcc_top10var": 0.6314067794609521
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.35226495234759503,
+            "rows": 3232109,
+            "mse": 0.02629900348167121,
+            "mas_pcc": 0.5222186966414399,
+            "mac_pcc": 0.9038736241281634,
+            "mas_pcc_mean": 0.4757073407420975,
+            "mas_pcc_highvar": 0.5828221120000037,
+            "mas_pcc_top10var": 0.6166707156900137
+          }
+        },
+        "2000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3973394309126831,
+            "rows": 24249463,
+            "mse": 0.013887071044768093,
+            "mas_pcc": 0.631723095780686,
+            "mac_pcc": 0.9535212820962559,
+            "mas_pcc_mean": 0.557008295063362,
+            "mas_pcc_highvar": 0.6953254360046197,
+            "mas_pcc_top10var": 0.7256590127199598
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.45326996685709925,
+            "rows": 29128232,
+            "mse": 0.02701420422528659,
+            "mas_pcc": 0.5510608773851747,
+            "mac_pcc": 0.9008628411981543,
+            "mas_pcc_mean": 0.5279918386136665,
+            "mas_pcc_highvar": 0.6030894067500274,
+            "mas_pcc_top10var": 0.6362530390659826
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.35640840593360995,
+            "rows": 3232109,
+            "mse": 0.027496901947531814,
+            "mas_pcc": 0.5196736408576073,
+            "mac_pcc": 0.8994661936933305,
+            "mas_pcc_mean": 0.4736842067804452,
+            "mas_pcc_highvar": 0.5819518834674706,
+            "mas_pcc_top10var": 0.6190750500890783
+          }
+        },
+        "4000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.41129064638497415,
+            "rows": 24249463,
+            "mse": 0.012541589348430412,
+            "mas_pcc": 0.661888248636132,
+            "mac_pcc": 0.9586600377593664,
+            "mas_pcc_mean": 0.5839773497278626,
+            "mas_pcc_highvar": 0.7199891343412252,
+            "mas_pcc_top10var": 0.7462455889225371
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.45614700246868195,
+            "rows": 29128232,
+            "mse": 0.027687396587644495,
+            "mas_pcc": 0.5481978555550981,
+            "mac_pcc": 0.898405674841119,
+            "mas_pcc_mean": 0.5227653589906438,
+            "mas_pcc_highvar": 0.5996152576128082,
+            "mas_pcc_top10var": 0.632320744332941
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.35424017093708804,
+            "rows": 3232109,
+            "mse": 0.028208660746942702,
+            "mas_pcc": 0.5111790122545592,
+            "mac_pcc": 0.8975050492553991,
+            "mas_pcc_mean": 0.46757080395967454,
+            "mas_pcc_highvar": 0.5760792706271101,
+            "mas_pcc_top10var": 0.6127472537597416
+          }
+        }
+      },
+      "protocol": "dev chr1, canonical FP32 targets, train-only RNA and distance stats, EMA0.99, no official evaluation"
+    },
+    "hybrid_wt": {
+      "arm": "hybrid_wt",
+      "seed": 17,
+      "params": 12184801,
+      "train_seconds": 95.7606213092804,
+      "eval_seconds": 2.00034761428833,
+      "evals": {
+        "1000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.38878283243865674,
+            "rows": 24249463,
+            "mse": 0.01740585563631593,
+            "mas_pcc": 0.5864924801524471,
+            "mac_pcc": 0.9391600129077766,
+            "mas_pcc_mean": 0.5202806895411544,
+            "mas_pcc_highvar": 0.6541660032444158,
+            "mas_pcc_top10var": 0.6863329664038591
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.45292203080603494,
+            "rows": 29128232,
+            "mse": 0.025854389819986,
+            "mas_pcc": 0.5524343785797441,
+            "mac_pcc": 0.9051952645718562,
+            "mas_pcc_mean": 0.5304276699035861,
+            "mas_pcc_highvar": 0.609223022862535,
+            "mas_pcc_top10var": 0.6350395041079606
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3611698524725022,
+            "rows": 3232109,
+            "mse": 0.02628945080049886,
+            "mas_pcc": 0.5249045046055111,
+            "mac_pcc": 0.9044260713278085,
+            "mas_pcc_mean": 0.47780342980331475,
+            "mas_pcc_highvar": 0.5870327701817308,
+            "mas_pcc_top10var": 0.6210623629631316
+          }
+        },
+        "2000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.4125414101259653,
+            "rows": 24249463,
+            "mse": 0.014193221570731019,
+            "mas_pcc": 0.6330954960079495,
+            "mac_pcc": 0.9520202132268573,
+            "mas_pcc_mean": 0.5596257514467701,
+            "mas_pcc_highvar": 0.69499648853326,
+            "mas_pcc_top10var": 0.723812070145043
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4598619399768136,
+            "rows": 29128232,
+            "mse": 0.027089780023511954,
+            "mas_pcc": 0.5554386039929935,
+            "mac_pcc": 0.9014792204472025,
+            "mas_pcc_mean": 0.5306425457044844,
+            "mas_pcc_highvar": 0.607312890525571,
+            "mas_pcc_top10var": 0.6383636743215058
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.3635207086623692,
+            "rows": 3232109,
+            "mse": 0.027586891190053503,
+            "mas_pcc": 0.5223312052722453,
+            "mac_pcc": 0.9006665750215926,
+            "mas_pcc_mean": 0.47598676908626136,
+            "mas_pcc_highvar": 0.5871545902036421,
+            "mas_pcc_top10var": 0.6247005701046394
+          }
+        },
+        "4000": {
+          "train_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.4275137909195489,
+            "rows": 24249463,
+            "mse": 0.012870128498021556,
+            "mas_pcc": 0.6611097004807531,
+            "mac_pcc": 0.9574610197326365,
+            "mas_pcc_mean": 0.5862816577472326,
+            "mas_pcc_highvar": 0.7184717007394255,
+            "mas_pcc_top10var": 0.7433298258915597
+          },
+          "val_cpg_x_train_sample": {
+            "mas_pcc_within_tissue": 0.4598625435747599,
+            "rows": 29128232,
+            "mse": 0.02796628334261194,
+            "mas_pcc": 0.5488336152161382,
+            "mac_pcc": 0.8988629983424556,
+            "mas_pcc_mean": 0.5230996188381206,
+            "mas_pcc_highvar": 0.6054238347687039,
+            "mas_pcc_top10var": 0.635753130945906
+          },
+          "val_cpg_x_val_sample": {
+            "mas_pcc_within_tissue": 0.36046016849465634,
+            "rows": 3232109,
+            "mse": 0.02850082480901725,
+            "mas_pcc": 0.5144300270872562,
+            "mac_pcc": 0.8978472730856425,
+            "mas_pcc_mean": 0.46840432054137837,
+            "mas_pcc_highvar": 0.5838372037815714,
+            "mas_pcc_top10var": 0.6233376136327098
+          }
+        }
+      },
+      "protocol": "dev chr1, canonical FP32 targets, train-only RNA and distance stats, EMA0.99, no official evaluation"
+    }
+  },
+  "freeze": {
+    "selection_data": "inner_development_only",
+    "created_unix": 1792246677.1712365,
+    "arm": "hybrid_wt",
+    "step": 1000,
+    "eligible": true,
+    "checks": {
+      "mse": true,
+      "new_patients": true,
+      "within_tissue": true,
+      "double_ood": true
+    },
+    "mas_pcc": 0.5249045046055111,
+    "mse": 0.02628945080049886,
+    "seed": 17,
+    "ranking": [
+      {
+        "arm": "hybrid_wt",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5249045046055111,
+        "mse": 0.02628945080049886
+      },
+      {
+        "arm": "alphagenome",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5248097188260544,
+        "mse": 0.027846467784783013
+      },
+      {
+        "arm": "alphagenome",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.524631531996972,
+        "mse": 0.02631983256815724
+      },
+      {
+        "arm": "hybrid_wt",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5223312052722453,
+        "mse": 0.027586891190053503
+      },
+      {
+        "arm": "hybrid",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5222396108583518,
+        "mse": 0.026297856464237063
+      },
+      {
+        "arm": "hybrid_separate_bias",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5222186966414399,
+        "mse": 0.02629900348167121
+      },
+      {
+        "arm": "hybrid_separate_bias",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5196736408576073,
+        "mse": 0.027496901947531814
+      },
+      {
+        "arm": "hybrid",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.519287273747573,
+        "mse": 0.02748966902213323
+      },
+      {
+        "arm": "hybrid_wt",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5144300270872562,
+        "mse": 0.02850082480901725
+      },
+      {
+        "arm": "alphagenome",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5141550097723259,
+        "mse": 0.02875644067029082
+      },
+      {
+        "arm": "hybrid",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5118961946460692,
+        "mse": 0.028205309626042747
+      },
+      {
+        "arm": "hybrid_separate_bias",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5111790122545592,
+        "mse": 0.028208660746942702
+      }
+    ],
+    "all_checks": [
+      {
+        "arm": "alphagenome",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.524631531996972,
+        "mse": 0.02631983256815724
+      },
+      {
+        "arm": "alphagenome",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5248097188260544,
+        "mse": 0.027846467784783013
+      },
+      {
+        "arm": "alphagenome",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5141550097723259,
+        "mse": 0.02875644067029082
+      },
+      {
+        "arm": "hybrid",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5222396108583518,
+        "mse": 0.026297856464237063
+      },
+      {
+        "arm": "hybrid",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.519287273747573,
+        "mse": 0.02748966902213323
+      },
+      {
+        "arm": "hybrid",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5118961946460692,
+        "mse": 0.028205309626042747
+      },
+      {
+        "arm": "hybrid_wt",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5249045046055111,
+        "mse": 0.02628945080049886
+      },
+      {
+        "arm": "hybrid_wt",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5223312052722453,
+        "mse": 0.027586891190053503
+      },
+      {
+        "arm": "hybrid_wt",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5144300270872562,
+        "mse": 0.02850082480901725
+      },
+      {
+        "arm": "hybrid_separate_bias",
+        "step": 1000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5222186966414399,
+        "mse": 0.02629900348167121
+      },
+      {
+        "arm": "hybrid_separate_bias",
+        "step": 2000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5196736408576073,
+        "mse": 0.027496901947531814
+      },
+      {
+        "arm": "hybrid_separate_bias",
+        "step": 4000,
+        "eligible": true,
+        "checks": {
+          "mse": true,
+          "new_patients": true,
+          "within_tissue": true,
+          "double_ood": true
+        },
+        "mas_pcc": 0.5111790122545592,
+        "mse": 0.028208660746942702
+      }
+    ],
+    "protocol_sha256": "8f37b3a2d097f6dd5150c09088f353a8c2db6a010d753857ca94a0cf7569d9f5",
+    "result_sha256": {
+      "functional": "481749c96abf7276c072a6231bc25ea933d6b2c84261a77919aa26cd8f055799",
+      "alphagenome": "eddc97ed4d8e4d9dd3e3676bff435c47dc172b75af62637d4fc65c594b4ada88",
+      "hybrid": "cf9ef447bf859a538bed8b982e21e97ba7116132741f3145fb9e190029d950ba",
+      "hybrid_wt": "2564923a6f25506d67d858f3aa083687a127c1d32c7f73940bdcb77b34c6ed3f",
+      "hybrid_separate_bias": "b7e54855fa344730d05d7b2a4045519a220002ae168ed9b1ba7b1c8893ff040f"
+    }
+  },
+  "official_refit": {
+    "phase": "one_post_freeze_official_evaluation",
+    "views": {
+      "train_cpg_x_val_sample": {
+        "mas_pcc_within_tissue": 0.3903925102268936,
+        "rows": 30563936,
+        "mse": 0.017963606656024544,
+        "mas_pcc": 0.589984049980117,
+        "mac_pcc": 0.9361126359798388,
+        "mas_pcc_mean": 0.530216671272729,
+        "mas_pcc_highvar": 0.6494775751606983,
+        "mas_pcc_top10var": 0.6779604764619961,
+        "mae": 0.08760227877455232,
+        "error_gt_0p2_fraction": 0.12347189184010855,
+        "per_cpg_pcc_p10": 0.1861387456877896,
+        "per_cpg_negative_pcc_fraction": 0.0027150656632728347,
+        "squared_locus_bias_share": 0.21033625530553537,
+        "diagnostics": {
+          "block_5mb": {
+            "0": {
+              "cpgs": 2904,
+              "median_pcc": 0.667778287647196,
+              "mse": 0.020162829698790685,
+              "mae": 0.10040232764946823,
+              "error_gt_0p2_fraction": 0.14389143310072627
+            },
+            "1": {
+              "cpgs": 1535,
+              "median_pcc": 0.630969922351721,
+              "mse": 0.01879589761530029,
+              "mae": 0.0918461376637873,
+              "error_gt_0p2_fraction": 0.12931485393226136
+            },
+            "2": {
+              "cpgs": 1043,
+              "median_pcc": 0.6161507880053876,
+              "mse": 0.01823619201377714,
+              "mae": 0.08957450963431492,
+              "error_gt_0p2_fraction": 0.12477694735692559
+            },
+            "3": {
+              "cpgs": 1260,
+              "median_pcc": 0.6236937930990378,
+              "mse": 0.017433336867567602,
+              "mae": 0.08882780194912931,
+              "error_gt_0p2_fraction": 0.11955502072096208
+            },
+            "4": {
+              "cpgs": 1158,
+              "median_pcc": 0.6107653583187334,
+              "mse": 0.017762664952147993,
+              "mae": 0.08863208068959448,
+              "error_gt_0p2_fraction": 0.12430557607987865
+            },
+            "5": {
+              "cpgs": 1356,
+              "median_pcc": 0.5600704387225317,
+              "mse": 0.01385217171941911,
+              "mae": 0.07395878302867351,
+              "error_gt_0p2_fraction": 0.0928007433758507
+            },
+            "6": {
+              "cpgs": 1051,
+              "median_pcc": 0.5946789842890509,
+              "mse": 0.016704109444900646,
+              "mae": 0.08416290347579322,
+              "error_gt_0p2_fraction": 0.11341066642309788
+            },
+            "7": {
+              "cpgs": 1110,
+              "median_pcc": 0.5606331818968255,
+              "mse": 0.01589020200634187,
+              "mae": 0.08082873016824837,
+              "error_gt_0p2_fraction": 0.11033360113738348
+            },
+            "8": {
+              "cpgs": 1323,
+              "median_pcc": 0.566821259400066,
+              "mse": 0.01492354206151961,
+              "mae": 0.07800237248593234,
+              "error_gt_0p2_fraction": 0.1000101847615931
+            },
+            "9": {
+              "cpgs": 736,
+              "median_pcc": 0.5542654918583373,
+              "mse": 0.017207570007491825,
+              "mae": 0.08432620442194594,
+              "error_gt_0p2_fraction": 0.12000912137732797
+            },
+            "10": {
+              "cpgs": 996,
+              "median_pcc": 0.5872708500418409,
+              "mse": 0.016735964881343865,
+              "mae": 0.08328659370044414,
+              "error_gt_0p2_fraction": 0.11343561237560132
+            },
+            "11": {
+              "cpgs": 433,
+              "median_pcc": 0.6031365562609815,
+              "mse": 0.021353590702249292,
+              "mae": 0.09940185889638857,
+              "error_gt_0p2_fraction": 0.14860023201141578
+            },
+            "12": {
+              "cpgs": 463,
+              "median_pcc": 0.5617654448780823,
+              "mse": 0.01938174724663945,
+              "mae": 0.0905367898548914,
+              "error_gt_0p2_fraction": 0.13329178969506808
+            },
+            "13": {
+              "cpgs": 449,
+              "median_pcc": 0.5576072920289853,
+              "mse": 0.021507895702050077,
+              "mae": 0.0984482734532696,
+              "error_gt_0p2_fraction": 0.14630836863239904
+            },
+            "14": {
+              "cpgs": 163,
+              "median_pcc": 0.4711198583883227,
+              "mse": 0.01621350373715674,
+              "mae": 0.07629261508764952,
+              "error_gt_0p2_fraction": 0.10647571606475716
+            },
+            "15": {
+              "cpgs": 342,
+              "median_pcc": 0.5840820402212741,
+              "mse": 0.02216579399132618,
+              "mae": 0.10021930038145686,
+              "error_gt_0p2_fraction": 0.15543636381629078
+            },
+            "16": {
+              "cpgs": 248,
+              "median_pcc": 0.5445584333180689,
+              "mse": 0.019244609413593246,
+              "mae": 0.0891413926425315,
+              "error_gt_0p2_fraction": 0.12397154374275249
+            },
+            "17": {
+              "cpgs": 492,
+              "median_pcc": 0.534714292563808,
+              "mse": 0.018244765287019047,
+              "mae": 0.08367848803750502,
+              "error_gt_0p2_fraction": 0.11698713916824292
+            },
+            "18": {
+              "cpgs": 686,
+              "median_pcc": 0.5529698741345103,
+              "mse": 0.01745411728773958,
+              "mae": 0.08343520603755444,
+              "error_gt_0p2_fraction": 0.11794314495531051
+            },
+            "19": {
+              "cpgs": 229,
+              "median_pcc": 0.5469373950608323,
+              "mse": 0.017857049361103532,
+              "mae": 0.08458256690833237,
+              "error_gt_0p2_fraction": 0.11834357210742384
+            },
+            "20": {
+              "cpgs": 231,
+              "median_pcc": 0.44234273360134585,
+              "mse": 0.01628926576448832,
+              "mae": 0.07521306686353298,
+              "error_gt_0p2_fraction": 0.10764367787883398
+            },
+            "21": {
+              "cpgs": 521,
+              "median_pcc": 0.5625197261072381,
+              "mse": 0.01525185829126865,
+              "mae": 0.07606799792084723,
+              "error_gt_0p2_fraction": 0.10141940708851048
+            },
+            "22": {
+              "cpgs": 904,
+              "median_pcc": 0.5642289968076574,
+              "mse": 0.016355228126655803,
+              "mae": 0.081411658572245,
+              "error_gt_0p2_fraction": 0.11275353079578251
+            },
+            "23": {
+              "cpgs": 642,
+              "median_pcc": 0.5805410560771946,
+              "mse": 0.019363202594258548,
+              "mae": 0.092593175111625,
+              "error_gt_0p2_fraction": 0.13344883441030284
+            },
+            "28": {
+              "cpgs": 27,
+              "median_pcc": 0.5751034350436448,
+              "mse": 0.04180602173335134,
+              "mae": 0.16014416869664172,
+              "error_gt_0p2_fraction": 0.3087692823608317
+            },
+            "29": {
+              "cpgs": 222,
+              "median_pcc": 0.5175519628406668,
+              "mse": 0.015792616370673224,
+              "mae": 0.07842868030460481,
+              "error_gt_0p2_fraction": 0.10968709387183845
+            },
+            "30": {
+              "cpgs": 1532,
+              "median_pcc": 0.5601048585814523,
+              "mse": 0.016861811863092706,
+              "mae": 0.08287238292208114,
+              "error_gt_0p2_fraction": 0.11714466844173957
+            },
+            "31": {
+              "cpgs": 1327,
+              "median_pcc": 0.5976043339776373,
+              "mse": 0.01809084586581685,
+              "mae": 0.08914051900843381,
+              "error_gt_0p2_fraction": 0.12795880277645044
+            },
+            "32": {
+              "cpgs": 851,
+              "median_pcc": 0.5880423021965265,
+              "mse": 0.017644353116298254,
+              "mae": 0.08599942875362644,
+              "error_gt_0p2_fraction": 0.1209445883715014
+            },
+            "33": {
+              "cpgs": 657,
+              "median_pcc": 0.5432798577528479,
+              "mse": 0.01682056494814147,
+              "mae": 0.0817605210861649,
+              "error_gt_0p2_fraction": 0.11555950734819312
+            },
+            "34": {
+              "cpgs": 438,
+              "median_pcc": 0.5395316300822386,
+              "mse": 0.018352476463838852,
+              "mae": 0.08428406091033229,
+              "error_gt_0p2_fraction": 0.12365885310226436
+            },
+            "35": {
+              "cpgs": 491,
+              "median_pcc": 0.594017679839577,
+              "mse": 0.01875248801986642,
+              "mae": 0.08896372411842061,
+              "error_gt_0p2_fraction": 0.13042354210691964
+            },
+            "36": {
+              "cpgs": 667,
+              "median_pcc": 0.5699611232869534,
+              "mse": 0.018004042737900232,
+              "mae": 0.08595013678832221,
+              "error_gt_0p2_fraction": 0.11951954656832083
+            },
+            "37": {
+              "cpgs": 158,
+              "median_pcc": 0.5577358761484088,
+              "mse": 0.01789234426237205,
+              "mae": 0.0799655282362953,
+              "error_gt_0p2_fraction": 0.11150138039691831
+            },
+            "38": {
+              "cpgs": 131,
+              "median_pcc": 0.4777035994645618,
+              "mse": 0.017048255718686626,
+              "mae": 0.07682130405724621,
+              "error_gt_0p2_fraction": 0.10603662472478402
+            },
+            "39": {
+              "cpgs": 209,
+              "median_pcc": 0.53329232068245,
+              "mse": 0.022338304653093537,
+              "mae": 0.09635972481579488,
+              "error_gt_0p2_fraction": 0.15099801068419053
+            },
+            "40": {
+              "cpgs": 1239,
+              "median_pcc": 0.6112115558841295,
+              "mse": 0.018120487463819095,
+              "mae": 0.08960386159722585,
+              "error_gt_0p2_fraction": 0.12597831866801695
+            },
+            "41": {
+              "cpgs": 918,
+              "median_pcc": 0.607730658232195,
+              "mse": 0.020213680439104292,
+              "mae": 0.09528420920651029,
+              "error_gt_0p2_fraction": 0.1400314077857994
+            },
+            "42": {
+              "cpgs": 644,
+              "median_pcc": 0.5547534085025105,
+              "mse": 0.016277388891255653,
+              "mae": 0.08041342235772364,
+              "error_gt_0p2_fraction": 0.10982836846023317
+            },
+            "43": {
+              "cpgs": 288,
+              "median_pcc": 0.5983033176774861,
+              "mse": 0.025764357054645345,
+              "mae": 0.10726480441412267,
+              "error_gt_0p2_fraction": 0.17043846679703026
+            },
+            "44": {
+              "cpgs": 622,
+              "median_pcc": 0.5550306055085793,
+              "mse": 0.018949853301527913,
+              "mae": 0.08859678224522766,
+              "error_gt_0p2_fraction": 0.1317840785557714
+            },
+            "45": {
+              "cpgs": 1092,
+              "median_pcc": 0.5946074909358712,
+              "mse": 0.01699380887405602,
+              "mae": 0.08522768075297565,
+              "error_gt_0p2_fraction": 0.11434887885056615
+            },
+            "46": {
+              "cpgs": 716,
+              "median_pcc": 0.5768005352313113,
+              "mse": 0.017620990140494574,
+              "mae": 0.08601045331433185,
+              "error_gt_0p2_fraction": 0.11952744746272036
+            },
+            "47": {
+              "cpgs": 429,
+              "median_pcc": 0.5811983570037719,
+              "mse": 0.02054180451966136,
+              "mae": 0.09280321220607507,
+              "error_gt_0p2_fraction": 0.14186904792629107
+            },
+            "48": {
+              "cpgs": 417,
+              "median_pcc": 0.5831407532765396,
+              "mse": 0.021509527831091977,
+              "mae": 0.09578457534096295,
+              "error_gt_0p2_fraction": 0.15013230682405057
+            },
+            "49": {
+              "cpgs": 531,
+              "median_pcc": 0.5997601528719037,
+              "mse": 0.020068344036234628,
+              "mae": 0.09289573183221403,
+              "error_gt_0p2_fraction": 0.14142595702130067
+            }
+          },
+          "island_context": {
+            "island": {
+              "cpgs": 9592,
+              "median_pcc": 0.4135723243786849,
+              "mse": 0.011523574515087091,
+              "mae": 0.061789534770883364,
+              "error_gt_0p2_fraction": 0.07591270110078138
+            },
+            "open_sea": {
+              "cpgs": 12614,
+              "median_pcc": 0.6283503622959553,
+              "mse": 0.022052544381881218,
+              "mae": 0.10345614637770598,
+              "error_gt_0p2_fraction": 0.15385827544446815
+            },
+            "shelf": {
+              "cpgs": 3161,
+              "median_pcc": 0.6251557960012613,
+              "mse": 0.019076820768609417,
+              "mae": 0.09423706141316666,
+              "error_gt_0p2_fraction": 0.1300008930166101
+            },
+            "shore": {
+              "cpgs": 8518,
+              "median_pcc": 0.5819159903588784,
+              "mse": 0.01889655573631511,
+              "mae": 0.09133019601214881,
+              "error_gt_0p2_fraction": 0.13070409813983572
+            }
+          },
+          "observed_sd_bin": {
+            "low": {
+              "cpgs": 7064,
+              "median_pcc": 0.20761978045046223,
+              "mse": 0.0014591318476037823,
+              "mae": 0.024649214296644382,
+              "error_gt_0p2_fraction": 0.0033955770583119905
+            },
+            "medium": {
+              "cpgs": 11262,
+              "median_pcc": 0.5788951703811611,
+              "mse": 0.01121723920423653,
+              "mae": 0.06820321442991993,
+              "error_gt_0p2_fraction": 0.06567741000713112
+            },
+            "high": {
+              "cpgs": 15559,
+              "median_pcc": 0.6525278513119359,
+              "mse": 0.03049436474105027,
+              "mae": 0.1307965356541016,
+              "error_gt_0p2_fraction": 0.22096789833180294
+            }
+          }
+        }
+      },
+      "val_cpg_x_train_sample": {
+        "mas_pcc_within_tissue": 0.4547571699047322,
+        "rows": 55154676,
+        "mse": 0.019664744467115195,
+        "mas_pcc": 0.5636598075763879,
+        "mac_pcc": 0.9304581882908367,
+        "mas_pcc_mean": 0.5299456090043511,
+        "mas_pcc_highvar": 0.6295457443193235,
+        "mas_pcc_top10var": 0.6631334327147671,
+        "mae": 0.08767725226245869,
+        "error_gt_0p2_fraction": 0.13123239088558875,
+        "per_cpg_pcc_p10": 0.2707286004515565,
+        "per_cpg_negative_pcc_fraction": 0.0020765351527736575,
+        "squared_locus_bias_share": 0.34939111391651234,
+        "diagnostics": {
+          "block_5mb": {
+            "0": {
+              "cpgs": 1158,
+              "median_pcc": 0.6149160899297712,
+              "mse": 0.02440434016792834,
+              "mae": 0.10586724413749979,
+              "error_gt_0p2_fraction": 0.1676257958510885
+            },
+            "1": {
+              "cpgs": 337,
+              "median_pcc": 0.5657010265143203,
+              "mse": 0.01990243346492319,
+              "mae": 0.08983901893025092,
+              "error_gt_0p2_fraction": 0.13701441604492604
+            },
+            "2": {
+              "cpgs": 238,
+              "median_pcc": 0.5867439003909982,
+              "mse": 0.01751646593552592,
+              "mae": 0.08447253876997467,
+              "error_gt_0p2_fraction": 0.11910299622503932
+            },
+            "3": {
+              "cpgs": 306,
+              "median_pcc": 0.5883767366053966,
+              "mse": 0.021200945212052465,
+              "mae": 0.0917150268485807,
+              "error_gt_0p2_fraction": 0.1351860053584951
+            },
+            "4": {
+              "cpgs": 328,
+              "median_pcc": 0.5408926182449056,
+              "mse": 0.018175060901143094,
+              "mae": 0.08287059665814607,
+              "error_gt_0p2_fraction": 0.1221271032295868
+            },
+            "5": {
+              "cpgs": 347,
+              "median_pcc": 0.5512421482014098,
+              "mse": 0.01639344555383739,
+              "mae": 0.07733814381619153,
+              "error_gt_0p2_fraction": 0.10766326244385563
+            },
+            "6": {
+              "cpgs": 228,
+              "median_pcc": 0.5758633817374167,
+              "mse": 0.019484797914831622,
+              "mae": 0.08855707354582758,
+              "error_gt_0p2_fraction": 0.13315128557294875
+            },
+            "7": {
+              "cpgs": 215,
+              "median_pcc": 0.5320071840295,
+              "mse": 0.019773796027896487,
+              "mae": 0.08469091902248763,
+              "error_gt_0p2_fraction": 0.13003233966105482
+            },
+            "8": {
+              "cpgs": 248,
+              "median_pcc": 0.5170213593758004,
+              "mse": 0.0155883013436859,
+              "mae": 0.07404561042368697,
+              "error_gt_0p2_fraction": 0.09794138168243816
+            },
+            "9": {
+              "cpgs": 112,
+              "median_pcc": 0.49029830889499304,
+              "mse": 0.01925482675093825,
+              "mae": 0.08409527177590384,
+              "error_gt_0p2_fraction": 0.1260207129510003
+            },
+            "10": {
+              "cpgs": 178,
+              "median_pcc": 0.5351416415067995,
+              "mse": 0.01877832505316392,
+              "mae": 0.08371379682603937,
+              "error_gt_0p2_fraction": 0.12566001369655067
+            },
+            "11": {
+              "cpgs": 71,
+              "median_pcc": 0.5924921249472247,
+              "mse": 0.016967530008144698,
+              "mae": 0.07766625989798082,
+              "error_gt_0p2_fraction": 0.11282383486640007
+            },
+            "12": {
+              "cpgs": 67,
+              "median_pcc": 0.5517345358303005,
+              "mse": 0.01666898200397599,
+              "mae": 0.07482567505269401,
+              "error_gt_0p2_fraction": 0.11713141872676164
+            },
+            "13": {
+              "cpgs": 62,
+              "median_pcc": 0.5562919941755421,
+              "mse": 0.014689159629230142,
+              "mae": 0.07390088657781804,
+              "error_gt_0p2_fraction": 0.10273392345331032
+            },
+            "14": {
+              "cpgs": 29,
+              "median_pcc": 0.45370635840164253,
+              "mse": 0.013682276370951128,
+              "mae": 0.06634824937495078,
+              "error_gt_0p2_fraction": 0.08836806682680863
+            },
+            "15": {
+              "cpgs": 49,
+              "median_pcc": 0.6120022274231183,
+              "mse": 0.019567773386908547,
+              "mae": 0.08932507534630446,
+              "error_gt_0p2_fraction": 0.1346078969699995
+            },
+            "16": {
+              "cpgs": 44,
+              "median_pcc": 0.40242690959070904,
+              "mse": 0.014902047278712015,
+              "mae": 0.07110332403324071,
+              "error_gt_0p2_fraction": 0.09285869036130001
+            },
+            "17": {
+              "cpgs": 83,
+              "median_pcc": 0.44873320463373284,
+              "mse": 0.012797693227872237,
+              "mae": 0.06295218474674774,
+              "error_gt_0p2_fraction": 0.08037382349422768
+            },
+            "18": {
+              "cpgs": 115,
+              "median_pcc": 0.542331200271622,
+              "mse": 0.014641052014510764,
+              "mae": 0.0702551978059799,
+              "error_gt_0p2_fraction": 0.09326980765083791
+            },
+            "19": {
+              "cpgs": 40,
+              "median_pcc": 0.5306276210488754,
+              "mse": 0.014301457124789484,
+              "mae": 0.06909901683693963,
+              "error_gt_0p2_fraction": 0.09413617267319911
+            },
+            "20": {
+              "cpgs": 23,
+              "median_pcc": 0.5292439153562183,
+              "mse": 0.017516329992531728,
+              "mae": 0.07986955211492383,
+              "error_gt_0p2_fraction": 0.11671018691638285
+            },
+            "21": {
+              "cpgs": 87,
+              "median_pcc": 0.46436954472323244,
+              "mse": 0.012344519132450786,
+              "mae": 0.06306095760424288,
+              "error_gt_0p2_fraction": 0.08280255682019996
+            },
+            "22": {
+              "cpgs": 133,
+              "median_pcc": 0.5565633429738858,
+              "mse": 0.016574290655419162,
+              "mae": 0.07447104564938399,
+              "error_gt_0p2_fraction": 0.10607741025887077
+            },
+            "23": {
+              "cpgs": 108,
+              "median_pcc": 0.5951696895096541,
+              "mse": 0.020571723654624487,
+              "mae": 0.09256542256164395,
+              "error_gt_0p2_fraction": 0.14021818791436957
+            },
+            "29": {
+              "cpgs": 24,
+              "median_pcc": 0.507048393958571,
+              "mse": 0.023505857540252445,
+              "mae": 0.09880074678001385,
+              "error_gt_0p2_fraction": 0.14982969854099945
+            },
+            "30": {
+              "cpgs": 243,
+              "median_pcc": 0.5643212677017454,
+              "mse": 0.01641050898186283,
+              "mae": 0.07637380038598227,
+              "error_gt_0p2_fraction": 0.10566989842332494
+            },
+            "31": {
+              "cpgs": 300,
+              "median_pcc": 0.5322582090591015,
+              "mse": 0.019700073715392084,
+              "mae": 0.08816223359308613,
+              "error_gt_0p2_fraction": 0.13228981799510628
+            },
+            "32": {
+              "cpgs": 111,
+              "median_pcc": 0.5192647859646412,
+              "mse": 0.02295852046136684,
+              "mae": 0.09283308596761795,
+              "error_gt_0p2_fraction": 0.1578163139920406
+            },
+            "33": {
+              "cpgs": 67,
+              "median_pcc": 0.45642640236495696,
+              "mse": 0.014692096003753092,
+              "mae": 0.0658264407703559,
+              "error_gt_0p2_fraction": 0.09175556897171237
+            },
+            "34": {
+              "cpgs": 55,
+              "median_pcc": 0.4562745090167204,
+              "mse": 0.017208858270966892,
+              "mae": 0.07308703755291567,
+              "error_gt_0p2_fraction": 0.09764702162355056
+            },
+            "35": {
+              "cpgs": 53,
+              "median_pcc": 0.5799833162895275,
+              "mse": 0.019011556636029815,
+              "mae": 0.0807853996266617,
+              "error_gt_0p2_fraction": 0.11896806829538256
+            },
+            "36": {
+              "cpgs": 79,
+              "median_pcc": 0.614098738540296,
+              "mse": 0.01950445607213505,
+              "mae": 0.08802198084887426,
+              "error_gt_0p2_fraction": 0.13053004543422178
+            },
+            "37": {
+              "cpgs": 20,
+              "median_pcc": 0.35915966388474,
+              "mse": 0.009171205446300708,
+              "mae": 0.05264582254843657,
+              "error_gt_0p2_fraction": 0.053427456579805764
+            },
+            "39": {
+              "cpgs": 36,
+              "median_pcc": 0.5537650288768317,
+              "mse": 0.027725097417159558,
+              "mae": 0.11637913843495179,
+              "error_gt_0p2_fraction": 0.19860594186325994
+            },
+            "40": {
+              "cpgs": 169,
+              "median_pcc": 0.6159350216523852,
+              "mse": 0.022142059398417284,
+              "mae": 0.0954740911761385,
+              "error_gt_0p2_fraction": 0.1494517928321133
+            },
+            "41": {
+              "cpgs": 101,
+              "median_pcc": 0.5909254864614463,
+              "mse": 0.021198326103050148,
+              "mae": 0.09558711632768911,
+              "error_gt_0p2_fraction": 0.14339949436733887
+            },
+            "42": {
+              "cpgs": 89,
+              "median_pcc": 0.5477941524251981,
+              "mse": 0.019484638251680227,
+              "mae": 0.08370981746982536,
+              "error_gt_0p2_fraction": 0.12647185510547454
+            },
+            "43": {
+              "cpgs": 32,
+              "median_pcc": 0.5732514702613745,
+              "mse": 0.025307053757111522,
+              "mae": 0.10534216845963845,
+              "error_gt_0p2_fraction": 0.17580343219825614
+            },
+            "44": {
+              "cpgs": 76,
+              "median_pcc": 0.4775182274424121,
+              "mse": 0.020062219615140372,
+              "mae": 0.08605079875610332,
+              "error_gt_0p2_fraction": 0.12098731997949531
+            },
+            "45": {
+              "cpgs": 185,
+              "median_pcc": 0.5291663197446194,
+              "mse": 0.018260239620491822,
+              "mae": 0.08410763489498409,
+              "error_gt_0p2_fraction": 0.12501333263103837
+            },
+            "46": {
+              "cpgs": 75,
+              "median_pcc": 0.5298913526089536,
+              "mse": 0.015938734741582992,
+              "mae": 0.07461398727800643,
+              "error_gt_0p2_fraction": 0.10618983007042708
+            },
+            "47": {
+              "cpgs": 74,
+              "median_pcc": 0.5454266692067433,
+              "mse": 0.02146521809548894,
+              "mae": 0.08577010515203569,
+              "error_gt_0p2_fraction": 0.13625619758426077
+            },
+            "48": {
+              "cpgs": 148,
+              "median_pcc": 0.5230829358619979,
+              "mse": 0.02190465133991953,
+              "mae": 0.08790950855936953,
+              "error_gt_0p2_fraction": 0.13249759242976175
+            },
+            "49": {
+              "cpgs": 182,
+              "median_pcc": 0.5971253803491195,
+              "mse": 0.023606892146026216,
+              "mae": 0.10392906136050935,
+              "error_gt_0p2_fraction": 0.16221379571810582
+            }
+          },
+          "island_context": {
+            "island": {
+              "cpgs": 3330,
+              "median_pcc": 0.49360114627818286,
+              "mse": 0.013431386225644376,
+              "mae": 0.06399544931261773,
+              "error_gt_0p2_fraction": 0.0836884525890101
+            },
+            "open_sea": {
+              "cpgs": 1638,
+              "median_pcc": 0.6282985488508812,
+              "mse": 0.027474783353373843,
+              "mae": 0.11709692072802735,
+              "error_gt_0p2_fraction": 0.19085526115220938
+            },
+            "shelf": {
+              "cpgs": 459,
+              "median_pcc": 0.6263284192272203,
+              "mse": 0.02461053862645576,
+              "mae": 0.10844704901770172,
+              "error_gt_0p2_fraction": 0.1679787866001561
+            },
+            "shore": {
+              "cpgs": 1315,
+              "median_pcc": 0.5750640631660608,
+              "mse": 0.02412112626508653,
+              "mae": 0.10423141191594851,
+              "error_gt_0p2_fraction": 0.16549698590551964
+            }
+          },
+          "observed_sd_bin": {
+            "low": {
+              "cpgs": 1969,
+              "median_pcc": 0.3684725213385207,
+              "mse": 0.0015881411141396107,
+              "mae": 0.02455926043460075,
+              "error_gt_0p2_fraction": 0.004776342434411471
+            },
+            "medium": {
+              "cpgs": 2145,
+              "median_pcc": 0.5735087679761507,
+              "mse": 0.014768662131830578,
+              "mae": 0.07764405737067559,
+              "error_gt_0p2_fraction": 0.09195152802428899
+            },
+            "high": {
+              "cpgs": 2628,
+              "median_pcc": 0.6401200331498307,
+              "mse": 0.03734145253860691,
+              "mae": 0.14363004248670871,
+              "error_gt_0p2_fraction": 0.2589996609738328
+            }
+          }
+        }
+      },
+      "val_cpg_x_val_sample": {
+        "mas_pcc_within_tissue": 0.34477793258732814,
+        "rows": 6129992,
+        "mse": 0.020030950245892774,
+        "mas_pcc": 0.5345401767994991,
+        "mac_pcc": 0.9295026520458367,
+        "mas_pcc_mean": 0.4794609542209217,
+        "mas_pcc_highvar": 0.6124950471848266,
+        "mas_pcc_top10var": 0.6373990908955673,
+        "mae": 0.08858499410142008,
+        "error_gt_0p2_fraction": 0.13444666811963213,
+        "per_cpg_pcc_p10": 0.15052139304638257,
+        "per_cpg_negative_pcc_fraction": 0.005339661821417977,
+        "squared_locus_bias_share": 0.34590556967849245,
+        "diagnostics": {
+          "block_5mb": {
+            "0": {
+              "cpgs": 1158,
+              "median_pcc": 0.5944979997679263,
+              "mse": 0.024954266101034392,
+              "mae": 0.10729412258921307,
+              "error_gt_0p2_fraction": 0.1731150774905239
+            },
+            "1": {
+              "cpgs": 337,
+              "median_pcc": 0.5321228542201095,
+              "mse": 0.020207281366429828,
+              "mae": 0.09055391231849151,
+              "error_gt_0p2_fraction": 0.13874244525260981
+            },
+            "2": {
+              "cpgs": 238,
+              "median_pcc": 0.5661013334350238,
+              "mse": 0.017801526888727243,
+              "mae": 0.08529223508897701,
+              "error_gt_0p2_fraction": 0.12156594353012508
+            },
+            "3": {
+              "cpgs": 306,
+              "median_pcc": 0.5562537235820757,
+              "mse": 0.021655353871474693,
+              "mae": 0.0927260040860826,
+              "error_gt_0p2_fraction": 0.1383539471893777
+            },
+            "4": {
+              "cpgs": 328,
+              "median_pcc": 0.5173071881696782,
+              "mse": 0.018535205920743324,
+              "mae": 0.08374180060268556,
+              "error_gt_0p2_fraction": 0.12549820812539772
+            },
+            "5": {
+              "cpgs": 347,
+              "median_pcc": 0.5101403421878279,
+              "mse": 0.01661275623017032,
+              "mae": 0.07779271691303184,
+              "error_gt_0p2_fraction": 0.10934159086020825
+            },
+            "6": {
+              "cpgs": 228,
+              "median_pcc": 0.5641818716496022,
+              "mse": 0.019930793888727098,
+              "mae": 0.08958961750112504,
+              "error_gt_0p2_fraction": 0.13641702664660485
+            },
+            "7": {
+              "cpgs": 215,
+              "median_pcc": 0.49485654613600494,
+              "mse": 0.020050531237973058,
+              "mae": 0.08539955077902667,
+              "error_gt_0p2_fraction": 0.13163901213038237
+            },
+            "8": {
+              "cpgs": 248,
+              "median_pcc": 0.47850299851969225,
+              "mse": 0.015758214060931922,
+              "mae": 0.07447534076440797,
+              "error_gt_0p2_fraction": 0.0997717207486853
+            },
+            "9": {
+              "cpgs": 112,
+              "median_pcc": 0.3779514676714472,
+              "mse": 0.01967072554746175,
+              "mae": 0.08505655507681184,
+              "error_gt_0p2_fraction": 0.13079484836874833
+            },
+            "10": {
+              "cpgs": 178,
+              "median_pcc": 0.4886510221403892,
+              "mse": 0.019040890353642474,
+              "mae": 0.08456597532309744,
+              "error_gt_0p2_fraction": 0.1296287140950215
+            },
+            "11": {
+              "cpgs": 71,
+              "median_pcc": 0.5615738369984707,
+              "mse": 0.017542965041015768,
+              "mae": 0.07910767617902441,
+              "error_gt_0p2_fraction": 0.11705887824388429
+            },
+            "12": {
+              "cpgs": 67,
+              "median_pcc": 0.5256782065235969,
+              "mse": 0.017076947172030833,
+              "mae": 0.0762862008812716,
+              "error_gt_0p2_fraction": 0.12219443164615283
+            },
+            "13": {
+              "cpgs": 62,
+              "median_pcc": 0.5230527602914894,
+              "mse": 0.015417696890911476,
+              "mae": 0.07572266936757893,
+              "error_gt_0p2_fraction": 0.1085779424337418
+            },
+            "14": {
+              "cpgs": 29,
+              "median_pcc": 0.4210895237817668,
+              "mse": 0.013813524176027752,
+              "mae": 0.066410068101474,
+              "error_gt_0p2_fraction": 0.09052311767226269
+            },
+            "15": {
+              "cpgs": 49,
+              "median_pcc": 0.5627207245064719,
+              "mse": 0.01999283034116902,
+              "mae": 0.09048190063760057,
+              "error_gt_0p2_fraction": 0.13795736843287437
+            },
+            "16": {
+              "cpgs": 44,
+              "median_pcc": 0.34754986293759993,
+              "mse": 0.014936454177591504,
+              "mae": 0.07119230822382956,
+              "error_gt_0p2_fraction": 0.09389706998633672
+            },
+            "17": {
+              "cpgs": 83,
+              "median_pcc": 0.42501029535812296,
+              "mse": 0.013048947535050471,
+              "mae": 0.06328457594534743,
+              "error_gt_0p2_fraction": 0.08185176326769247
+            },
+            "18": {
+              "cpgs": 115,
+              "median_pcc": 0.5312447830799697,
+              "mse": 0.014700391895540935,
+              "mae": 0.0704203911339917,
+              "error_gt_0p2_fraction": 0.09441284967722102
+            },
+            "19": {
+              "cpgs": 40,
+              "median_pcc": 0.43464673391773534,
+              "mse": 0.014159260266293312,
+              "mae": 0.06917882355270374,
+              "error_gt_0p2_fraction": 0.09448317839752103
+            },
+            "20": {
+              "cpgs": 23,
+              "median_pcc": 0.3740623835231343,
+              "mse": 0.01802052936564268,
+              "mae": 0.08085450915145903,
+              "error_gt_0p2_fraction": 0.11875714830346931
+            },
+            "21": {
+              "cpgs": 87,
+              "median_pcc": 0.392201582595883,
+              "mse": 0.012471470506916677,
+              "mae": 0.06330177440335337,
+              "error_gt_0p2_fraction": 0.08291036475446514
+            },
+            "22": {
+              "cpgs": 133,
+              "median_pcc": 0.5267292490785157,
+              "mse": 0.017084572155587632,
+              "mae": 0.07572261787949244,
+              "error_gt_0p2_fraction": 0.1102592429540905
+            },
+            "23": {
+              "cpgs": 108,
+              "median_pcc": 0.574838107665987,
+              "mse": 0.02095094005535024,
+              "mae": 0.09383758837516976,
+              "error_gt_0p2_fraction": 0.14487301053232599
+            },
+            "29": {
+              "cpgs": 24,
+              "median_pcc": 0.5059066327440307,
+              "mse": 0.023955552428583504,
+              "mae": 0.10049517012622093,
+              "error_gt_0p2_fraction": 0.1544053769832198
+            },
+            "30": {
+              "cpgs": 243,
+              "median_pcc": 0.48115148207989794,
+              "mse": 0.01677057212960458,
+              "mae": 0.0771313902109944,
+              "error_gt_0p2_fraction": 0.1082717305301232
+            },
+            "31": {
+              "cpgs": 300,
+              "median_pcc": 0.4934889379278789,
+              "mse": 0.020030872637698604,
+              "mae": 0.0889158765130896,
+              "error_gt_0p2_fraction": 0.13513216745847578
+            },
+            "32": {
+              "cpgs": 111,
+              "median_pcc": 0.503379841731039,
+              "mse": 0.023073368394686666,
+              "mae": 0.09318132241161785,
+              "error_gt_0p2_fraction": 0.15993665086258416
+            },
+            "33": {
+              "cpgs": 67,
+              "median_pcc": 0.3330780563396436,
+              "mse": 0.015174831382211297,
+              "mae": 0.06669665853960059,
+              "error_gt_0p2_fraction": 0.09562805658581416
+            },
+            "34": {
+              "cpgs": 55,
+              "median_pcc": 0.37344906920857057,
+              "mse": 0.01713577794658509,
+              "mae": 0.07318774510047173,
+              "error_gt_0p2_fraction": 0.09794359099406649
+            },
+            "35": {
+              "cpgs": 53,
+              "median_pcc": 0.5511462218630507,
+              "mse": 0.019307265886077913,
+              "mae": 0.0815465758616424,
+              "error_gt_0p2_fraction": 0.11982467692814223
+            },
+            "36": {
+              "cpgs": 79,
+              "median_pcc": 0.5800761798113067,
+              "mse": 0.019795573091906857,
+              "mae": 0.08904766466981771,
+              "error_gt_0p2_fraction": 0.13491240441918667
+            },
+            "37": {
+              "cpgs": 20,
+              "median_pcc": 0.2957395320116761,
+              "mse": 0.00901018895458201,
+              "mae": 0.05235957780641259,
+              "error_gt_0p2_fraction": 0.05189201150697057
+            },
+            "39": {
+              "cpgs": 36,
+              "median_pcc": 0.5356399431438026,
+              "mse": 0.02836631355482522,
+              "mae": 0.11862153819631421,
+              "error_gt_0p2_fraction": 0.2065977898384882
+            },
+            "40": {
+              "cpgs": 169,
+              "median_pcc": 0.5910688739254437,
+              "mse": 0.02271891767408573,
+              "mae": 0.0969006019291231,
+              "error_gt_0p2_fraction": 0.15399753521353954
+            },
+            "41": {
+              "cpgs": 101,
+              "median_pcc": 0.5796229029659566,
+              "mse": 0.021631612234585207,
+              "mae": 0.09657598380275981,
+              "error_gt_0p2_fraction": 0.1468736113068077
+            },
+            "42": {
+              "cpgs": 89,
+              "median_pcc": 0.5112995938791752,
+              "mse": 0.020025666766666585,
+              "mae": 0.08487503763089224,
+              "error_gt_0p2_fraction": 0.13051710301936
+            },
+            "43": {
+              "cpgs": 32,
+              "median_pcc": 0.5651132386827693,
+              "mse": 0.025493735793352994,
+              "mae": 0.10613215425050666,
+              "error_gt_0p2_fraction": 0.17889213649329155
+            },
+            "44": {
+              "cpgs": 76,
+              "median_pcc": 0.3955774949583646,
+              "mse": 0.020218612775574827,
+              "mae": 0.08656800941053132,
+              "error_gt_0p2_fraction": 0.12313091905846181
+            },
+            "45": {
+              "cpgs": 185,
+              "median_pcc": 0.5062198787056436,
+              "mse": 0.0186302726509389,
+              "mae": 0.0847775964051434,
+              "error_gt_0p2_fraction": 0.12756150879458758
+            },
+            "46": {
+              "cpgs": 75,
+              "median_pcc": 0.4746887843531576,
+              "mse": 0.016196921828330067,
+              "mae": 0.0752243149500045,
+              "error_gt_0p2_fraction": 0.10829941860465116
+            },
+            "47": {
+              "cpgs": 74,
+              "median_pcc": 0.4518650279965506,
+              "mse": 0.02183977333165797,
+              "mae": 0.08652635455063823,
+              "error_gt_0p2_fraction": 0.13870919881305638
+            },
+            "48": {
+              "cpgs": 148,
+              "median_pcc": 0.5013438275988858,
+              "mse": 0.022241932314565352,
+              "mae": 0.08851934102428304,
+              "error_gt_0p2_fraction": 0.13394579766067768
+            },
+            "49": {
+              "cpgs": 182,
+              "median_pcc": 0.5990022856494135,
+              "mse": 0.023931982354289515,
+              "mae": 0.10469753457135819,
+              "error_gt_0p2_fraction": 0.16427445751000122
+            }
+          },
+          "island_context": {
+            "island": {
+              "cpgs": 3330,
+              "median_pcc": 0.38837130726022834,
+              "mse": 0.01358913781105884,
+              "mae": 0.06437927317176065,
+              "error_gt_0p2_fraction": 0.0856549001569153
+            },
+            "open_sea": {
+              "cpgs": 1638,
+              "median_pcc": 0.6116990654375811,
+              "mse": 0.028120206075601135,
+              "mae": 0.11876876764475802,
+              "error_gt_0p2_fraction": 0.19576896202661664
+            },
+            "shelf": {
+              "cpgs": 459,
+              "median_pcc": 0.6144753887707237,
+              "mse": 0.025182922716636455,
+              "mae": 0.10979336830083171,
+              "error_gt_0p2_fraction": 0.17265034949901534
+            },
+            "shore": {
+              "cpgs": 1315,
+              "median_pcc": 0.5590196772736755,
+              "mse": 0.024603735502794197,
+              "mae": 0.10538707383605357,
+              "error_gt_0p2_fraction": 0.16930194650337305
+            }
+          },
+          "observed_sd_bin": {
+            "low": {
+              "cpgs": 1931,
+              "median_pcc": 0.21610512486877162,
+              "mse": 0.0015035851413741964,
+              "mae": 0.023869969007212624,
+              "error_gt_0p2_fraction": 0.004423469563825195
+            },
+            "medium": {
+              "cpgs": 2199,
+              "median_pcc": 0.561852096462629,
+              "mse": 0.014836033205410513,
+              "mae": 0.0777689257062253,
+              "error_gt_0p2_fraction": 0.09263530146866715
+            },
+            "high": {
+              "cpgs": 2612,
+              "median_pcc": 0.6229699602738801,
+              "mse": 0.03823363403219158,
+              "mae": 0.14599434615413143,
+              "error_gt_0p2_fraction": 0.2666994334222596
+            }
+          }
+        }
+      }
+    },
+    "train_seconds": 20.56464195251465,
+    "freeze": {
+      "selection_data": "inner_development_only",
+      "created_unix": 1792246677.1712365,
+      "arm": "hybrid_wt",
+      "step": 1000,
+      "eligible": true,
+      "checks": {
+        "mse": true,
+        "new_patients": true,
+        "within_tissue": true,
+        "double_ood": true
+      },
+      "mas_pcc": 0.5249045046055111,
+      "mse": 0.02628945080049886,
+      "seed": 17,
+      "ranking": [
+        {
+          "arm": "hybrid_wt",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5249045046055111,
+          "mse": 0.02628945080049886
+        },
+        {
+          "arm": "alphagenome",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5248097188260544,
+          "mse": 0.027846467784783013
+        },
+        {
+          "arm": "alphagenome",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.524631531996972,
+          "mse": 0.02631983256815724
+        },
+        {
+          "arm": "hybrid_wt",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5223312052722453,
+          "mse": 0.027586891190053503
+        },
+        {
+          "arm": "hybrid",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5222396108583518,
+          "mse": 0.026297856464237063
+        },
+        {
+          "arm": "hybrid_separate_bias",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5222186966414399,
+          "mse": 0.02629900348167121
+        },
+        {
+          "arm": "hybrid_separate_bias",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5196736408576073,
+          "mse": 0.027496901947531814
+        },
+        {
+          "arm": "hybrid",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.519287273747573,
+          "mse": 0.02748966902213323
+        },
+        {
+          "arm": "hybrid_wt",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5144300270872562,
+          "mse": 0.02850082480901725
+        },
+        {
+          "arm": "alphagenome",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5141550097723259,
+          "mse": 0.02875644067029082
+        },
+        {
+          "arm": "hybrid",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5118961946460692,
+          "mse": 0.028205309626042747
+        },
+        {
+          "arm": "hybrid_separate_bias",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5111790122545592,
+          "mse": 0.028208660746942702
+        }
+      ],
+      "all_checks": [
+        {
+          "arm": "alphagenome",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.524631531996972,
+          "mse": 0.02631983256815724
+        },
+        {
+          "arm": "alphagenome",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5248097188260544,
+          "mse": 0.027846467784783013
+        },
+        {
+          "arm": "alphagenome",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5141550097723259,
+          "mse": 0.02875644067029082
+        },
+        {
+          "arm": "hybrid",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5222396108583518,
+          "mse": 0.026297856464237063
+        },
+        {
+          "arm": "hybrid",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.519287273747573,
+          "mse": 0.02748966902213323
+        },
+        {
+          "arm": "hybrid",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5118961946460692,
+          "mse": 0.028205309626042747
+        },
+        {
+          "arm": "hybrid_wt",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5249045046055111,
+          "mse": 0.02628945080049886
+        },
+        {
+          "arm": "hybrid_wt",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5223312052722453,
+          "mse": 0.027586891190053503
+        },
+        {
+          "arm": "hybrid_wt",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5144300270872562,
+          "mse": 0.02850082480901725
+        },
+        {
+          "arm": "hybrid_separate_bias",
+          "step": 1000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5222186966414399,
+          "mse": 0.02629900348167121
+        },
+        {
+          "arm": "hybrid_separate_bias",
+          "step": 2000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5196736408576073,
+          "mse": 0.027496901947531814
+        },
+        {
+          "arm": "hybrid_separate_bias",
+          "step": 4000,
+          "eligible": true,
+          "checks": {
+            "mse": true,
+            "new_patients": true,
+            "within_tissue": true,
+            "double_ood": true
+          },
+          "mas_pcc": 0.5111790122545592,
+          "mse": 0.028208660746942702
+        }
+      ],
+      "protocol_sha256": "8f37b3a2d097f6dd5150c09088f353a8c2db6a010d753857ca94a0cf7569d9f5",
+      "result_sha256": {
+        "functional": "481749c96abf7276c072a6231bc25ea933d6b2c84261a77919aa26cd8f055799",
+        "alphagenome": "eddc97ed4d8e4d9dd3e3676bff435c47dc172b75af62637d4fc65c594b4ada88",
+        "hybrid": "cf9ef447bf859a538bed8b982e21e97ba7116132741f3145fb9e190029d950ba",
+        "hybrid_wt": "2564923a6f25506d67d858f3aa083687a127c1d32c7f73940bdcb77b34c6ed3f",
+        "hybrid_separate_bias": "b7e54855fa344730d05d7b2a4045519a220002ae168ed9b1ba7b1c8893ff040f"
+      }
+    },
+    "params": 12184801,
+    "training_sources": [
+      "array"
+    ],
+    "official_finite_pair_counts_match": true,
+    "checkpoint": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/final_seed17/checkpoint.pt"
+  },
+  "inference_check": {
+    "checkpoint_reloaded": true,
+    "raw_input_preprocessing_parity": true,
+    "max_absolute_error": 0.0,
+    "rejects_wrong_gene_order": true,
+    "methylation_targets_read": false,
+    "unused_token_parameters_removed": true
+  },
+  "source_provenance": {
+    "pilot.py": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/pilot.py",
+      "sha256": "9c5152a52c73399e214fedadae84a2a748f58ae0f63dec21fd131aff80e92b29",
+      "bytes": 10098
+    },
+    "model.py": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/model.py",
+      "sha256": "72647b893b930181b6d2d260bf2cd37f8b54f488d409c7bdb82d09a4067b8a96",
+      "bytes": 4271
+    },
+    "harness.py": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/harness.py",
+      "sha256": "9b1b7d63e2371a15eb16eae8d5b063e812fc02555eeb1fd0365d00808209d1b8",
+      "bytes": 17944
+    },
+    "pilot_losses.py": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/pilot_losses.py",
+      "sha256": "e2cf4425a78d682ffc429d621bb413c56031b8e3025901f663a2185abe7f0205",
+      "bytes": 3225
+    },
+    "refit.py": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/refit.py",
+      "sha256": "2df593f1192f555feb1e8a297f4b9c6ba5aad4c96accb23f95a8b3d37f66e64c",
+      "bytes": 8500
+    },
+    "predict_checkpoint.py": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/predict_checkpoint.py",
+      "sha256": "d6f2e09c3362372a04371a0f2d100977fc3098ee53b1e88812513ee41b84e42a",
+      "bytes": 2460
+    },
+    "normalization_dev.npz": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/normalization_dev.npz",
+      "sha256": "77e2cda9146a0fff76a272bf8f8db0d53e874760ffa2c9c8d9d001f07df731ed",
+      "bytes": 500460
+    },
+    "normalization_official.npz": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/normalization_official.npz",
+      "sha256": "f1765a52f2383826646711fcf123ea583bb77479f5b859ad567d1fd1fa29c0e9",
+      "bytes": 538836
+    },
+    "final_seed17/checkpoint.pt": {
+      "path": "/data2/home/vcivale/projects/methylation/chr1_alphagenome_v1_2026-10-17/final_seed17/checkpoint.pt",
+      "sha256": "8273d6147922bab9ff53af82aa5ff4417ae22118f8f6b13c1e57365648488765",
+      "bytes": 196517404
+    }
+  }
+}

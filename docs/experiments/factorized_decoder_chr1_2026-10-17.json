@@ -1,0 +1,222 @@
+{
+  "experiment": "factorized RNA-by-CpG decoder rank 32",
+  "date": "2026-10-17",
+  "chromosome": "chr1",
+  "split": "dev, 5 Mb blocked CpG split",
+  "seeds": [
+    17,
+    18,
+    19
+  ],
+  "steps": 2000,
+  "schedule_horizon": 4000,
+  "ema": false,
+  "batch_samples": 256,
+  "batch_cpgs": 512,
+  "parameters_baseline": 21655970,
+  "parameters_factorized": 15982561,
+  "sequential_training_seconds_baseline_seed18_19": [
+    358.1755623817444,
+    364.71244597435
+  ],
+  "per_seed": [
+    {
+      "seed": 17,
+      "views": {
+        "train_cpg_x_val_sample": {
+          "mas_pcc": {
+            "baseline": 0.5159908502553882,
+            "factorized": 0.5149004249991341,
+            "delta": -0.001090425256254024
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.3497093124226916,
+            "factorized": 0.3495528161207065,
+            "delta": -0.00015649630198510955
+          },
+          "mse": {
+            "baseline": 0.02120719793539946,
+            "factorized": 0.021640351375011968,
+            "delta": 0.0004331534396125082
+          }
+        },
+        "val_cpg_x_train_sample": {
+          "mas_pcc": {
+            "baseline": 0.47677160582114775,
+            "factorized": 0.4858902364791241,
+            "delta": 0.009118630657976357
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.4151737247513929,
+            "factorized": 0.418558403725584,
+            "delta": 0.003384678974191091
+          },
+          "mse": {
+            "baseline": 0.0343066459013821,
+            "factorized": 0.034245236749659645,
+            "delta": -6.140915172245243e-05
+          }
+        },
+        "val_cpg_x_val_sample": {
+          "mas_pcc": {
+            "baseline": 0.44472816417549943,
+            "factorized": 0.4504741970712049,
+            "delta": 0.005746032895705466
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.3249156567343362,
+            "factorized": 0.3236193325209276,
+            "delta": -0.001296324213408584
+          },
+          "mse": {
+            "baseline": 0.034442188846989255,
+            "factorized": 0.034553400615741706,
+            "delta": 0.00011121176875245053
+          }
+        }
+      },
+      "factorized_train_seconds": 26.4349205493927,
+      "factorized_total_seconds": 41.60028839111328,
+      "factorized_parameters": 15982561
+    },
+    {
+      "seed": 18,
+      "views": {
+        "train_cpg_x_val_sample": {
+          "mas_pcc": {
+            "baseline": 0.5170319572205451,
+            "factorized": 0.5169942893931002,
+            "delta": -3.766782744485386e-05
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.34661410045189,
+            "factorized": 0.3519091791319225,
+            "delta": 0.005295078680032483
+          },
+          "mse": {
+            "baseline": 0.02100831760502173,
+            "factorized": 0.02168172817177444,
+            "delta": 0.00067341056675271
+          }
+        },
+        "val_cpg_x_train_sample": {
+          "mas_pcc": {
+            "baseline": 0.47892479759895545,
+            "factorized": 0.4863279143272936,
+            "delta": 0.007403116728338155
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.4159170415093253,
+            "factorized": 0.4218543139922001,
+            "delta": 0.005937272482874789
+          },
+          "mse": {
+            "baseline": 0.03369455799437055,
+            "factorized": 0.03416152571853398,
+            "delta": 0.0004669677241634293
+          }
+        },
+        "val_cpg_x_val_sample": {
+          "mas_pcc": {
+            "baseline": 0.4469156350046474,
+            "factorized": 0.45358208653839327,
+            "delta": 0.006666451533745843
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.320932847782524,
+            "factorized": 0.32622861475072223,
+            "delta": 0.005295766968198223
+          },
+          "mse": {
+            "baseline": 0.033817978168496035,
+            "factorized": 0.034459001001583736,
+            "delta": 0.000641022833087701
+          }
+        }
+      },
+      "factorized_train_seconds": 30.76141619682312,
+      "factorized_total_seconds": 35.52128553390503,
+      "factorized_parameters": 15982561
+    },
+    {
+      "seed": 19,
+      "views": {
+        "train_cpg_x_val_sample": {
+          "mas_pcc": {
+            "baseline": 0.5230598095101693,
+            "factorized": 0.5162934973890018,
+            "delta": -0.006766312121167517
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.34994469101872205,
+            "factorized": 0.34778876396045155,
+            "delta": -0.0021559270582705015
+          },
+          "mse": {
+            "baseline": 0.02083508939775238,
+            "factorized": 0.021941922076074285,
+            "delta": 0.0011068326783219042
+          }
+        },
+        "val_cpg_x_train_sample": {
+          "mas_pcc": {
+            "baseline": 0.4809624665172098,
+            "factorized": 0.48626543262457034,
+            "delta": 0.005302966107360529
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.4170365134007091,
+            "factorized": 0.4201006374288311,
+            "delta": 0.003064124028122006
+          },
+          "mse": {
+            "baseline": 0.03372169908146433,
+            "factorized": 0.03367855563011196,
+            "delta": -4.3143451352367634e-05
+          }
+        },
+        "val_cpg_x_val_sample": {
+          "mas_pcc": {
+            "baseline": 0.4506177882721522,
+            "factorized": 0.45375904421913915,
+            "delta": 0.0031412559469869428
+          },
+          "mas_pcc_within_tissue": {
+            "baseline": 0.3235585698376792,
+            "factorized": 0.32327600196419065,
+            "delta": -0.0002825678734885706
+          },
+          "mse": {
+            "baseline": 0.03383538039602087,
+            "factorized": 0.03394639676949774,
+            "delta": 0.00011101637347687293
+          }
+        }
+      },
+      "factorized_train_seconds": 33.796424865722656,
+      "factorized_total_seconds": 38.63825511932373,
+      "factorized_parameters": 15982561
+    }
+  ],
+  "artifacts": {
+    "baseline": "/data2/home/vcivale/projects/methylation/interaction_hypotheses_lab/results/dev/baseline_s2000_h4000",
+    "factorized": "/data2/home/vcivale/projects/methylation/factorized_decoder_chr1_2026-10-17/results/dev/factorized_rank32_s2000_h4000"
+  },
+  "mean_delta": {
+    "train_cpg_x_val_sample": {
+      "mas_pcc": -0.0026314684016221315,
+      "mas_pcc_within_tissue": 0.0009942184399256242,
+      "mse": 0.0007377988948957075
+    },
+    "val_cpg_x_train_sample": {
+      "mas_pcc": 0.007274904497891681,
+      "mas_pcc_within_tissue": 0.004128691828395962,
+      "mse": 0.00012080504036286975
+    },
+    "val_cpg_x_val_sample": {
+      "mas_pcc": 0.005184580125479417,
+      "mas_pcc_within_tissue": 0.001238958293767023,
+      "mse": 0.00028775032510567483
+    }
+  }
+}

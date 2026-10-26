@@ -1,0 +1,1777 @@
+{
+  "rna_named": [
+    {
+      "view": "known",
+      "arm": "RNA corretta",
+      "mse": 0.013492689111414234,
+      "mae": 0.07196213935177066,
+      "mas_pcc": 0.5913266984314128,
+      "within_tissue": 0.385608728944908,
+      "patients": 729.0
+    },
+    {
+      "view": "known",
+      "arm": "RNA permutata entro tessuto",
+      "mse": 0.019854376160606778,
+      "mae": 0.08773028340719112,
+      "mas_pcc": 0.3283841696851294,
+      "within_tissue": -0.011002383184590243,
+      "patients": 729.0
+    },
+    {
+      "view": "novel",
+      "arm": "RNA corretta",
+      "mse": 0.0248527428249183,
+      "mae": 0.10552200983578003,
+      "mas_pcc": 0.5313209569302921,
+      "within_tissue": 0.362465124217561,
+      "patients": 729.0
+    },
+    {
+      "view": "novel",
+      "arm": "RNA permutata entro tessuto",
+      "mse": 0.030756393320345465,
+      "mae": 0.11762472377496597,
+      "mas_pcc": 0.29300739886222193,
+      "within_tissue": -0.009364748639229911,
+      "patients": 729.0
+    }
+  ],
+  "controls_dev": [
+    {
+      "view": "known",
+      "source": "control",
+      "arm": "empirical_mean",
+      "mse": 0.0227407370734863,
+      "mae": 0.0969822657525655,
+      "mas_pcc": null,
+      "within_tissue": null
+    },
+    {
+      "view": "known",
+      "source": "control",
+      "arm": "empirical_tissue",
+      "mse": 0.0152175613437149,
+      "mae": 0.0744170637638673,
+      "mas_pcc": 0.5021918510331714,
+      "within_tissue": null
+    },
+    {
+      "view": "known",
+      "source": "control",
+      "arm": "genomic_mean",
+      "mse": 0.0310405506328334,
+      "mae": 0.1271772918129416,
+      "mas_pcc": null,
+      "within_tissue": null
+    },
+    {
+      "view": "known",
+      "source": "control",
+      "arm": "genomic_tissue",
+      "mse": 0.0266953920507518,
+      "mae": 0.1175092328021038,
+      "mas_pcc": 0.3717318007021217,
+      "within_tissue": null
+    },
+    {
+      "view": "known",
+      "source": "v1_early",
+      "arm": "calibrated",
+      "mse": 0.013840019824371502,
+      "mae": 0.07260533503102719,
+      "mas_pcc": 0.58809126597726,
+      "within_tissue": 0.385743168772892
+    },
+    {
+      "view": "known",
+      "source": "v1_early",
+      "arm": "raw",
+      "mse": 0.017171570648840968,
+      "mae": 0.08522157668607071,
+      "mas_pcc": 0.5848338344169376,
+      "within_tissue": 0.38527142425524114
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "calibrated",
+      "mse": 0.013852455805939032,
+      "mae": 0.07297810889345845,
+      "mas_pcc": 0.5878206042952806,
+      "within_tissue": 0.385608771912874
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "model_tissue_only",
+      "mse": 0.0180028187693575,
+      "mae": 0.08473632546536768,
+      "mas_pcc": 0.39659928109201675,
+      "within_tissue": null
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "population_only",
+      "mse": 0.022750461920031065,
+      "mae": 0.0971779591366016,
+      "mas_pcc": null,
+      "within_tissue": null
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "raw",
+      "mse": 0.017861378211383568,
+      "mae": 0.0885595512327751,
+      "mas_pcc": 0.5840164669908035,
+      "within_tissue": 0.38527706544688084
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "rna_shuffle0",
+      "mse": 0.021597542444262697,
+      "mae": 0.09146275687947027,
+      "mas_pcc": 0.26371729126222826,
+      "within_tissue": -0.017264993336520432
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "rna_shuffle1",
+      "mse": 0.0211924138863491,
+      "mae": 0.09072818615552473,
+      "mas_pcc": 0.2920386986505252,
+      "within_tissue": -0.006213391625101434
+    },
+    {
+      "view": "known",
+      "source": "v2_early",
+      "arm": "rna_shuffle2",
+      "mse": 0.021331385103701268,
+      "mae": 0.09087753616654907,
+      "mas_pcc": 0.28364482752406756,
+      "within_tissue": 0.0029045022558366
+    },
+    {
+      "view": "novel",
+      "source": "control",
+      "arm": "genomic_mean",
+      "mse": 0.0334230709623573,
+      "mae": 0.1321066748202457,
+      "mas_pcc": null,
+      "within_tissue": null
+    },
+    {
+      "view": "novel",
+      "source": "control",
+      "arm": "genomic_tissue",
+      "mse": 0.0297480067399255,
+      "mae": 0.1241055420484576,
+      "mas_pcc": 0.3397267343045311,
+      "within_tissue": null
+    },
+    {
+      "view": "novel",
+      "source": "v1_early",
+      "arm": "prior0.25",
+      "mse": 0.025577212845134267,
+      "mae": 0.1054613928289785,
+      "mas_pcc": 0.527395338961948,
+      "within_tissue": 0.36248764436245606
+    },
+    {
+      "view": "novel",
+      "source": "v1_early",
+      "arm": "prior0.5",
+      "mse": 0.025326708875273166,
+      "mae": 0.10630986462018893,
+      "mas_pcc": 0.5264936447370728,
+      "within_tissue": 0.36250418535173573
+    },
+    {
+      "view": "novel",
+      "source": "v1_early",
+      "arm": "raw",
+      "mse": 0.02642226537505367,
+      "mae": 0.10629944496221984,
+      "mas_pcc": 0.5267566206659146,
+      "within_tissue": 0.36245873686489355
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "model_tissue_only",
+      "mse": 0.028563551465807264,
+      "mae": 0.11525901234508133,
+      "mas_pcc": 0.3509681246811889,
+      "within_tissue": null
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "population_only",
+      "mse": 0.03233008567649737,
+      "mae": 0.12461461449352856,
+      "mas_pcc": null,
+      "within_tissue": null
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "prior0.25",
+      "mse": 0.025059378012071466,
+      "mae": 0.10616837461096033,
+      "mas_pcc": 0.5276776115132146,
+      "within_tissue": 0.362465124217561
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "prior0.5",
+      "mse": 0.0249684861560099,
+      "mae": 0.10718535778946507,
+      "mas_pcc": 0.5271034249883403,
+      "within_tissue": 0.3623881163657985
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "raw",
+      "mse": 0.02563274141232097,
+      "mae": 0.10651404841471844,
+      "mas_pcc": 0.5271965613223011,
+      "within_tissue": 0.36239642784973364
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "rna_shuffle0",
+      "mse": 0.0323297534266652,
+      "mae": 0.12077142818717039,
+      "mas_pcc": 0.22777714972592442,
+      "within_tissue": -0.0146827563682745
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "rna_shuffle1",
+      "mse": 0.031952118164612235,
+      "mae": 0.12006881545209926,
+      "mas_pcc": 0.259775164933782,
+      "within_tissue": -0.006470158259506233
+    },
+    {
+      "view": "novel",
+      "source": "v2_early",
+      "arm": "rna_shuffle2",
+      "mse": 0.0321526737764852,
+      "mae": 0.12033390124990297,
+      "mas_pcc": 0.24720663776350946,
+      "within_tissue": -0.0013514120324415997
+    }
+  ],
+  "few_shot_tau": 5.0,
+  "few_shot_dev": [
+    {
+      "support": 0,
+      "mse": 0.025059378012071466,
+      "mae": 0.10616837461096033,
+      "mas_pcc": 0.5276776115132146,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "support": 1,
+      "mse": 0.022667588080568506,
+      "mae": 0.10001519346715407,
+      "mas_pcc": 0.5289886464869504,
+      "delta_mse_percent": -9.544490411337424
+    },
+    {
+      "support": 5,
+      "mse": 0.01891327863891418,
+      "mae": 0.08930266539805329,
+      "mas_pcc": 0.5316597159687843,
+      "delta_mse_percent": -24.52614494340849
+    },
+    {
+      "support": 10,
+      "mse": 0.017609468394563562,
+      "mae": 0.08530159200215655,
+      "mas_pcc": 0.5326255537077083,
+      "delta_mse_percent": -29.729028445634896
+    },
+    {
+      "support": 50,
+      "mse": 0.01615021398585188,
+      "mae": 0.07993590463665547,
+      "mas_pcc": 0.5341827189753111,
+      "delta_mse_percent": -35.552215310084364
+    }
+  ],
+  "adaptive": [
+    {
+      "split": "fold0",
+      "adaptive_mse": 0.024824019183740515,
+      "fixed025_mse": 0.025163528320472976,
+      "weight_counts": {
+        "0.0": 608,
+        "0.25": 1597,
+        "0.5": 4577
+      },
+      "error_prediction_spearman": 0.8432072545784247,
+      "hard_decile_auc": 0.8266619400825832,
+      "fit_loci": 23131,
+      "test_loci": 6782,
+      "seed17": {
+        "mse": 0.024825219647708154,
+        "mae": 0.10527984929034598,
+        "severe": 0.17034854384606887,
+        "corr": 0.500091680021228,
+        "within_corr": 0.382348396325348
+      },
+      "seed18": {
+        "mse": 0.024782360923852772,
+        "mae": 0.10518053691641158,
+        "severe": 0.17022411737119028,
+        "corr": 0.49661857792371816,
+        "within_corr": 0.3800429099816619
+      },
+      "seed19": {
+        "mse": 0.024864476979660613,
+        "mae": 0.10513419666839147,
+        "severe": 0.16983748486144556,
+        "corr": 0.49959552916834327,
+        "within_corr": 0.38221532086835086
+      }
+    },
+    {
+      "split": "fold1",
+      "adaptive_mse": 0.026756929567269827,
+      "fixed025_mse": 0.027153738885676838,
+      "weight_counts": {
+        "0.0": 867,
+        "0.25": 2689,
+        "0.5": 9231
+      },
+      "error_prediction_spearman": 0.7959168468378979,
+      "hard_decile_auc": 0.7822564810610044,
+      "fit_loci": 17126,
+      "test_loci": 12787,
+      "seed17": {
+        "mse": 0.026737418233623602,
+        "mae": 0.11051592262618533,
+        "severe": 0.18249184919012426,
+        "corr": 0.5121179401935846,
+        "within_corr": 0.38643525453183414
+      },
+      "seed18": {
+        "mse": 0.026637375521117106,
+        "mae": 0.11032817168840198,
+        "severe": 0.18166391506389984,
+        "corr": 0.5113170272939286,
+        "within_corr": 0.38689810067078173
+      },
+      "seed19": {
+        "mse": 0.02689599494706877,
+        "mae": 0.11080786431553845,
+        "severe": 0.1832855438349627,
+        "corr": 0.5104057789452937,
+        "within_corr": 0.3868768839254399
+      }
+    },
+    {
+      "split": "fold2",
+      "adaptive_mse": 0.024413363286083907,
+      "fixed025_mse": 0.024770622101917585,
+      "weight_counts": {
+        "0.0": 270,
+        "0.25": 3566,
+        "0.5": 6508
+      },
+      "error_prediction_spearman": 0.8294917887611736,
+      "hard_decile_auc": 0.8075570729692267,
+      "fit_loci": 19569,
+      "test_loci": 10344,
+      "seed17": {
+        "mse": 0.02444039472009439,
+        "mae": 0.10381394700549015,
+        "severe": 0.1671396676288147,
+        "corr": 0.5069244967883962,
+        "within_corr": 0.3794266524501798
+      },
+      "seed18": {
+        "mse": 0.02436734129147774,
+        "mae": 0.10379363522939816,
+        "severe": 0.16720345790966396,
+        "corr": 0.5058463664583749,
+        "within_corr": 0.37789501927389413
+      },
+      "seed19": {
+        "mse": 0.02443235384667958,
+        "mae": 0.1038235962839592,
+        "severe": 0.16702307170054037,
+        "corr": 0.5053946961275061,
+        "within_corr": 0.3784754260808219
+      }
+    },
+    {
+      "split": "dev",
+      "adaptive_mse": 0.024897721343769077,
+      "fixed025_mse": 0.02505937801207153,
+      "weight_counts": {
+        "0.0": 295,
+        "0.25": 1055,
+        "0.5": 2622
+      },
+      "error_prediction_spearman": 0.8144452223205542,
+      "hard_decile_auc": 0.8106973029669893,
+      "fit_loci": 29913,
+      "test_loci": 3972,
+      "seed17": {
+        "mse": 0.024926336807631393,
+        "mae": 0.1063331194356928,
+        "severe": 0.1721458032510661,
+        "corr": 0.5268559110232873,
+        "within_corr": 0.4039063289701059
+      },
+      "seed18": {
+        "mse": 0.02490732020501507,
+        "mae": 0.10633945406035783,
+        "severe": 0.17175256156274432,
+        "corr": 0.5285114668308323,
+        "within_corr": 0.4023586029838606
+      },
+      "seed19": {
+        "mse": 0.024859507018660774,
+        "mae": 0.1062921522382293,
+        "severe": 0.1717581306818551,
+        "corr": 0.5267409862305777,
+        "within_corr": 0.4037820721999428
+      }
+    }
+  ],
+  "sequence_dev": [
+    {
+      "arm": "ag",
+      "mse": 0.0250262127437804,
+      "mae": 0.10668228076970739,
+      "mas_pcc": 0.5261267311551859,
+      "within_tissue": 0.3619850896328627,
+      "parameters": 54401.0,
+      "delta_mse_percent": -0.1323467337261408,
+      "novel_guards": false
+    },
+    {
+      "arm": "hybrid",
+      "mse": 0.0250278398066327,
+      "mae": 0.10668855028158652,
+      "mas_pcc": 0.5261939015733567,
+      "within_tissue": 0.3619957253415494,
+      "parameters": 58489.0,
+      "delta_mse_percent": -0.12585390357083837,
+      "novel_guards": false
+    },
+    {
+      "arm": "sequence",
+      "mse": 0.0250543034031061,
+      "mae": 0.10635514875631674,
+      "mas_pcc": 0.5269075919279204,
+      "within_tissue": 0.36186237490755274,
+      "parameters": 4121.0,
+      "delta_mse_percent": -0.020250338866834028,
+      "novel_guards": false
+    },
+    {
+      "arm": "shuffled_sequence",
+      "mse": 0.025051822366624166,
+      "mae": 0.10626036233098703,
+      "mas_pcc": 0.5270685942783015,
+      "within_tissue": 0.3618469338598096,
+      "parameters": 4121.0,
+      "delta_mse_percent": -0.030150969603714994,
+      "novel_guards": false
+    }
+  ],
+  "tissue_held_out": [
+    {
+      "group": "TCGA-BRCA",
+      "view": "known",
+      "mode": "leave_tissue_out",
+      "mse": 0.0156491232988281,
+      "mae": 0.07777663605717487,
+      "mas_pcc": 0.28909027522324726,
+      "patients": 70.0,
+      "train_patients": 6804.0
+    },
+    {
+      "group": "TCGA-BRCA",
+      "view": "known",
+      "mode": "matched_random",
+      "mse": 0.013098482512874633,
+      "mae": 0.0709348502841813,
+      "mas_pcc": 0.3469460439897814,
+      "patients": 70.0,
+      "train_patients": 6804.0
+    },
+    {
+      "group": "TCGA-BRCA",
+      "view": "novel",
+      "mode": "leave_tissue_out",
+      "mse": 0.025598759825205864,
+      "mae": 0.10769629048897089,
+      "mas_pcc": 0.27426213592417964,
+      "patients": 70.0,
+      "train_patients": 6804.0
+    },
+    {
+      "group": "TCGA-BRCA",
+      "view": "novel",
+      "mode": "matched_random",
+      "mse": 0.024329856611079767,
+      "mae": 0.10543663206146499,
+      "mas_pcc": 0.3152770093598951,
+      "patients": 70.0,
+      "train_patients": 6804.0
+    },
+    {
+      "group": "TCGA-LGG",
+      "view": "known",
+      "mode": "leave_tissue_out",
+      "mse": 0.021419885037980202,
+      "mae": 0.0923829561598497,
+      "mas_pcc": 0.3565027384350894,
+      "patients": 46.0,
+      "train_patients": 7021.0
+    },
+    {
+      "group": "TCGA-LGG",
+      "view": "known",
+      "mode": "matched_random",
+      "mse": 0.014918663703633234,
+      "mae": 0.07436108771905367,
+      "mas_pcc": 0.40542802710012843,
+      "patients": 46.0,
+      "train_patients": 7021.0
+    },
+    {
+      "group": "TCGA-LGG",
+      "view": "novel",
+      "mode": "leave_tissue_out",
+      "mse": 0.030501502255993435,
+      "mae": 0.11539047283544067,
+      "mas_pcc": 0.3438441137258103,
+      "patients": 46.0,
+      "train_patients": 7021.0
+    },
+    {
+      "group": "TCGA-LGG",
+      "view": "novel",
+      "mode": "matched_random",
+      "mse": 0.028047918875531864,
+      "mae": 0.10564326052448066,
+      "mas_pcc": 0.3834554780065828,
+      "patients": 46.0,
+      "train_patients": 7021.0
+    }
+  ],
+  "transfer_primary": [
+    {
+      "view": "chr2",
+      "model": "v1",
+      "patients": 918,
+      "cpgs": 30288,
+      "mse": 0.0252073328751673,
+      "mae": 0.1028836724560854,
+      "mas_pcc": 0.5430584582708043,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "view": "chr2",
+      "model": "v3",
+      "patients": 918,
+      "cpgs": 30288,
+      "mse": 0.0244520873932084,
+      "mae": 0.1044248029905088,
+      "mas_pcc": 0.5435004627189619,
+      "delta_mse_percent": -2.996134044403087
+    },
+    {
+      "view": "chr22",
+      "model": "v1",
+      "patients": 918,
+      "cpgs": 7180,
+      "mse": 0.0223725028357514,
+      "mae": 0.0955620420669441,
+      "mas_pcc": 0.5402718332454832,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "view": "chr22",
+      "model": "v3",
+      "patients": 918,
+      "cpgs": 7180,
+      "mse": 0.0213743189613222,
+      "mae": 0.0959900296683902,
+      "mas_pcc": 0.5427313062441179,
+      "delta_mse_percent": -4.461654924160285
+    },
+    {
+      "view": "epic_known",
+      "model": "v1",
+      "patients": 1706,
+      "cpgs": 33885,
+      "mse": 0.0209241156116527,
+      "mae": 0.0943148678875633,
+      "mas_pcc": 0.4037388817713096,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "view": "epic_known",
+      "model": "v3",
+      "patients": 1706,
+      "cpgs": 33885,
+      "mse": 0.0175882612382968,
+      "mae": 0.0835256519952408,
+      "mas_pcc": 0.4013683045220714,
+      "delta_mse_percent": -15.94263019411991
+    },
+    {
+      "view": "epic_novel",
+      "model": "v1",
+      "patients": 1706,
+      "cpgs": 3340,
+      "mse": 0.0203808925138352,
+      "mae": 0.0882640794679842,
+      "mas_pcc": 0.3458080567696454,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "view": "epic_novel",
+      "model": "v3",
+      "patients": 1706,
+      "cpgs": 3340,
+      "mse": 0.0201351493578928,
+      "mae": 0.0901490146354454,
+      "mas_pcc": 0.342336614039532,
+      "delta_mse_percent": -1.2057526714082
+    },
+    {
+      "view": "wgbs_known",
+      "model": "v1",
+      "patients": 31,
+      "cpgs": 33885,
+      "mse": 0.0403500007201758,
+      "mae": 0.1407922347876049,
+      "mas_pcc": 0.4056743379397463,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "view": "wgbs_known",
+      "model": "v3",
+      "patients": 31,
+      "cpgs": 33885,
+      "mse": 0.038635656243589,
+      "mae": 0.140666301117345,
+      "mas_pcc": 0.40347929747537,
+      "delta_mse_percent": -4.248685120170492
+    },
+    {
+      "view": "wgbs_novel",
+      "model": "v1",
+      "patients": 31,
+      "cpgs": 3033,
+      "mse": 0.0443249229361014,
+      "mae": 0.1461637220706781,
+      "mas_pcc": 0.3868185363429018,
+      "delta_mse_percent": 0.0
+    },
+    {
+      "view": "wgbs_novel",
+      "model": "v3",
+      "patients": 31,
+      "cpgs": 3033,
+      "mse": 0.0445459872516031,
+      "mae": 0.1496863595908525,
+      "mas_pcc": 0.3817549302211549,
+      "delta_mse_percent": 0.4987359274609249
+    }
+  ],
+  "transfer_block_ci": {
+    "chr2": {
+      "delta_mse": -0.0007552454819589226,
+      "ci95_genomic_blocks": [
+        -0.0008783868978130317,
+        -0.0006430378590594704
+      ],
+      "blocks": 49,
+      "limitation": "Conditional on fixed evaluation patients; not joint patient/locus uncertainty"
+    },
+    "chr22": {
+      "delta_mse": -0.0009981838744291627,
+      "ci95_genomic_blocks": [
+        -0.0013861378977598749,
+        -0.0007425727415397366
+      ],
+      "blocks": 8,
+      "limitation": "Conditional on fixed evaluation patients; not joint patient/locus uncertainty"
+    },
+    "epic_known": {
+      "delta_mse": -0.003335854373355866,
+      "ci95_genomic_blocks": [
+        -0.0036179382837501282,
+        -0.0030559460734438174
+      ],
+      "blocks": 47,
+      "limitation": "Conditional on fixed evaluation patients; not joint patient/locus uncertainty"
+    },
+    "epic_novel": {
+      "delta_mse": -0.0002457431559424677,
+      "ci95_genomic_blocks": [
+        -0.0006645097058470292,
+        0.00012172180595783557
+      ],
+      "blocks": 47,
+      "limitation": "Conditional on fixed evaluation patients; not joint patient/locus uncertainty"
+    },
+    "wgbs_known": {
+      "delta_mse": -0.0017143444765867603,
+      "ci95_genomic_blocks": [
+        -0.001959345349754128,
+        -0.001478702851000145
+      ],
+      "blocks": 47,
+      "limitation": "Conditional on fixed evaluation patients; not joint patient/locus uncertainty"
+    },
+    "wgbs_novel": {
+      "delta_mse": 0.00022106431550168403,
+      "ci95_genomic_blocks": [
+        -9.337026191451248e-05,
+        0.0005309036018140352
+      ],
+      "blocks": 46,
+      "limitation": "Conditional on fixed evaluation patients; not joint patient/locus uncertainty"
+    }
+  },
+  "risk_dev": [
+    {
+      "view": "dev",
+      "estimator": "learned",
+      "coverage": 0.25,
+      "mse": 0.0038186096963518,
+      "error_prediction_spearman": 0.8144452223205542,
+      "hard_decile_auc": 0.8106973029669893
+    },
+    {
+      "view": "dev",
+      "estimator": "learned",
+      "coverage": 0.5,
+      "mse": 0.0108267929475001,
+      "error_prediction_spearman": 0.8144452223205542,
+      "hard_decile_auc": 0.8106973029669893
+    },
+    {
+      "view": "dev",
+      "estimator": "learned",
+      "coverage": 0.75,
+      "mse": 0.0179550144026122,
+      "error_prediction_spearman": 0.8144452223205542,
+      "hard_decile_auc": 0.8106973029669893
+    },
+    {
+      "view": "dev",
+      "estimator": "learned",
+      "coverage": 1.0,
+      "mse": 0.0250593780120715,
+      "error_prediction_spearman": 0.8144452223205542,
+      "hard_decile_auc": 0.8106973029669893
+    },
+    {
+      "view": "dev",
+      "estimator": "seed_disagreement",
+      "coverage": 0.25,
+      "mse": 0.0040597439412918,
+      "error_prediction_spearman": 0.7579903094565473,
+      "hard_decile_auc": 0.7649298535205405
+    },
+    {
+      "view": "dev",
+      "estimator": "seed_disagreement",
+      "coverage": 0.5,
+      "mse": 0.0119218782759356,
+      "error_prediction_spearman": 0.7579903094565473,
+      "hard_decile_auc": 0.7649298535205405
+    },
+    {
+      "view": "dev",
+      "estimator": "seed_disagreement",
+      "coverage": 0.75,
+      "mse": 0.0193645853883932,
+      "error_prediction_spearman": 0.7579903094565473,
+      "hard_decile_auc": 0.7649298535205405
+    },
+    {
+      "view": "dev",
+      "estimator": "seed_disagreement",
+      "coverage": 1.0,
+      "mse": 0.0250593780120715,
+      "error_prediction_spearman": 0.7579903094565473,
+      "hard_decile_auc": 0.7649298535205405
+    },
+    {
+      "view": "dev",
+      "estimator": "predicted_sd",
+      "coverage": 0.25,
+      "mse": 0.0041615789573664,
+      "error_prediction_spearman": 0.7753350186403484,
+      "hard_decile_auc": 0.750002109034259
+    },
+    {
+      "view": "dev",
+      "estimator": "predicted_sd",
+      "coverage": 0.5,
+      "mse": 0.0111856528995503,
+      "error_prediction_spearman": 0.7753350186403484,
+      "hard_decile_auc": 0.750002109034259
+    },
+    {
+      "view": "dev",
+      "estimator": "predicted_sd",
+      "coverage": 0.75,
+      "mse": 0.01967501309581,
+      "error_prediction_spearman": 0.7753350186403484,
+      "hard_decile_auc": 0.750002109034259
+    },
+    {
+      "view": "dev",
+      "estimator": "predicted_sd",
+      "coverage": 1.0,
+      "mse": 0.0250593780120715,
+      "error_prediction_spearman": 0.7753350186403484,
+      "hard_decile_auc": 0.750002109034259
+    },
+    {
+      "view": "dev",
+      "estimator": "prior_midpoint",
+      "coverage": 0.25,
+      "mse": 0.0055136736127811,
+      "error_prediction_spearman": 0.766811541425183,
+      "hard_decile_auc": 0.796627935424183
+    },
+    {
+      "view": "dev",
+      "estimator": "prior_midpoint",
+      "coverage": 0.5,
+      "mse": 0.0112790262936638,
+      "error_prediction_spearman": 0.766811541425183,
+      "hard_decile_auc": 0.796627935424183
+    },
+    {
+      "view": "dev",
+      "estimator": "prior_midpoint",
+      "coverage": 0.75,
+      "mse": 0.0182121927399075,
+      "error_prediction_spearman": 0.766811541425183,
+      "hard_decile_auc": 0.796627935424183
+    },
+    {
+      "view": "dev",
+      "estimator": "prior_midpoint",
+      "coverage": 1.0,
+      "mse": 0.0250593780120715,
+      "error_prediction_spearman": 0.766811541425183,
+      "hard_decile_auc": 0.796627935424183
+    }
+  ],
+  "external_risk": [
+    {
+      "view": "chr2",
+      "estimator": "learned",
+      "coverage": 0.25,
+      "mse": 0.0040563357778671,
+      "error_prediction_spearman": 0.8375621355839545,
+      "hard_decile_auc": 0.8288081252685453
+    },
+    {
+      "view": "chr2",
+      "estimator": "learned",
+      "coverage": 0.5,
+      "mse": 0.0098701249446441,
+      "error_prediction_spearman": 0.8375621355839545,
+      "hard_decile_auc": 0.8288081252685453
+    },
+    {
+      "view": "chr2",
+      "estimator": "learned",
+      "coverage": 0.75,
+      "mse": 0.0170609317074613,
+      "error_prediction_spearman": 0.8375621355839545,
+      "hard_decile_auc": 0.8288081252685453
+    },
+    {
+      "view": "chr2",
+      "estimator": "learned",
+      "coverage": 1.0,
+      "mse": 0.0245301874390847,
+      "error_prediction_spearman": 0.8375621355839545,
+      "hard_decile_auc": 0.8288081252685453
+    },
+    {
+      "view": "chr2",
+      "estimator": "seed_disagreement",
+      "coverage": 0.25,
+      "mse": 0.0041466691996038,
+      "error_prediction_spearman": 0.7744360646116011,
+      "hard_decile_auc": 0.7893183252187413
+    },
+    {
+      "view": "chr2",
+      "estimator": "seed_disagreement",
+      "coverage": 0.5,
+      "mse": 0.0110980624139419,
+      "error_prediction_spearman": 0.7744360646116011,
+      "hard_decile_auc": 0.7893183252187413
+    },
+    {
+      "view": "chr2",
+      "estimator": "seed_disagreement",
+      "coverage": 0.75,
+      "mse": 0.0183714658089665,
+      "error_prediction_spearman": 0.7744360646116011,
+      "hard_decile_auc": 0.7893183252187413
+    },
+    {
+      "view": "chr2",
+      "estimator": "seed_disagreement",
+      "coverage": 1.0,
+      "mse": 0.0245301874390847,
+      "error_prediction_spearman": 0.7744360646116011,
+      "hard_decile_auc": 0.7893183252187413
+    },
+    {
+      "view": "chr2",
+      "estimator": "predicted_sd",
+      "coverage": 0.25,
+      "mse": 0.0041746112322737,
+      "error_prediction_spearman": 0.7860956361161158,
+      "hard_decile_auc": 0.7523483177299605
+    },
+    {
+      "view": "chr2",
+      "estimator": "predicted_sd",
+      "coverage": 0.5,
+      "mse": 0.0107815604266838,
+      "error_prediction_spearman": 0.7860956361161158,
+      "hard_decile_auc": 0.7523483177299605
+    },
+    {
+      "view": "chr2",
+      "estimator": "predicted_sd",
+      "coverage": 0.75,
+      "mse": 0.0188628290740628,
+      "error_prediction_spearman": 0.7860956361161158,
+      "hard_decile_auc": 0.7523483177299605
+    },
+    {
+      "view": "chr2",
+      "estimator": "predicted_sd",
+      "coverage": 1.0,
+      "mse": 0.0245301874390847,
+      "error_prediction_spearman": 0.7860956361161158,
+      "hard_decile_auc": 0.7523483177299605
+    },
+    {
+      "view": "chr2",
+      "estimator": "prior_midpoint",
+      "coverage": 0.25,
+      "mse": 0.0053416303631874,
+      "error_prediction_spearman": 0.7960868276767776,
+      "hard_decile_auc": 0.8168472160920535
+    },
+    {
+      "view": "chr2",
+      "estimator": "prior_midpoint",
+      "coverage": 0.5,
+      "mse": 0.0103699618201014,
+      "error_prediction_spearman": 0.7960868276767776,
+      "hard_decile_auc": 0.8168472160920535
+    },
+    {
+      "view": "chr2",
+      "estimator": "prior_midpoint",
+      "coverage": 0.75,
+      "mse": 0.0172517709637429,
+      "error_prediction_spearman": 0.7960868276767776,
+      "hard_decile_auc": 0.8168472160920535
+    },
+    {
+      "view": "chr2",
+      "estimator": "prior_midpoint",
+      "coverage": 1.0,
+      "mse": 0.0245301874390847,
+      "error_prediction_spearman": 0.7960868276767776,
+      "hard_decile_auc": 0.8168472160920535
+    },
+    {
+      "view": "chr22",
+      "estimator": "learned",
+      "coverage": 0.25,
+      "mse": 0.0027610702456911,
+      "error_prediction_spearman": 0.8510128649998561,
+      "hard_decile_auc": 0.8328930046580437
+    },
+    {
+      "view": "chr22",
+      "estimator": "learned",
+      "coverage": 0.5,
+      "mse": 0.0071049525533634,
+      "error_prediction_spearman": 0.8510128649998561,
+      "hard_decile_auc": 0.8328930046580437
+    },
+    {
+      "view": "chr22",
+      "estimator": "learned",
+      "coverage": 0.75,
+      "mse": 0.0138328655939284,
+      "error_prediction_spearman": 0.8510128649998561,
+      "hard_decile_auc": 0.8328930046580437
+    },
+    {
+      "view": "chr22",
+      "estimator": "learned",
+      "coverage": 1.0,
+      "mse": 0.021326622736165,
+      "error_prediction_spearman": 0.8510128649998561,
+      "hard_decile_auc": 0.8328930046580437
+    },
+    {
+      "view": "chr22",
+      "estimator": "seed_disagreement",
+      "coverage": 0.25,
+      "mse": 0.0026105525371936,
+      "error_prediction_spearman": 0.8139234242643059,
+      "hard_decile_auc": 0.8008710015871662
+    },
+    {
+      "view": "chr22",
+      "estimator": "seed_disagreement",
+      "coverage": 0.5,
+      "mse": 0.0077263735331202,
+      "error_prediction_spearman": 0.8139234242643059,
+      "hard_decile_auc": 0.8008710015871662
+    },
+    {
+      "view": "chr22",
+      "estimator": "seed_disagreement",
+      "coverage": 0.75,
+      "mse": 0.0149342311277393,
+      "error_prediction_spearman": 0.8139234242643059,
+      "hard_decile_auc": 0.8008710015871662
+    },
+    {
+      "view": "chr22",
+      "estimator": "seed_disagreement",
+      "coverage": 1.0,
+      "mse": 0.021326622736165,
+      "error_prediction_spearman": 0.8139234242643059,
+      "hard_decile_auc": 0.8008710015871662
+    },
+    {
+      "view": "chr22",
+      "estimator": "predicted_sd",
+      "coverage": 0.25,
+      "mse": 0.0027800605006846,
+      "error_prediction_spearman": 0.8144659766896283,
+      "hard_decile_auc": 0.7685319532488626
+    },
+    {
+      "view": "chr22",
+      "estimator": "predicted_sd",
+      "coverage": 0.5,
+      "mse": 0.0076328291075723,
+      "error_prediction_spearman": 0.8144659766896283,
+      "hard_decile_auc": 0.7685319532488626
+    },
+    {
+      "view": "chr22",
+      "estimator": "predicted_sd",
+      "coverage": 0.75,
+      "mse": 0.0155658319517753,
+      "error_prediction_spearman": 0.8144659766896283,
+      "hard_decile_auc": 0.7685319532488626
+    },
+    {
+      "view": "chr22",
+      "estimator": "predicted_sd",
+      "coverage": 1.0,
+      "mse": 0.021326622736165,
+      "error_prediction_spearman": 0.8144659766896283,
+      "hard_decile_auc": 0.7685319532488626
+    },
+    {
+      "view": "chr22",
+      "estimator": "prior_midpoint",
+      "coverage": 0.25,
+      "mse": 0.0039808417551804,
+      "error_prediction_spearman": 0.7982761555268452,
+      "hard_decile_auc": 0.8134504353283691
+    },
+    {
+      "view": "chr22",
+      "estimator": "prior_midpoint",
+      "coverage": 0.5,
+      "mse": 0.0074386256780048,
+      "error_prediction_spearman": 0.7982761555268452,
+      "hard_decile_auc": 0.8134504353283691
+    },
+    {
+      "view": "chr22",
+      "estimator": "prior_midpoint",
+      "coverage": 0.75,
+      "mse": 0.0144633677160575,
+      "error_prediction_spearman": 0.7982761555268452,
+      "hard_decile_auc": 0.8134504353283691
+    },
+    {
+      "view": "chr22",
+      "estimator": "prior_midpoint",
+      "coverage": 1.0,
+      "mse": 0.021326622736165,
+      "error_prediction_spearman": 0.7982761555268452,
+      "hard_decile_auc": 0.8134504353283691
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "learned",
+      "coverage": 0.25,
+      "mse": 0.0027234606836581,
+      "error_prediction_spearman": 0.849638235223049,
+      "hard_decile_auc": 0.8327332361225652
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "learned",
+      "coverage": 0.5,
+      "mse": 0.0056101670715539,
+      "error_prediction_spearman": 0.849638235223049,
+      "hard_decile_auc": 0.8327332361225652
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "learned",
+      "coverage": 0.75,
+      "mse": 0.0125863687779463,
+      "error_prediction_spearman": 0.849638235223049,
+      "hard_decile_auc": 0.8327332361225652
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "learned",
+      "coverage": 1.0,
+      "mse": 0.0203191884065493,
+      "error_prediction_spearman": 0.849638235223049,
+      "hard_decile_auc": 0.8327332361225652
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 0.25,
+      "mse": 0.0032030725466064,
+      "error_prediction_spearman": 0.8205863496059552,
+      "hard_decile_auc": 0.8260106533440105
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 0.5,
+      "mse": 0.0058255123211782,
+      "error_prediction_spearman": 0.8205863496059552,
+      "hard_decile_auc": 0.8260106533440105
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 0.75,
+      "mse": 0.0129330574187911,
+      "error_prediction_spearman": 0.8205863496059552,
+      "hard_decile_auc": 0.8260106533440105
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 1.0,
+      "mse": 0.0203191884065493,
+      "error_prediction_spearman": 0.8205863496059552,
+      "hard_decile_auc": 0.8260106533440105
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "predicted_sd",
+      "coverage": 0.25,
+      "mse": 0.0030299884414595,
+      "error_prediction_spearman": 0.8331471410162425,
+      "hard_decile_auc": 0.8011173262257919
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "predicted_sd",
+      "coverage": 0.5,
+      "mse": 0.0056001464422555,
+      "error_prediction_spearman": 0.8331471410162425,
+      "hard_decile_auc": 0.8011173262257919
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "predicted_sd",
+      "coverage": 0.75,
+      "mse": 0.0132979462367416,
+      "error_prediction_spearman": 0.8331471410162425,
+      "hard_decile_auc": 0.8011173262257919
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "predicted_sd",
+      "coverage": 1.0,
+      "mse": 0.0203191884065493,
+      "error_prediction_spearman": 0.8331471410162425,
+      "hard_decile_auc": 0.8011173262257919
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 0.25,
+      "mse": 0.0042776291150439,
+      "error_prediction_spearman": 0.7791448852645515,
+      "hard_decile_auc": 0.8309473866637982
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 0.5,
+      "mse": 0.0068568173597134,
+      "error_prediction_spearman": 0.7791448852645515,
+      "hard_decile_auc": 0.8309473866637982
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 0.75,
+      "mse": 0.0124205708105008,
+      "error_prediction_spearman": 0.7791448852645515,
+      "hard_decile_auc": 0.8309473866637982
+    },
+    {
+      "view": "epic_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 1.0,
+      "mse": 0.0203191884065493,
+      "error_prediction_spearman": 0.7791448852645515,
+      "hard_decile_auc": 0.8309473866637982
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "learned",
+      "coverage": 0.25,
+      "mse": 0.0044135528667583,
+      "error_prediction_spearman": 0.8439280699069052,
+      "hard_decile_auc": 0.7744914514667027
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "learned",
+      "coverage": 0.5,
+      "mse": 0.0174640061189596,
+      "error_prediction_spearman": 0.8439280699069052,
+      "hard_decile_auc": 0.7744914514667027
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "learned",
+      "coverage": 0.75,
+      "mse": 0.0329034639334412,
+      "error_prediction_spearman": 0.8439280699069052,
+      "hard_decile_auc": 0.7744914514667027
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "learned",
+      "coverage": 1.0,
+      "mse": 0.044480878296484,
+      "error_prediction_spearman": 0.8439280699069052,
+      "hard_decile_auc": 0.7744914514667027
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 0.25,
+      "mse": 0.0043622214517019,
+      "error_prediction_spearman": 0.8074410985836118,
+      "hard_decile_auc": 0.7755780987830514
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 0.5,
+      "mse": 0.0187917493280021,
+      "error_prediction_spearman": 0.8074410985836118,
+      "hard_decile_auc": 0.7755780987830514
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 0.75,
+      "mse": 0.0335610667467026,
+      "error_prediction_spearman": 0.8074410985836118,
+      "hard_decile_auc": 0.7755780987830514
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "seed_disagreement",
+      "coverage": 1.0,
+      "mse": 0.044480878296484,
+      "error_prediction_spearman": 0.8074410985836118,
+      "hard_decile_auc": 0.7755780987830514
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "predicted_sd",
+      "coverage": 0.25,
+      "mse": 0.0044643939067905,
+      "error_prediction_spearman": 0.8147257484207701,
+      "hard_decile_auc": 0.7342360803070336
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "predicted_sd",
+      "coverage": 0.5,
+      "mse": 0.0177088283410408,
+      "error_prediction_spearman": 0.8147257484207701,
+      "hard_decile_auc": 0.7342360803070336
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "predicted_sd",
+      "coverage": 0.75,
+      "mse": 0.0343926331409604,
+      "error_prediction_spearman": 0.8147257484207701,
+      "hard_decile_auc": 0.7342360803070336
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "predicted_sd",
+      "coverage": 1.0,
+      "mse": 0.044480878296484,
+      "error_prediction_spearman": 0.8147257484207701,
+      "hard_decile_auc": 0.7342360803070336
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 0.25,
+      "mse": 0.0068059646014315,
+      "error_prediction_spearman": 0.8041124269831202,
+      "hard_decile_auc": 0.7549414427879886
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 0.5,
+      "mse": 0.0185291035747259,
+      "error_prediction_spearman": 0.8041124269831202,
+      "hard_decile_auc": 0.7549414427879886
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 0.75,
+      "mse": 0.0328451727422296,
+      "error_prediction_spearman": 0.8041124269831202,
+      "hard_decile_auc": 0.7549414427879886
+    },
+    {
+      "view": "wgbs_novel",
+      "estimator": "prior_midpoint",
+      "coverage": 1.0,
+      "mse": 0.044480878296484,
+      "error_prediction_spearman": 0.8041124269831202,
+      "hard_decile_auc": 0.7549414427879886
+    }
+  ],
+  "external_adaptive": [
+    {
+      "view": "chr2",
+      "seed": 17,
+      "mse": 0.024395186411065,
+      "mae": 0.1049381046024617,
+      "mas_pcc": 0.5435800377325032,
+      "within_tissue": 0.4474996101765202,
+      "pooled_within_pcc": 0.4671008888606088,
+      "severe": 0.1681387003987909,
+      "pairs": 27250621,
+      "bias_fraction": 0.3065823460864689
+    },
+    {
+      "view": "chr2",
+      "seed": 18,
+      "mse": 0.0244478765318655,
+      "mae": 0.1050344120318214,
+      "mas_pcc": 0.5438428285340855,
+      "within_tissue": 0.4472757434237527,
+      "pooled_within_pcc": 0.4664901392745615,
+      "severe": 0.1685627641293018,
+      "pairs": 27250621,
+      "bias_fraction": 0.3076064624647472
+    },
+    {
+      "view": "chr2",
+      "seed": 19,
+      "mse": 0.0245001186005436,
+      "mae": 0.1051035307934699,
+      "mas_pcc": 0.5435418452975344,
+      "within_tissue": 0.4472869061753871,
+      "pooled_within_pcc": 0.4654633925486858,
+      "severe": 0.1686434962344528,
+      "pairs": 27250621,
+      "bias_fraction": 0.3082297346761059
+    },
+    {
+      "view": "chr22",
+      "seed": 17,
+      "mse": 0.0211602168831428,
+      "mae": 0.0960346678051426,
+      "mas_pcc": 0.5429742811076973,
+      "within_tissue": 0.4564899778223668,
+      "pooled_within_pcc": 0.4695832405934697,
+      "severe": 0.1481806141519905,
+      "pairs": 6537893,
+      "bias_fraction": 0.3644496466308255
+    },
+    {
+      "view": "chr22",
+      "seed": 18,
+      "mse": 0.0211124618376985,
+      "mae": 0.0958789970451231,
+      "mas_pcc": 0.5435291748719931,
+      "within_tissue": 0.4590285702102816,
+      "pooled_within_pcc": 0.4718208189446661,
+      "severe": 0.1477979220522575,
+      "pairs": 6537893,
+      "bias_fraction": 0.3660615016600309
+    },
+    {
+      "view": "chr22",
+      "seed": 19,
+      "mse": 0.021056818256424,
+      "mae": 0.0959792464118367,
+      "mas_pcc": 0.5435033552151313,
+      "within_tissue": 0.4586528525336938,
+      "pooled_within_pcc": 0.472462709062935,
+      "severe": 0.1476126941814434,
+      "pairs": 6537893,
+      "bias_fraction": 0.363702371995329
+    },
+    {
+      "view": "epic_novel",
+      "seed": 17,
+      "mse": 0.0201888964695402,
+      "mae": 0.09073117529573,
+      "mas_pcc": 0.3423270692598105,
+      "within_tissue": null,
+      "pooled_within_pcc": null,
+      "severe": 0.1300495043490503,
+      "pairs": 5597084,
+      "bias_fraction": 0.3551442517659378
+    },
+    {
+      "view": "epic_novel",
+      "seed": 18,
+      "mse": 0.0203077483942311,
+      "mae": 0.0910885089164319,
+      "mas_pcc": 0.346891134026471,
+      "within_tissue": null,
+      "pooled_within_pcc": null,
+      "severe": 0.1316219302765511,
+      "pairs": 5597084,
+      "bias_fraction": 0.3574207403315541
+    },
+    {
+      "view": "epic_novel",
+      "seed": 19,
+      "mse": 0.0205217262827914,
+      "mae": 0.0921101325566452,
+      "mas_pcc": 0.3286081254624351,
+      "within_tissue": null,
+      "pooled_within_pcc": null,
+      "severe": 0.1315981679031438,
+      "pairs": 5597084,
+      "bias_fraction": 0.3571154653925116
+    },
+    {
+      "view": "wgbs_novel",
+      "seed": 17,
+      "mse": 0.0445623941872581,
+      "mae": 0.1505034440315468,
+      "mas_pcc": 0.3830499650955742,
+      "within_tissue": null,
+      "pooled_within_pcc": null,
+      "severe": 0.2731991108558544,
+      "pairs": 94023,
+      "bias_fraction": 0.3005005359376794
+    },
+    {
+      "view": "wgbs_novel",
+      "seed": 18,
+      "mse": 0.0443165548093343,
+      "mae": 0.1499460787163221,
+      "mas_pcc": 0.3841968278998789,
+      "within_tissue": null,
+      "pooled_within_pcc": null,
+      "severe": 0.271359135530668,
+      "pairs": 94023,
+      "bias_fraction": 0.2997482120984789
+    },
+    {
+      "view": "wgbs_novel",
+      "seed": 19,
+      "mse": 0.0445500020477938,
+      "mae": 0.1503670523278135,
+      "mas_pcc": 0.3821153187919733,
+      "within_tissue": null,
+      "pooled_within_pcc": null,
+      "severe": 0.2735819958946215,
+      "pairs": 94023,
+      "bias_fraction": 0.3016632973273192
+    }
+  ],
+  "hard_cpgs": {
+    "loci": 6742,
+    "hard_loci": 660,
+    "manifest_mapped": 6737,
+    "coordinate_delta_counts": {
+      "0.0": 6737
+    },
+    "reference_CG_mismatches": 0,
+    "hard_reference_mismatches": 0,
+    "hard_qc_mask_fraction": 0.0,
+    "hard_qc_unmasked": 660,
+    "qc": [
+      {
+        "annotation": "MASK_general",
+        "hard_fraction": 0.0,
+        "other_fraction": 0.0,
+        "matched_hard_fraction": 0.0,
+        "matched_control_fraction": 0.0,
+        "matched_fraction_difference": 0.0,
+        "unmatched_odds_ratio": null,
+        "unmatched_p_exploratory": 1.0,
+        "matched_pairs": 3298
+      },
+      {
+        "annotation": "MASK_mapping",
+        "hard_fraction": 0.0,
+        "other_fraction": 0.0,
+        "matched_hard_fraction": 0.0,
+        "matched_control_fraction": 0.0,
+        "matched_fraction_difference": 0.0,
+        "unmatched_odds_ratio": null,
+        "unmatched_p_exploratory": 1.0,
+        "matched_pairs": 3298
+      },
+      {
+        "annotation": "MASK_sub30_copy",
+        "hard_fraction": 0.0,
+        "other_fraction": 0.0,
+        "matched_hard_fraction": 0.0,
+        "matched_control_fraction": 0.0,
+        "matched_fraction_difference": 0.0,
+        "unmatched_odds_ratio": null,
+        "unmatched_p_exploratory": 1.0,
+        "matched_pairs": 3298
+      },
+      {
+        "annotation": "MASK_snp5_GMAF1p",
+        "hard_fraction": 0.0,
+        "other_fraction": 0.0,
+        "matched_hard_fraction": 0.0,
+        "matched_control_fraction": 0.0,
+        "matched_fraction_difference": 0.0,
+        "unmatched_odds_ratio": null,
+        "unmatched_p_exploratory": 1.0,
+        "matched_pairs": 3298
+      },
+      {
+        "annotation": "MASK_typeINextBaseSwitch",
+        "hard_fraction": 0.0,
+        "other_fraction": 0.0,
+        "matched_hard_fraction": 0.0,
+        "matched_control_fraction": 0.0,
+        "matched_fraction_difference": 0.0,
+        "unmatched_odds_ratio": null,
+        "unmatched_p_exploratory": 1.0,
+        "matched_pairs": 3298
+      }
+    ],
+    "median_nearest_ag_cosine": 0.6301751136779785,
+    "nearest_mean_gap_gt03_fraction": 0.08914268762978345,
+    "hard_nearest_mean_gap_gt03_fraction": 0.2924242424242424,
+    "caveat": "Post-hoc associations; target mean/SD matching is descriptive only. Neighbours use training CpGs, >=1Mb away; no target-matched neighbour filtering.",
+    "manifest": {
+      "url": "https://zhouserver.research.chop.edu/InfiniumAnnotation/current/HM450/HM450.hg38.manifest.tsv.gz",
+      "sha256": "668a11ea624b3e645aab963dca048bdd4628ae5d297732867c91525c831cf191",
+      "documentation": "https://zwdzwd.github.io/InfiniumAnnotation/manifest.html"
+    }
+  },
+  "contrasts": [
+    {
+      "groups": [
+        "TCGA-BRCA",
+        "TCGA-LGG"
+      ],
+      "arm": "v3_seed17",
+      "samples": [
+        70,
+        46
+      ],
+      "effect_mse": 0.015919020399451256,
+      "effect_corr": 0.644345569343451,
+      "large_effect_cpgs": 1490,
+      "direction_accuracy": 0.8845637583892617
+    },
+    {
+      "groups": [
+        "TCGA-BRCA",
+        "TCGA-LGG"
+      ],
+      "arm": "genomic_tissue",
+      "samples": [
+        70,
+        46
+      ],
+      "effect_mse": 0.016759134829044342,
+      "effect_corr": 0.6229557163885758,
+      "large_effect_cpgs": 1490,
+      "direction_accuracy": 0.8697986577181208
+    }
+  ],
+  "cohort_metadata": {
+    "array": {
+      "measurements": 9178,
+      "unique_patient_ids": 9178,
+      "raw_name_prefix_counts": {
+        "TCGA": 8707,
+        "TARGET": 471
+      },
+      "provenance": {
+        "canonical_cpgs": 408399,
+        "canonical_measurements": 9178,
+        "cpg_idx_sha256_raw_bytes": "00f7353725455bc8a89d0650876dbeefe7a93601f9219dd3d349dabc7acbb2e9",
+        "cpg_mapping": "raw me.parquet order == mixed registry order; coordinates joined to standalone registry whose index is global MethylProphet cpg_idx",
+        "created_utc": "2026-08-12T12:34:49.453527+00:00",
+        "orientation_canonical": "measurement_x_cpg",
+        "orientation_raw": "cpg_x_measurement",
+        "raw_measurements": 9194,
+        "raw_parts": 41,
+        "raw_root": "/data2/home/vcivale/projects/methylation/MethylFM/MethylProphetData/parquet/241231-tcga_array",
+        "source": "array"
+      }
+    },
+    "epic": {
+      "measurements": 1706,
+      "unique_patient_ids": 1706,
+      "raw_name_prefix_counts": {
+        "C3N": 655,
+        "C3L": 512,
+        "HCM": 250,
+        "TARGET": 134,
+        "HTMCP": 120,
+        "C2415597": 1,
+        "C621273": 1,
+        "C223491": 1,
+        "11LU022": 1,
+        "C259161": 1,
+        "11LU016": 1,
+        "C229764": 1,
+        "C231855": 1,
+        "C287328": 1,
+        "11LU013": 1,
+        "11LU035": 1,
+        "C224106": 1,
+        "C243048": 1,
+        "C1230738": 1,
+        "C1245129": 1,
+        "C204057": 1,
+        "C207624": 1,
+        "C208854": 1,
+        "C219555": 1,
+        "C224967": 1,
+        "C234192": 1,
+        "C243909": 1,
+        "C247230": 1,
+        "C266664": 1,
+        "C289419": 1,
+        "C298152": 1,
+        "C330255": 1,
+        "C383391": 1,
+        "C464694": 1,
+        "C524103": 1,
+        "C685110": 1,
+        "C760878": 1,
+        "C761370": 1,
+        "C827913": 1,
+        "C846363": 1
+      },
+      "provenance": {
+        "canonical_cpgs": 740296,
+        "canonical_measurements": 1706,
+        "cpg_idx_sha256_raw_bytes": "589f2613a6a57de1e1cdd108cdf3f0d4605c149aa8aa73bb20d9794e0ac68758",
+        "cpg_mapping": "raw me.parquet order == mixed registry order; coordinates joined to standalone registry whose index is global MethylProphet cpg_idx",
+        "created_utc": "2026-08-12T12:39:28.378431+00:00",
+        "orientation_canonical": "measurement_x_cpg",
+        "orientation_raw": "cpg_x_measurement",
+        "raw_measurements": 1706,
+        "raw_parts": 75,
+        "raw_root": "/data2/home/vcivale/projects/methylation/MethylFM/MethylProphetData/parquet/241231-tcga_epic",
+        "source": "epic"
+      },
+      "raw_name_overlap_array": 0
+    },
+    "wgbs": {
+      "measurements": 32,
+      "unique_patient_ids": 31,
+      "raw_name_prefix_counts": {
+        "TCGA": 32
+      },
+      "provenance": {
+        "canonical_cpgs": 23047052,
+        "canonical_measurements": 32,
+        "cpg_idx_sha256_raw_bytes": "add3c2c1ea16604f0af59d395fe0fd7581cf43e4b33c1d474a04a39b5ec6d285",
+        "cpg_mapping": "raw me.parquet order == mixed registry order; coordinates joined to standalone registry whose index is global MethylProphet cpg_idx",
+        "created_utc": "2026-08-12T12:42:59.548100+00:00",
+        "orientation_canonical": "measurement_x_cpg",
+        "orientation_raw": "cpg_x_measurement",
+        "raw_measurements": 32,
+        "raw_parts": 2305,
+        "raw_root": "/data2/home/vcivale/projects/methylation/MethylFM/MethylProphetData/parquet/241231-tcga_wgbs",
+        "source": "wgbs",
+        "wgbs_duplicate_alias": {
+          "base_measurement": "TCGA-44-6148",
+          "canonical_sample_idx": 2419,
+          "evidence": "RNA sample_idx 2419 and 10915 are bit-identical over all 25017 genes; canonical contract requires 32 measurements / 31 unique sample_idx",
+          "measurement_idx": 10915,
+          "raw_measurement": "TCGA-44-6148.1"
+        }
+      },
+      "raw_name_overlap_array": 0
+    }
+  },
+  "new_fits": 60,
+  "limitations": [
+    "Internal axes previously used in development; fresh chromosome/assay confirmation is broader but restricted to array-overlapping loci.",
+    "AlphaGenome reference-genome pretraining is not held out by our methylation chromosome split.",
+    "EPIC/WGBS canonical tissue labels are unknown; within-tissue endpoints unavailable there.",
+    "Few-shot support consumes methylation labels on query loci; it is a separate task from RNA-only zero-shot.",
+    "Locus risk is not a calibrated patient-level interval, and low-risk selection favors low-variance loci."
+  ]
+}

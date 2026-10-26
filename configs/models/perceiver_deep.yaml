@@ -1,0 +1,24 @@
+# Perceiver + inherited functional query, deeper post-query decoder.
+# Only the part after the CpG query changes; see modeling/deep_decoder.py.
+extends: perceiver.yaml
+
+model:
+  functional_fusion_variant: perceiver_deep_decoder
+  decoder:
+    width: 512          # decoder state width (CpG query is projected 256 -> 512)
+    n_rounds: 4         # cross-attention reads of the RNA tokens (shallow decoder: 1)
+    ffn_per_round: 2    # 4 x 2 = 8 FFNs, as in the shallow decoder
+    n_head_ffn: 2
+    # regularisation against memorising training CpGs
+    cpg_dropout: 0.1    # feature dropout on h_c entering the decoder
+    drop_path: 0.1      # max stochastic-depth rate, ramped over the rounds
+    zero_init: true     # rounds 2.. start as identity
+    locus_chunk: 256    # activation checkpointing granularity (CpGs)
+
+tracking:
+  group: perceiver_deep_decoder
+  tags:
+    - functional-only
+    - perceiver
+    - deep-decoder
+    - cross-attn-4rounds

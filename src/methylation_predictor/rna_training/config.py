@@ -59,6 +59,8 @@ def load_rna_recipe(path: str | Path) -> RNARecipe:
         functional_fusion_variant=str(
             model_raw.get("functional_fusion_variant", "")
         ),
+        cpg_query=dict(model_raw.get("cpg_query", {})),
+        decoder=dict(model_raw.get("decoder", {})),
     )
 
     training = TrainingConfig(**raw.get("training", {}))

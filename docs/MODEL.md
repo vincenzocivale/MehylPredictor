@@ -1,11 +1,41 @@
 # MethylPredictor model
 
-The final paper-facing architecture is `EfficientSingleAttentionPredictor` with
+The latest AlphaGenome mixed-source research model is documented in the
+[research dossier](ALPHAGENOME_RESEARCH_STATE_2026-10-18.md) and
+[inference runbook](ALPHAGENOME_REPRODUCIBILITY_2026-10-18.md). It uses native
+1Mb AlphaGenome features and a hierarchical low-rank predictor. The functional
+attention architecture described below is a separate workflow.
+
+The historical functional paper-facing architecture is `EfficientSingleAttentionPredictor` with
 8 retrieval FFN blocks, 8 functional FFN blocks, `deep_query=false`, and 2
 post-fusion residual FFN blocks in the prediction head.
 
-No NTv3/genomic-FM embedding is a model input. The inputs are normalized bulk
+The final architecture takes no genomic-FM embedding: inputs are normalized bulk
 RNA plus patient-independent functional locus annotations.
+
+## Perceiver variants (`modeling/perceiver.py`, `modeling/cpg_query.py`)
+
+`PerceiverCpGPredictor` replaces the RNA encoder with a Perceiver (gene patches
+-> learned latents) and keeps the CpG-query cross-attention head. Selectors:
+
+- `perceiver_cpg_query`: inherited functional query (4,165 tracks + 23 dense).
+- `perceiver_functional_generic`: `GenericFunctionalQuery`, optionally masked to
+  a track contract (default histone+DNase, 2,492 tracks).
+- `perceiver_functional_latent`: `LatentQuery` over a precomputed, frozen,
+  reference-sequence functional-model latent (default Enformer trunk, 3072-d)
+  read via `--genomic-fm-cache`. The store must cover every CpG of all training
+  axes (array, EPIC, WGBS) in the scope.
+
+- `perceiver_deep_decoder` (`modeling/deep_decoder.py`, `configs/models/perceiver_deep.yaml`):
+  same inherited functional query, but the part after the CpG query is deeper. The
+  RNA tokens are re-read in `n_rounds` cross-attention rounds (each followed by
+  `ffn_per_round` FFNs) at decoder `width` (512), followed by a wider head. The CpG
+  branch is unchanged, so the comparison with `perceiver_cpg_query` isolates the
+  decoder (19.9M -> 38.9M parameters at 25,017 genes). Guards against memorising
+  training CpGs (untuned defaults, set under `model.decoder`): `cpg_dropout` on
+  `h_c`, `drop_path` ramped over rounds, `zero_init` of rounds 2.. (training starts
+  from the shallow decoder), head dropout = `final_regressor_dropout`. Judge it on
+  the validation-CpG and double-OOD views, not on the train-CpG view.
 
 ## Functional branch
 

@@ -56,6 +56,10 @@ class ModelConfig:
 
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     functional_fusion_variant: str = ""
+    # Optional CpG-query options (modeling.cpg_query): track_contract / track_blocks.
+    cpg_query: dict = field(default_factory=dict)
+    # Optional post-query decoder options (modeling.deep_decoder).
+    decoder: dict = field(default_factory=dict)
 
 
 @dataclass(slots=True)
